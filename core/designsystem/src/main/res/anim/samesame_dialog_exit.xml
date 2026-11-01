@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dialog window exit: sinks 100 px over 300 ms while fading out over 100 ms. -->
+<set xmlns:android="http://schemas.android.com/apk/res/android" android:shareInterpolator="false">
+    <translate
+        android:duration="300"
+        android:fromYDelta="0"
+        android:interpolator="@interpolator/samesame_sine_out_80"
+        android:toYDelta="100" />
+    <alpha
+        android:duration="100"
+        android:fromAlpha="1"
+        android:toAlpha="0" />
+</set>

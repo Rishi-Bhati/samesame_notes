@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="feature_settings_title">SameSame notes settings</string>
+    <string name="feature_settings_back">Back</string>
+    <string name="feature_settings_general">General</string>
+    <string name="feature_settings_advanced">Advanced</string>
+    <string name="feature_settings_privacy">Privacy</string>
+    <string name="feature_settings_new_note_style">Style of new notes</string>
+    <string name="feature_settings_theme">Theme</string>
+    <string name="feature_settings_theme_light">Light</string>
+    <string name="feature_settings_theme_dark">Dark</string>
+    <string name="feature_settings_theme_system">System default</string>
+    <string name="feature_settings_unlock_methods">Note unlock methods</string>
+    <string name="feature_settings_category_password">Password</string>
+    <string name="feature_settings_create_password">Create password</string>
+    <string name="feature_settings_change_password">Change password</string>
+    <string name="feature_settings_biometrics">Biometrics</string>
+    <string name="feature_settings_biometrics_help">Add your fingerprints to unlock notes. To use your fingerprints, you also need to set a pattern, PIN, or password.</string>
+    <string name="feature_settings_fingerprints">Fingerprints</string>
+    <string name="feature_settings_auto_save">Auto save notes</string>
+    <string name="feature_settings_show_links">Show links in notes</string>
+    <string name="feature_settings_web_previews">Show web previews</string>
+    <string name="feature_settings_web_previews_summary">Preview websites added from other apps.</string>
+    <string name="feature_settings_hide_scroll_bar">Hide scroll bar when editing</string>
+    <string name="feature_settings_block_back">Block Back button while editing</string>
+    <string name="feature_settings_toolbar_addons">Toolbar add-ons</string>
+    <string name="feature_settings_privacy_notice">Privacy Notice</string>
+    <string name="feature_settings_about">About SameSame notes</string>
+
+    <string name="feature_settings_dark_colour">Adjust colour in Dark mode</string>
+    <string name="feature_settings_tab_style">Style</string>
+    <string name="feature_settings_tab_template">Template</string>
+    <string name="feature_settings_tab_colour">Colour</string>
+    <string name="feature_settings_page_style">Page style</string>
+    <string name="feature_settings_individual_pages">Individual pages</string>
+    <string name="feature_settings_infinite_page">Infinite scrolling page</string>
+    <string name="feature_settings_page_settings">Page settings</string>
+    <string name="feature_settings_layout">Layout</string>
+    <string name="feature_settings_layout_normal">Normal</string>
+    <string name="feature_settings_layout_long">Long (1:2)</string>
+    <string name="feature_settings_template_default">Default</string>
+    <string name="feature_settings_template_images">Images</string>
+    <string name="feature_settings_template_pdfs">PDFs</string>
+    <string name="feature_settings_template_pdf_heading">PDF templates</string>
+    <string name="feature_settings_template_pdf_original">Original page size</string>
+    <string name="feature_settings_template_pdf_original_summary">Keep each page of an imported PDF at its own size.</string>
+    <string name="feature_settings_template_pdf_fit">Fit to page layout</string>
+    <string name="feature_settings_template_pdf_fit_summary">Scale imported pages to the layout selected in the Style tab.</string>
+    <string name="feature_settings_template_pdf_note">The page template and colour aren\'t applied to pages imported from PDFs.</string>
+
+    <string name="feature_settings_change_style">Change style</string>
+    <string name="feature_settings_change_style_summary">Change the colour and thickness of handwriting after it\'s written.</string>
+    <string name="feature_settings_easy_pad">Easy writing pad</string>
+    <string name="feature_settings_easy_pad_summary">Write on an easy writing pad to neatly align your handwriting on the page.</string>
+    <string name="feature_settings_zoom_lock">Zoom lock</string>
+    <string name="feature_settings_zoom_lock_summary">Lock the canvas while you write. Swipe with two fingers to scroll on the locked canvas.</string>
+
+    <string name="feature_settings_app_name">SameSame notes</string>
+    <string name="feature_settings_version">Version %1$s</string>
+    <string name="feature_settings_licences">Open source licences</string>
+    <string name="feature_settings_about_info">About</string>
+    <string name="feature_settings_privacy_heading">Your notes stay on your device</string>
+    <string name="feature_settings_privacy_body">SameSame notes stores your notes only on this device. It has no account, no analytics, no advertising and no network access, so nothing you write is sent anywhere. Notes you lock are protected by the method you choose, and you can export or delete your notes at any time.</string>
+    <!-- Bulk import / export -->
+    <string name="feature_settings_import_notes">Import notes</string>
+    <string name="feature_settings_export_notes">Export notes</string>
+    <string name="feature_settings_importing">Importing…</string>
+    <string name="feature_settings_exporting">Exporting…</string>
+    <string name="feature_settings_export_select">Select notes</string>
+    <plurals name="feature_settings_export_selected">
+        <item quantity="one">%d selected</item>
+        <item quantity="other">%d selected</item>
+    </plurals>
+    <string name="feature_settings_export_all">All</string>
+    <string name="feature_settings_export_action">Export</string>
+    <string name="feature_settings_export_empty">No notes</string>
+    <string name="feature_settings_export_locked">Locked note. Unlock it to export.</string>
+    <string name="feature_settings_export_untitled">Untitled note</string>
+    <string name="feature_settings_ok">OK</string>
+    <plurals name="feature_settings_result_imported">
+        <item quantity="one">%d note imported.</item>
+        <item quantity="other">%d notes imported.</item>
+    </plurals>
+    <plurals name="feature_settings_result_exported">
+        <item quantity="one">%d note exported.</item>
+        <item quantity="other">%d notes exported.</item>
+    </plurals>
+    <plurals name="feature_settings_result_locked">
+        <item quantity="one">%d locked note skipped.</item>
+        <item quantity="other">%d locked notes skipped.</item>
+    </plurals>
+    <plurals name="feature_settings_result_unsupported">
+        <item quantity="one">%d file isn\'t a supported note file (.sdocx, .ssnote or PDF).</item>
+        <item quantity="other">%d files aren\'t supported note files (.sdocx, .ssnote or PDF).</item>
+    </plurals>
+    <plurals name="feature_settings_result_legacy">
+        <item quantity="one">%d legacy .sdoc file can\'t be imported.</item>
+        <item quantity="other">%d legacy .sdoc files can\'t be imported.</item>
+    </plurals>
+    <plurals name="feature_settings_result_protected">
+        <item quantity="one">%d password-protected PDF skipped.</item>
+        <item quantity="other">%d password-protected PDFs skipped.</item>
+    </plurals>
+    <plurals name="feature_settings_result_failed">
+        <item quantity="one">%d failed.</item>
+        <item quantity="other">%d failed.</item>
+    </plurals>
+</resources>

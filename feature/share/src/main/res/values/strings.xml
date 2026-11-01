@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="feature_share_share">Share</string>
+    <string name="feature_share_chooser_title">Share via</string>
+    <string name="feature_share_save_as_file">Save as file</string>
+    <string name="feature_share_cancel">Cancel</string>
+    <string name="feature_share_done">Done</string>
+    <string name="feature_share_close">Close</string>
+
+    <!-- Save as file dialog (composer #58) -->
+    <string name="feature_share_format_ssnote">SameSame note (.ssnote)</string>
+    <string name="feature_share_format_sdocx">SameSame document (.sdocx)</string>
+    <string name="feature_share_format_pdf">PDF (.pdf)</string>
+    <string name="feature_share_format_images">Images</string>
+    <string name="feature_share_format_txt">Text (.txt)</string>
+    <string name="feature_share_format_md">Markdown (.md)</string>
+    <string name="feature_share_format_html">HTML (.html)</string>
+    <string name="feature_share_format_docx">Word (.docx)</string>
+    <string name="feature_share_format_pptx">PowerPoint (.pptx)</string>
+
+    <!-- Share format menu -->
+    <string name="feature_share_menu_note">SameSame note file</string>
+    <string name="feature_share_menu_document">SameSame document file</string>
+    <string name="feature_share_menu_pdf">PDF file</string>
+    <string name="feature_share_menu_word">Microsoft Word file</string>
+    <string name="feature_share_menu_powerpoint">Microsoft PowerPoint file</string>
+    <string name="feature_share_menu_image">Image file</string>
+    <string name="feature_share_menu_text">Text file</string>
+
+    <!-- Multiple notes: separate files or one zip -->
+    <string name="feature_share_as_file">File</string>
+    <string name="feature_share_as_zip">Zip</string>
+    <string name="feature_share_zip_name">SameSame notes.zip</string>
+
+    <!-- Progress and results -->
+    <string name="feature_share_exporting">Exporting…</string>
+    <string name="feature_share_progress">%1$d/%2$d</string>
+    <string name="feature_share_saved">%s saved.</string>
+    <string name="feature_share_saved_count">%d files saved.</string>
+    <string name="feature_share_failed">Couldn\'t save note. Try again.</string>
+    <string name="feature_share_nothing">No content to share.</string>
+    <string name="feature_share_except_locked_share">The selected notes, except for locked notes, will be shared.</string>
+    <string name="feature_share_except_locked_save">The selected notes, except for locked notes, will be saved.</string>
+    <string name="feature_share_locked_note_share">To share your note, you need to unlock it first.</string>
+    <string name="feature_share_locked_notes_share">To share your notes, you need to unlock them first.</string>
+    <string name="feature_share_locked_note_save">To save your note, you need to unlock it first.</string>
+    <string name="feature_share_locked_notes_save">To save your notes, you need to unlock them first.</string>
+    <string name="feature_share_remove_lock">Remove lock</string>
+</resources>

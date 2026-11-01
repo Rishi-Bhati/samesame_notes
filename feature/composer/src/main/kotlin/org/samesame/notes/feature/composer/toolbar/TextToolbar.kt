@@ -1,0 +1,351 @@
+package org.samesame.notes.feature.composer.toolbar
+
+import org.samesame.notes.core.designsystem.icon.AppIcons
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameMillis
+import org.samesame.notes.feature.composer.panels.GlideScrollPad
+import org.samesame.notes.feature.composer.panels.GlideScrollPadTracker
+import org.samesame.notes.core.designsystem.theme.SameSameTheme
+import org.samesame.notes.feature.composer.R
+import org.samesame.notes.feature.composer.panels.ComposerPreviews
+import org.samesame.notes.feature.composer.panels.DarkToolbarColors
+import org.samesame.notes.feature.composer.panels.FontSizeHoldState
+import org.samesame.notes.feature.composer.panels.FontSizePick
+import org.samesame.notes.feature.composer.panels.FontSizeRows
+import org.samesame.notes.feature.composer.panels.TextSizeCatalog
+import org.samesame.notes.feature.composer.panels.LightToolbarColors
+import org.samesame.notes.feature.composer.panels.ToolbarColors
+import org.samesame.notes.feature.composer.panels.PreviewFrame
+
+data class TextToolbarModel(
+    val fontSize: Int = 17,
+    /** "17" or the heading label ("H1"..). */
+    val fontSizeLabel: String = fontSize.toString(),
+    val textColor: Color = Color.Unspecified,
+    val highlightColor: Color = Color.Unspecified,
+    val canUndo: Boolean = true,
+    val canRedo: Boolean = false,
+    /** Button whose panel is open, shown with a pill behind it. */
+    val openPanel: TextToolbarButton? = null,
+)
+
+enum class TextToolbarButton { TextOptions, FontColor, Highlight, FontSize }
+
+/**
+ * Whether [button] shows the pressed pill: its panel is open, except the text-options button, which stays plain while its
+ * panel is open (round-3 reference #28).
+ */
+fun TextToolbarModel.isHighlighted(button: TextToolbarButton): Boolean =
+    openPanel == button && button != TextToolbarButton.TextOptions
+
+/** Height of both toolbars: 42 dp including the 1 px borders (#26: borders at y 2167 and 2276 of 2340 px, 110 px). */
+internal val ToolbarHeight = 42.dp
+
+/** Handwriting toggle circle: 38 dp, left edge 7.2 dp from the screen edge (#26: x 19..118 px). */
+internal val ToggleSize = 38.dp
+internal val ToggleStart = 7.2.dp
+
+/** First cell starts 54.3 dp from the left in both toolbars (#26: centre 206.5 px less half a cell). */
+private val TextCellsStart = 54.3.dp
+
+/** Text toolbar cells are 128 px = 48.76 dp apart (#26: centres 206.5, 334, 462.5, 590, 718.5, 849, 977 px). */
+private val TextCellWidth = 48.76.dp
+
+@Composable
+internal fun toolbarColors(): ToolbarColors = if (SameSameTheme.colors.isDark) DarkToolbarColors else LightToolbarColors
+
+/** The docked toolbar strip: [ToolbarHeight] tall, filled, with a 1 px border on top and bottom. */
+@Composable
+internal fun ToolbarSurface(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    val c = toolbarColors()
+    Box(
+        modifier.fillMaxWidth().height(ToolbarHeight).background(c.background).drawBehind {
+            drawRect(c.border, Offset.Zero, Size(size.width, 1f))
+            drawRect(c.border, Offset(0f, size.height - 1f), Size(size.width, 1f))
+        },
+    ) { content() }
+}
+
+/** The round pen/keyboard toggle that opens both toolbars (#26, #32): 38 dp, fill #2A2A2A, 1 px stroke #5C5C5C. */
+@Composable
+internal fun ModeToggle(label: String, onClick: () -> Unit, icon: @Composable () -> Unit) {
+    val c = toolbarColors()
+    Box(
+        Modifier.size(ToggleSize).clip(CircleShape).background(c.toggleFill).border(0.38.dp, c.toggleStroke, CircleShape)
+            .clickable(role = Role.Button, onClick = onClick).semantics { contentDescription = label },
+        contentAlignment = Alignment.Center,
+    ) { icon() }
+}
+
+/**
+ * Text toolbar (`#26`, `#27`): handwriting toggle, then 48.76 dp cells for to-do, text options, font colour,
+ * highlight, size dropdown, undo, redo.
+ */
+@Composable
+fun TextToolbar(
+    model: TextToolbarModel,
+    onHandwriting: () -> Unit,
+    onTodo: () -> Unit,
+    onTextOptions: () -> Unit,
+    onFontColor: () -> Unit,
+    onHighlight: () -> Unit,
+    onFontSize: () -> Unit,
+    onUndo: () -> Unit,
+    onRedo: () -> Unit,
+    fontSizeHold: FontSizeHoldState = androidx.compose.runtime.remember { FontSizeHoldState() },
+    onFontSizeHoldOpen: () -> Unit = onFontSize,
+    onFontSizePick: (FontSizePick) -> Unit = {},
+    onFontSizeCancel: () -> Unit = onFontSize,
+    modifier: Modifier = Modifier,
+) {
+    val c = toolbarColors()
+    val haptic = LocalHapticFeedback.current
+    val fontSizeCoords = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<LayoutCoordinates?>(null) }
+    // The gesture survives recompositions (the popup opening recomposes this toolbar), so read the latest callbacks.
+    val tapFontSize = androidx.compose.runtime.rememberUpdatedState(onFontSize)
+    val holdOpen = androidx.compose.runtime.rememberUpdatedState(onFontSizeHoldOpen)
+    val pickFontSize = androidx.compose.runtime.rememberUpdatedState(onFontSizePick)
+    val cancelFontSize = androidx.compose.runtime.rememberUpdatedState(onFontSizeCancel)
+    val currentFontSize = androidx.compose.runtime.rememberUpdatedState(model.fontSize)
+    val fontSizeName = stringResource(R.string.feature_composer_font_size)
+    ToolbarSurface(modifier) {
+        Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+            Spacer(Modifier.width(ToggleStart))
+            ModeToggle(stringResource(R.string.feature_composer_handwriting), onHandwriting) {
+                Icon(AppIcons.Handwriting, null, Modifier.size(24.dp), tint = c.icon)
+            }
+            Spacer(Modifier.width(TextCellsStart - ToggleStart - ToggleSize))
+            Cell(Modifier.width(TextCellWidth)) { ToolButton(AppIcons.Checklist, R.string.feature_composer_todo, onClick = onTodo) }
+            Cell(Modifier.width(TextCellWidth)) {
+                ToolButton(AppIcons.TextStyle, R.string.feature_composer_text_options, active = model.isHighlighted(TextToolbarButton.TextOptions), onClick = onTextOptions)
+            }
+            Cell(Modifier.width(TextCellWidth)) {
+                ToolButton(AppIcons.TextColor, R.string.feature_composer_font_colour, bar = ColorBar.Text(model.textColor),
+                    active = model.isHighlighted(TextToolbarButton.FontColor), onClick = onFontColor)
+            }
+            Cell(Modifier.width(TextCellWidth)) {
+                ToolButton(AppIcons.TextHighlight, R.string.feature_composer_highlight_colour, bar = ColorBar.Highlight(model.highlightColor),
+                    active = model.isHighlighted(TextToolbarButton.Highlight), onClick = onHighlight)
+            }
+            Cell(Modifier.width(TextCellWidth)) {
+                // "17" is composer_rich_text_menu_font_size 17sp; the triangle is 21 x 13 px, 9 px after the digits.
+                // Tap opens/closes the popup; press-and-hold opens it and follows the finger over its rows (item 11).
+                Row(
+                    Modifier.height(32.dp).clip(RoundedCornerShape(16.dp))
+                        .onGloballyPositioned { fontSizeCoords.value = it }
+                        .pointerInput(fontSizeHold) {
+                            val longPressMs = viewConfiguration.longPressTimeoutMillis
+                            val pad = GlideScrollPadTracker(
+                                GlideScrollPad.SLOW_DP_PER_S.dp.toPx(), GlideScrollPad.FAST_DP_PER_S.dp.toPx(),
+                            )
+                            // Finger in root coordinates while held; the scroll-pad loop runs only while [holding].
+                            val holding = mutableStateOf(false)
+                            var finger = Offset.Zero
+                            coroutineScope {
+                                launch {
+                                    snapshotFlow { holding.value }.collectLatest { held ->
+                                        pad.reset()
+                                        var last = -1L
+                                        var target = Float.NaN
+                                        while (held) {
+                                            val now = withFrameMillis { it }
+                                            val dt = if (last < 0) 16f else (now - last).toFloat()
+                                            last = now
+                                            val list = fontSizeHold.scrollState ?: continue
+                                            // The whole popup is the pad once the finger glides into it (it starts on the
+                                            // button); outside it horizontally the list stays where it is.
+                                            if (fontSizeHold.insidePopup(finger.x) &&
+                                                (!target.isNaN() || fontSizeHold.insidePopup(finger.x, finger.y))
+                                            ) {
+                                                target = pad.target(
+                                                    finger.y, now, fontSizeHold.popupTop, fontSizeHold.popupBottom,
+                                                    list.maxValue.toFloat(), list.value.toFloat(),
+                                                )
+                                            } else if (!fontSizeHold.insidePopup(finger.x)) {
+                                                pad.reset()
+                                                target = Float.NaN
+                                            }
+                                            if (target.isNaN()) continue
+                                            val current = list.value.toFloat()
+                                            val next = GlideScrollPad.smoothStep(current, target, dt)
+                                            if (next != current) list.scrollBy(next - current)
+                                            if (fontSizeHold.moveTo(finger.x, finger.y)) {
+                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            }
+                                        }
+                                    }
+                                }
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    val started = System.nanoTime()
+                                    val up = withTimeoutOrNull(longPressMs) { waitForUpOrCancellation() }
+                                    val elapsedMs = (System.nanoTime() - started) / 1_000_000
+                                    if (up != null) {
+                                        tapFontSize.value()
+                                        return@awaitEachGesture
+                                    }
+                                    // A gesture cancelled by someone else ends well before the timeout: leave it alone.
+                                    if (elapsedMs < longPressMs - 20) return@awaitEachGesture
+                                    // Held: the popup is (or becomes) open; slide over its rows until the finger lifts. The
+                                    // whole popup scrolls the list (scroll-pad loop above); outside the popup nothing is
+                                    // highlighted and a release there cancels.
+                                    val sizes = TextSizeCatalog.menuSizes(currentFontSize.value.toFloat())
+                                    fontSizeHold.highlighted = -1
+                                    holdOpen.value()
+                                    var picked: FontSizePick? = null
+                                    finger = fontSizeCoords.value?.localToRoot(down.position) ?: down.position
+                                    holding.value = true
+                                    try {
+                                        while (true) {
+                                            val event = awaitPointerEvent()
+                                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                            finger = fontSizeCoords.value?.localToRoot(change.position) ?: change.position
+                                            if (!change.pressed) {
+                                                fontSizeHold.moveTo(finger.x, finger.y)
+                                                picked = FontSizeRows.pick(fontSizeHold.highlighted, sizes)
+                                                break
+                                            }
+                                            if (fontSizeHold.moveTo(finger.x, finger.y)) {
+                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            }
+                                            change.consume()
+                                        }
+                                    } finally {
+                                        holding.value = false
+                                    }
+                                    fontSizeHold.highlighted = -1
+                                    if (picked != null) pickFontSize.value(picked) else cancelFontSize.value()
+                                }
+                            }
+                        }
+                        .semantics {
+                            role = Role.Button
+                            onClick(label = fontSizeName) { onFontSize(); true }
+                        },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(model.fontSizeLabel, fontSize = 17.sp, color = Color(0xFFFCFCFC).takeIf { SameSameTheme.colors.isDark } ?: c.icon)
+                    Icon(AppIcons.DropdownCaret, stringResource(R.string.feature_composer_font_size), Modifier.size(19.dp).offset(x = (-1).dp), tint = c.icon)
+                }
+            }
+            Cell(Modifier.width(TextCellWidth)) { ToolButton(AppIcons.Undo, R.string.feature_composer_undo, enabled = model.canUndo, onClick = onUndo) }
+            Cell(Modifier.width(TextCellWidth)) { ToolButton(AppIcons.Redo, R.string.feature_composer_redo, enabled = model.canRedo, onClick = onRedo) }
+        }
+    }
+}
+
+@Composable
+internal fun Cell(modifier: Modifier, content: @Composable () -> Unit) {
+    Box(modifier.fillMaxHeight(), contentAlignment = Alignment.Center) { content() }
+}
+
+/** The bar drawn under a toolbar glyph: the text colour or the highlight colour (unset highlight is an outlined black bar). */
+internal sealed interface ColorBar {
+    data class Text(val color: Color) : ColorBar
+    data class Highlight(val color: Color) : ColorBar
+}
+
+/**
+ * 32 dp tap target; [active] puts the selected pill (`#33FFFFFF`, 32 dp circle) behind the glyph. The colour [bar] is
+ * 15.5 x 2.4 dp, centred 7.6 dp below the glyph centre (#26: 40 x 6 px at y 2239..2245, centre line 2222).
+ */
+@Composable
+internal fun ToolButton(
+    icon: ImageVector,
+    label: Int,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    active: Boolean = false,
+    tint: Color = Color.Unspecified,
+    bar: ColorBar? = null,
+    onClick: () -> Unit,
+) {
+    val c = toolbarColors()
+    val glyph = if (tint != Color.Unspecified) tint else if (enabled) c.icon else c.iconDisabled
+    Box(
+        modifier.size(32.dp).clip(CircleShape)
+            .background(if (active) c.selected else Color.Transparent)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, stringResource(label), Modifier.size(24.dp), tint = glyph)
+        when (bar) {
+            is ColorBar.Text -> Box(
+                Modifier.align(Alignment.Center).offset(y = 7.6.dp).size(width = 15.5.dp, height = 2.4.dp)
+                    .background(if (bar.color != Color.Unspecified) bar.color else Color(0xFFDADADA).takeIf { SameSameTheme.colors.isDark } ?: c.icon),
+            )
+            is ColorBar.Highlight -> Box(
+                Modifier.align(Alignment.Center).offset(y = 7.6.dp).size(width = 15.5.dp, height = 2.4.dp)
+                    .then(
+                        if (bar.color != Color.Unspecified) Modifier.background(bar.color)
+                        else Modifier.background(if (SameSameTheme.colors.isDark) Color(0xFF010101) else Color.White).border(0.5.dp, Color(0xFF8F8F8F)),
+                    ),
+            )
+            null -> Unit
+        }
+    }
+}
+
+@ComposerPreviews
+@Composable
+private fun TextToolbarPreview() = PreviewFrame {
+    TextToolbar(TextToolbarModel(), {}, {}, {}, {}, {}, {}, {}, {})
+}
+
+@ComposerPreviews
+@Composable
+private fun TextToolbarColoursPreview() = PreviewFrame {
+    TextToolbar(
+        TextToolbarModel(textColor = Color(0xFFD01C1C), highlightColor = Color(0xFFFFE600), canRedo = true, openPanel = TextToolbarButton.FontColor),
+        {}, {}, {}, {}, {}, {}, {}, {},
+    )
+}

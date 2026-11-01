@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="feature_camera_close">Close camera</string>
+    <string name="feature_camera_shutter">Take photo</string>
+    <string name="feature_camera_flip">Switch camera</string>
+    <string name="feature_camera_flash_on">Flash on</string>
+    <string name="feature_camera_flash_off">Flash off</string>
+</resources>

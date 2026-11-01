@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The window colour before Compose's first frame; matches SameSameTheme's screen background. -->
+    <color name="samesame_window_background">#FFF6F6F6</color>
+</resources>

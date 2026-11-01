@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SameSame notes</string>
+    <string name="sdocx_import_legacy">This is a legacy the reference app (.sdoc) file. It is device-bound and cannot be imported.</string>
+    <string name="sdocx_import_invalid">This file is not a valid note file (.sdocx, .ssnote or PDF) or uses a newer format.</string>
+    <string name="sdocx_import_io">Could not read the file.</string>
+    <string name="file_import_protected">This PDF is password protected and cannot be imported.</string>
+    <plurals name="file_import_done">
+        <item quantity="one">%d note imported</item>
+        <item quantity="other">%d notes imported</item>
+    </plurals>
+    <plurals name="file_import_done_failed">
+        <item quantity="one">%1$d note imported, %2$d failed</item>
+        <item quantity="other">%1$d notes imported, %2$d failed</item>
+    </plurals>
+</resources>

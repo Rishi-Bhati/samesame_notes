@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Wording follows the reference app's lock strings (functional spec); brand names removed. -->
+    <string name="feature_lock_back">Back</string>
+    <string name="feature_lock_cancel">Cancel</string>
+    <string name="feature_lock_continue">Continue</string>
+    <string name="feature_lock_ok">OK</string>
+    <string name="feature_lock_create_title">Create password</string>
+    <string name="feature_lock_confirm_title">Confirm password</string>
+    <string name="feature_lock_change_title">Change password</string>
+    <string name="feature_lock_guide_default">Enter your password.</string>
+    <string name="feature_lock_guide_confirm">Enter the password again to confirm it.</string>
+    <string name="feature_lock_guide_current">Enter your current password.</string>
+    <string name="feature_lock_do_not_match">The passwords do not match.</string>
+    <string name="feature_lock_incorrect">Incorrect password entered.</string>
+    <string name="feature_lock_over_max">Can\'t enter more than %d characters.</string>
+    <string name="feature_lock_fingerprints_changed_guide">Your registered fingerprints were changed.</string>
+    <string name="feature_lock_fingerprints_changed_reset">Your fingerprint data was removed or changed in Settings, so Fingerprints has been turned off in Notes.</string>
+    <string name="feature_lock_remember_password">Make sure you remember your password. If you forget it, you won\'t be able to unlock your notes. Locked notes can\'t be restored from a backup or moved to a new phone, and they are lost if the app is reinstalled.</string>
+    <string name="feature_lock_guide_create">Enter a password of at least %d characters.</string>
+    <string name="feature_lock_use_fingerprints">Also let me unlock with fingerprints</string>
+    <string name="feature_lock_biometric_title">Verify your identity</string>
+    <string name="feature_lock_biometric_subtitle">Use your fingerprints to unlock your notes.</string>
+    <string name="feature_lock_use_password">USE PASSWORD</string>
+    <string name="feature_lock_lockout">Too many attempts. Please try again later.</string>
+    <plurals name="feature_lock_try_again_seconds">
+        <item quantity="one">Too many incorrect attempts. Try again in %d second.</item>
+        <item quantity="other">Too many incorrect attempts. Try again in %d seconds.</item>
+    </plurals>
+    <plurals name="feature_lock_try_again_minutes">
+        <item quantity="one">Too many incorrect attempts. Try again in %d minute.</item>
+        <item quantity="other">Too many incorrect attempts. Try again in %d minutes.</item>
+    </plurals>
+    <plurals name="feature_lock_unlock_title">
+        <item quantity="one">Unlock note?</item>
+        <item quantity="other">Unlock %d notes?</item>
+    </plurals>
+    <string name="feature_lock_remove_lock">Remove lock</string>
+</resources>

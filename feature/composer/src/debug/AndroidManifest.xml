@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- WP-G: canvas try-out host, debug builds only. Launch with
+             adb shell am start with -n org.samesame.notes.debug/org.samesame.notes.feature.composer.canvas.CanvasDebugActivity
+             string extras: mode (pages or infinite), ratio (a4 or long), template (a PageTemplate name)
+             boolean extras: dark, adjust, finger, lock, ref (reference phone geometry of 26) -->
+        <activity
+            android:name="org.samesame.notes.feature.composer.canvas.CanvasDebugActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.Material.NoActionBar"
+            android:windowSoftInputMode="adjustNothing" />
+    </application>
+</manifest>
