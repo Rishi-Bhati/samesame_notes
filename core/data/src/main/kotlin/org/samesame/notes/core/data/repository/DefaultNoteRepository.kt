@@ -596,12 +596,15 @@ internal class DefaultNoteRepository @Inject constructor(
 
 internal fun normalizeTag(tag: String) = tag.trim().removePrefix("#").lowercase()
 
-/** Turns user input into a safe FTS4 prefix query: `meeting agen` → `"meeting"* "agen"*`. */
+/**
+ * Turns user input into a safe FTS4 prefix query: `meeting agen` → `"meeting*" "agen*"`. FTS4 takes the `*` inside the
+ * quoted phrase (`"agen"*` is FTS5 syntax and matches nothing here, so partial words were never found).
+ */
 internal fun toFtsQuery(query: String): String = query
     .split(Regex("\\s+"))
     .map { it.replace("\"", "") }
     .filter { it.isNotBlank() }
-    .joinToString(" ") { "\"$it\"*" }
+    .joinToString(" ") { "\"$it*\"" }
 
 /** Orders notes by [SortOrder]; favourites go first when [SortOrder.favoritesFirst] is set. */
 internal fun SortOrder.comparator(): Comparator<Note> {

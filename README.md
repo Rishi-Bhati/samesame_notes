@@ -129,8 +129,8 @@ Features are grouped by area. Anything not listed here is not built yet.
 - Word (`.docx`) and PowerPoint (`.pptx`) exports are new and may not look right in every viewer.
 - PDF pages are imported as images, so their text cannot be selected or searched. PDF export writes original
   pages as images, and the text layout of native notes in PDF export can differ slightly from the editor.
-- Ink is not searchable. There is no handwriting recognition yet. Home search matches whole words in titles and in
-  typed body text; text-box content, default titles and partial words are not found reliably yet.
+- Ink is not searchable. There is no handwriting recognition yet. Home search matches whole words and word starts
+  in titles and in typed body text; text-box content and default titles are not searchable yet.
 - There is no cloud sync and no in-app backup. Locked notes restored from an Android backup cannot be opened,
   because their keys are not backed up.
 - Voice recording and playback are still being validated on more devices.
