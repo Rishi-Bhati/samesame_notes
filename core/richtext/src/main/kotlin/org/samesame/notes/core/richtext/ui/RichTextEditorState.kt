@@ -312,7 +312,7 @@ class RichTextEditorState(
                 return
             }
         }
-        val offset = engine.hitTest(d.x, d.y)
+        val offset = engine.hitTestForTap(d.x, d.y)
         val sel = body.selection
         if (sel.collapsed && sel.min == offset && handlesVisible && isFocused) {
             toolbarVisible = !toolbarVisible
