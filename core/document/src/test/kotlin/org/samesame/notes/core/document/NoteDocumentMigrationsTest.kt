@@ -270,6 +270,7 @@ class NoteDocumentMigrationsTest {
         File(working("n1"), "ink/${doc.pages[0].id}.ink").writeBytes(byteArrayOf(1, 2, 3))
         File(working("n1"), "media").mkdirs()
         File(working("n1"), "media/h.png").writeBytes(ByteArray(1000) { it.toByte() })
+        store.writeDocument(doc) // files written behind the store's back: a store write marks the copy as changed
         store.flush("n1", close = true)
         assertThat(working("n1").exists()).isFalse()
         val container = File(root, "n1.ssnote")

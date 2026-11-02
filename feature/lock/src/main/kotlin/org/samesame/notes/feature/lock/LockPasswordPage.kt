@@ -21,6 +21,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -78,8 +79,14 @@ internal fun LockPasswordPage(
     onCheckedChange: (Boolean) -> Unit = {},
     /** Shortest input accepted: new passwords need [LOCK_PASSWORD_MIN_LENGTH]; verify pages accept older, shorter ones. */
     minLength: Int = LOCK_PASSWORD_LEGACY_MIN_LENGTH,
+    /**
+     * The password is being checked: the primary action shows a small progress circle in its place and input is
+     * ignored until the result (the reference's bottom-menu progress view).
+     */
+    busy: Boolean = false,
 ) {
-    BackHandler(onBack = onCancel)
+    val leaving = LocalLockFlowLeaving.current
+    BackHandler(enabled = !leaving) { if (!busy) onCancel() }
     val colors = SameSameTheme.colors
     val guideColor = if (colors.isDark) Color(0xFFB0B0B0) else Color(0xFF444444)
     var text by remember(attempt) { mutableStateOf("") }
@@ -92,7 +99,7 @@ internal fun LockPasswordPage(
         overMax -> stringResource(R.string.feature_lock_over_max, LOCK_PASSWORD_MAX_LENGTH)
         else -> error
     }
-    fun submit() { if (valid) onSubmit(text) }
+    fun submit() { if (valid && !busy && !leaving) onSubmit(text) }
 
     Column(modifier.fillMaxSize().background(colors.background).imePadding()) {
         SimpleTopBar(
@@ -126,6 +133,7 @@ internal fun LockPasswordPage(
                             text = it.take(LOCK_PASSWORD_MAX_LENGTH).filterNot(Char::isISOControl)
                         },
                         singleLine = true,
+                        readOnly = busy || leaving,
                         textStyle = TextStyle(color = colors.textPrimary, fontSize = cappedSp(17f), textAlign = TextAlign.Center),
                         cursorBrush = SolidColor(colors.textPrimary),
                         visualTransformation = PasswordVisualTransformation(),
@@ -156,8 +164,15 @@ internal fun LockPasswordPage(
         }
         // Bottom bar (BottomNavigationView, 56dp): two equal text actions.
         Row(Modifier.fillMaxWidth().navigationBarsPadding().height(56.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-            BottomText(stringResource(R.string.feature_lock_cancel), true, Modifier.weight(1f), onCancel)
-            BottomText(primaryLabel, valid, Modifier.weight(1f), ::submit)
+            BottomText(stringResource(R.string.feature_lock_cancel), !busy && !leaving, Modifier.weight(1f), onCancel)
+            if (busy) {
+                Box(Modifier.weight(1f).fillMaxSize(), contentAlignment = Alignment.Center) {
+                    // Small progress circle: 24 dp, 3.5 dp stroke, 1 dp inset.
+                    CircularProgressIndicator(Modifier.size(24.dp).padding(1.dp), color = colors.accent, strokeWidth = 3.5.dp, trackColor = Color.Transparent)
+                }
+            } else {
+                BottomText(primaryLabel, valid && !leaving, Modifier.weight(1f), ::submit)
+            }
         }
     }
 }

@@ -32,7 +32,7 @@ internal class DefaultLockRepository @Inject constructor(
     }
 
     override suspend fun verifyPassword(password: CharArray): LockToken =
-        withContext(Dispatchers.Default) { vault.verifyPassword(password) }
+        withContext(Dispatchers.Default) { org.samesame.notes.core.data.traced("lock:verifyPassword") { vault.verifyPassword(password) } }
 
     override fun lockoutRemainingMs(): Long = runCatching { vault.lockoutRemainingMs() }.getOrDefault(0L)
 

@@ -119,6 +119,19 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
     /** Test seam: invoked after the page files are written and before `document.json` is replaced. */
     internal var beforeDocumentCommit: (() -> Unit)? = null
 
+    /** Test seam: monotonic milliseconds (the locked-note pack throttle). */
+    internal var clockMs: () -> Long = { System.nanoTime() / 1_000_000 }
+
+    /**
+     * Notes whose working copy was written in this process since its last pack. A [flush] of a note that is neither in
+     * here nor newer on disk than its container has nothing to pack (closing a big note that was only read no longer
+     * rewrites and fsyncs the whole container, and a locked one is not re-encrypted).
+     */
+    private val unpacked = ConcurrentHashMap.newKeySet<String>()
+
+    /** Last pack of each open locked note: when it ended and how long it took (see [packLockedAfterCommit]). */
+    private val lockedPacks = ConcurrentHashMap<String, LongArray>()
+
     suspend fun create(
         noteId: String,
         pageMode: PageMode,
@@ -184,6 +197,7 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
     suspend fun writeDocument(document: NoteDocument) = withContext(Dispatchers.IO) {
         val dir = ensureWorking(document.id)
         writeFileAtomically(File(dir, DOCUMENT_FILE)) { it.write(document.toJson().encodeToByteArray()) }
+        unpacked += document.id
         packIfLocked(document.id)
     }
 
@@ -192,6 +206,72 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
         val file = pageFile(ensureWorking(noteId), pageId)
         val elements = if (!file.exists()) emptyList() else file.inputStream().buffered().use { PageLayerCodec.decode(it) }
         PageContent(pageId, elements, 0)
+    }
+
+    /** Read-only view of one note for [read]. */
+    interface NoteReader {
+        fun document(): NoteDocument
+        /** Empty content when the page has no file. */
+        fun page(pageId: String): PageContent
+        /** Bytes of `media/<name>`, or null when missing / not a safe media path. */
+        fun media(path: String): ByteArray?
+    }
+
+    /**
+     * Runs [block] with read-only access to the note (the home previews): the working copy when one exists that is
+     * not older than the container, otherwise the packed container itself, so nothing is unpacked to disk just to
+     * look at a note (a big note's images were written out and left behind for every preview). A legacy or v1 note
+     * takes the normal path (it is adopted / migrated once). Throws [NoteLockedException] for a locked note.
+     */
+    suspend fun <T> read(noteId: String, titleFromDb: String = "", block: suspend (NoteReader) -> T): T = withContext(Dispatchers.IO) {
+        if (isLockedContainer(noteId)) throw NoteLockedException(noteId)
+        val container = containerFile(noteId)
+        val workingDoc = File(workingDir(noteId), DOCUMENT_FILE)
+        val useWorking = workingDoc.exists() && (!container.exists() || workingDoc.lastModified() >= container.lastModified())
+        val zip = if (useWorking || !container.exists()) null else ZipFile(container)
+        try {
+            val docText = zip?.let { zf ->
+                if (readManifestInfo(zf).locked) throw NoteLockedException(noteId)
+                zf.getEntry(DOCUMENT_FILE)?.let { readEntryLimited(zf, it).decodeToString() }
+            }
+            val version = docText?.let(::documentVersion)
+            if (zip == null || docText == null || version == null || version < 2) {
+                // Working copy (or a note that needs adopting / migrating first).
+                val doc = readDocument(noteId, titleFromDb)
+                val dir = workingDir(noteId)
+                return@withContext block(object : NoteReader {
+                    override fun document() = doc
+                    override fun page(pageId: String): PageContent {
+                        val file = pageFile(dir, pageId)
+                        val elements = if (!file.exists()) emptyList() else file.inputStream().buffered().use { PageLayerCodec.decode(it) }
+                        return PageContent(pageId, elements, 0)
+                    }
+                    override fun media(path: String): ByteArray? {
+                        val parts = path.split('/')
+                        if (parts.size != 2 || parts[0] != "media" || !isSafeId(parts[1])) return null
+                        return File(File(dir, "media"), parts[1]).takeIf { it.isFile }?.readBytes()
+                    }
+                })
+            }
+            val doc = parseDocument(docText, version)
+            block(object : NoteReader {
+                override fun document() = doc
+                override fun page(pageId: String): PageContent {
+                    require(isSafeId(pageId)) { "Bad page id" }
+                    val entry = zip.getEntry("ink/$pageId.ink") ?: return PageContent(pageId, emptyList(), 0)
+                    val bytes = readEntryLimited(zip, entry)
+                    return PageContent(pageId, PageLayerCodec.decode(bytes.inputStream()), 0)
+                }
+                override fun media(path: String): ByteArray? {
+                    val parts = path.split('/')
+                    if (parts.size != 2 || parts[0] != "media" || !isSafeId(parts[1])) return null
+                    val entry = zip.getEntry(path) ?: return null
+                    return readEntryLimited(zip, entry)
+                }
+            })
+        } finally {
+            zip?.close()
+        }
     }
 
     /** Bytes of `media/<name>` from the working copy, or null when missing / not a safe media path. */
@@ -204,6 +284,7 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
     suspend fun writePage(noteId: String, content: PageContent) = withContext(Dispatchers.IO) {
         val file = pageFile(ensureWorking(noteId), content.pageId)
         writeFileAtomically(file) { PageLayerCodec.encode(content, it) }
+        unpacked += noteId
         packIfLocked(noteId)
     }
 
@@ -231,6 +312,7 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
     /** Writes the `sdocx/` side-channel of an existing note (replacing any previous one). */
     suspend fun writeExtras(noteId: String, entries: Map<String, ByteArray>) = withContext(Dispatchers.IO) {
         val dir = ensureWorking(noteId)
+        unpacked += noteId
         File(dir, EXTRAS_DIR).deleteRecursively()
         for ((path, bytes) in entries) {
             require(isAllowedEntry(path)) { "Bad side-channel path: $path" }
@@ -257,6 +339,7 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
         val digest = java.security.MessageDigest.getInstance("SHA-256").digest(bytes)
         val name = digest.joinToString("") { "%02x".format(it) } + "." + ext
         writeFileAtomically(File(File(ensureWorking(noteId), "media"), name)) { it.write(bytes) }
+        unpacked += noteId
         "media/$name"
     }
 
@@ -275,6 +358,7 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
         val target = File(File(ensureWorking(noteId), "media"), name)
         if (!target.isFile || target.length() != source.length()) {
             writeFileAtomically(target) { out -> source.inputStream().buffered().use { it.copyTo(out) } }
+            unpacked += noteId
         }
         "media/$name"
     }
@@ -301,21 +385,26 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
         }
         beforeDocumentCommit?.invoke()
         writeFileAtomically(File(dir, DOCUMENT_FILE)) { it.write(doc.toJson().encodeToByteArray()) }
+        unpacked += noteId
         sweepOrphansIn(dir, doc)
-        packIfLocked(noteId)
+        packLockedAfterCommit(noteId)
     }
 
     /** Deletes page files not listed in [document], and stale temp files. */
     suspend fun sweepOrphans(noteId: String, document: NoteDocument) = withContext(Dispatchers.IO) {
-        sweepOrphansIn(ensureWorking(noteId), document)
+        if (sweepOrphansIn(ensureWorking(noteId), document)) unpacked += noteId
     }
 
-    private fun sweepOrphansIn(dir: File, document: NoteDocument) {
+    /** True when a page file the container may still hold was removed. */
+    private fun sweepOrphansIn(dir: File, document: NoteDocument): Boolean {
         val listed = document.pages.mapTo(HashSet()) { "${it.id}.ink" }
+        var removed = false
         File(dir, "ink").listFiles()?.forEach { f ->
-            if (f.name.endsWith(TMP_SUFFIX) || (f.name.endsWith(".ink") && f.name !in listed)) f.delete()
+            if (f.name.endsWith(TMP_SUFFIX)) f.delete()
+            else if (f.name.endsWith(".ink") && f.name !in listed && f.delete()) removed = true
         }
         File(dir, DOCUMENT_FILE + TMP_SUFFIX).delete()
+        return removed
     }
 
     /**
@@ -329,18 +418,49 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
         if (close && isLockedContainer(noteId)) {
             // A locked note's plaintext and key go even when the last pack fails (autosave packs every commit).
             try {
-                pack(noteId)
+                if (!isInSync(noteId)) pack(noteId)
             } finally {
                 dir.deleteRecursively()
                 openKeys.remove(noteId)?.fill(0)
+                lockedPacks.remove(noteId)
             }
             return@withContext
         }
-        pack(noteId)
+        if (!isInSync(noteId)) pack(noteId)
         if (close) {
             dir.deleteRecursively()
             openKeys.remove(noteId)?.fill(0)
+            lockedPacks.remove(noteId)
         }
+    }
+
+    /**
+     * The container already holds exactly the working copy: nothing was written in this process since the last pack
+     * (or unpack), and `document.json` carries the container's timestamp (set by [pack] / [unpack]; a working copy left
+     * by a killed process is newer, or the container is missing, and gets packed).
+     */
+    private fun isInSync(noteId: String): Boolean {
+        if (noteId in unpacked) return false
+        val container = containerFile(noteId)
+        val doc = File(workingDir(noteId), DOCUMENT_FILE)
+        return container.exists() && doc.exists() && doc.lastModified() == container.lastModified()
+    }
+
+    /**
+     * An autosave of an open locked note re-encrypts the whole note, which is cheap for a small note but not for one
+     * with many pages or images. Each commit still packs, unless the previous pack ended less than [LOCKED_PACK_DUTY]
+     * times its own duration ago (capped at [LOCKED_PACK_MAX_INTERVAL_MS]): then the commit stays in the working copy
+     * and the next commit, the editor's periodic or ON_STOP flush, or closing packs it. Small notes (a pack of a few
+     * ms) keep packing on every commit.
+     */
+    private fun packLockedAfterCommit(noteId: String) {
+        if (!isLockedContainer(noteId)) return
+        val last = lockedPacks[noteId]
+        if (last != null) {
+            val interval = (last[1] * LOCKED_PACK_DUTY).coerceAtMost(LOCKED_PACK_MAX_INTERVAL_MS)
+            if (clockMs() - last[0] < interval) return
+        }
+        pack(noteId)
     }
 
     // ---- locked notes ----------------------------------------------------------------------
@@ -348,20 +468,103 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
     /**
      * Locks an unlocked note: a fresh data key wrapped by [master] encrypts the container's payload; the
      * working copy is removed afterwards. The previous plaintext container is replaced atomically (its old
-     * blocks may remain on flash until overwritten; there is no secure erase).
+     * blocks may remain on flash until overwritten; there is no secure erase). [title], when given, is written
+     * into the encrypted document (the catalog keeps no title for a locked note).
+     *
+     * A note without newer edits in its working copy (the usual case: the editor closed it) is re-sealed straight
+     * from its container, without unpacking it to disk and reading it back.
      */
-    suspend fun lockNote(noteId: String, master: ByteArray) = withContext(Dispatchers.IO) {
+    suspend fun lockNote(noteId: String, master: ByteArray, title: String? = null) = withContext(Dispatchers.IO) {
         if (isLockedContainer(noteId)) return@withContext
-        ensureWorking(noteId)
         val dek = LockCrypto.newKey()
         try {
-            pack(noteId, newLock = LockCrypto.wrapNoteKey(master, noteId, dek), dek = dek)
+            val wrapped = LockCrypto.wrapNoteKey(master, noteId, dek)
+            if (!lockFromContainer(noteId, wrapped, dek, title)) {
+                if (title != null) {
+                    val doc = readDocument(noteId, title) // adopts / migrates a legacy bundle first
+                    if (doc.title != title) {
+                        writeFileAtomically(File(workingDir(noteId), DOCUMENT_FILE)) { it.write(doc.copy(title = title).toJson().encodeToByteArray()) }
+                        unpacked += noteId
+                    }
+                } else {
+                    ensureWorking(noteId)
+                }
+                pack(noteId, newLock = wrapped, dek = dek)
+            }
             lockedCache[noteId] = true
         } finally {
             dek.fill(0)
         }
         workingDir(noteId).deleteRecursively()
         openKeys.remove(noteId)?.fill(0)
+        unpacked -= noteId
+        lockedPacks.remove(noteId)
+    }
+
+    /**
+     * [lockNote] from the packed container: its entries go into the sealed inner ZIP as they are (only `document.json`
+     * is rewritten for [title]). False (nothing written) when the working copy holds edits the container lacks, or the
+     * container is missing, already locked or of a document version that needs the migration path.
+     */
+    private fun lockFromContainer(noteId: String, wrappedKey: ByteArray, dek: ByteArray, title: String?): Boolean {
+        val container = containerFile(noteId)
+        if (!container.exists()) return false
+        val workingDoc = File(workingDir(noteId), DOCUMENT_FILE)
+        if (workingDoc.exists() && (noteId in unpacked || workingDoc.lastModified() > container.lastModified())) return false
+        val sealed = ZipFile(container).use { zf ->
+            if (readManifestInfo(zf).locked) return false
+            val docEntry = zf.getEntry(DOCUMENT_FILE) ?: return false
+            val original = readEntryLimited(zf, docEntry)
+            val text = original.decodeToString()
+            val version = documentVersion(text)
+            if (version < 2 || version > NOTE_DOCUMENT_FORMAT_VERSION) return false
+            val docBytes = if (title == null) original else {
+                val doc = parseDocument(text, version)
+                if (doc.title == title) original else doc.copy(title = title).toJson().encodeToByteArray()
+            }
+            val budget = InflateBudget(container.length())
+            val inner = ExposedByteArrayOutputStream((container.length() + 64 * 1024).coerceAtMost(Int.MAX_VALUE - 1L).toInt())
+            ZipOutputStream(inner).use { zos ->
+                writeEntry(zos, DOCUMENT_FILE, docBytes, stored = false)
+                val entries = zf.entries().toList()
+                    .filter { !it.isDirectory && it.name != MANIFEST_FILE && it.name != DOCUMENT_FILE && isAllowedEntry(it.name) }
+                    .sortedBy { it.name }
+                for (entry in entries) {
+                    budget.countEntry()
+                    val bytes = zf.getInputStream(entry).use { src ->
+                        val limited = budget.limit(src, entry.name)
+                        limited.readBytes().also { budget.consume(limited.count) }
+                    }
+                    writeEntry(zos, entry.name, bytes, stored = entry.method == ZipEntry.STORED)
+                }
+            }
+            LockCrypto.sealPayload(dek, noteId, inner.buffer, inner.size())
+        }
+        writeContainer(container) { zos ->
+            writeEntry(zos, MANIFEST_FILE, manifestBytes(noteId, wrappedKey), stored = false)
+            writeEntry(zos, PAYLOAD_FILE, sealed, stored = true)
+        }
+        return true
+    }
+
+    /** Writes [container] through a temp file + fsync + atomic rename. */
+    private inline fun writeContainer(container: File, write: (ZipOutputStream) -> Unit) {
+        notesRoot.mkdirs()
+        val tmp = File(notesRoot, container.name + TMP_SUFFIX)
+        try {
+            FileOutputStream(tmp).use { fos ->
+                val bos = BufferedOutputStream(fos)
+                val zos = ZipOutputStream(bos)
+                write(zos)
+                zos.finish()
+                bos.flush()
+                fos.fd.sync()
+            }
+            Files.move(tmp.toPath(), container.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        } catch (e: Throwable) {
+            tmp.delete()
+            throw e
+        }
     }
 
     /**
@@ -389,22 +592,84 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
         }
     }
 
-    /** Removes the lock: decrypts and rewrites the container as plain v2. */
-    suspend fun unlockNote(noteId: String, master: ByteArray) = withContext(Dispatchers.IO) {
-        if (!isLockedContainer(noteId)) return@withContext
-        if (!File(workingDir(noteId), DOCUMENT_FILE).exists() || !openKeys.containsKey(noteId)) {
-            openLockedBlocking(noteId, master)
-        }
-        lockedCache[noteId] = false
-        try {
-            pack(noteId)
-        } catch (e: Throwable) {
-            lockedCache[noteId] = true
-            throw e
+    /**
+     * Removes the lock: decrypts and rewrites the container as plain v2, and returns the note's document. A note that
+     * is not open in this process is rewritten straight from the decrypted payload (no working copy is unpacked to disk
+     * and packed again); an open one is packed from its working copy, which may hold newer edits.
+     */
+    suspend fun unlockNote(noteId: String, master: ByteArray): NoteDocument = withContext(Dispatchers.IO) {
+        if (!isLockedContainer(noteId)) return@withContext readDocument(noteId)
+        val open = File(workingDir(noteId), DOCUMENT_FILE).exists() && openKeys.containsKey(noteId)
+        val fast = if (open) null else unlockFromContainer(noteId, master)
+        val document = fast ?: run {
+            if (!open) openLockedBlocking(noteId, master)
+            val doc = readDocument(noteId)
+            lockedCache[noteId] = false
+            try {
+                pack(noteId)
+            } catch (e: Throwable) {
+                lockedCache[noteId] = true
+                throw e
+            }
+            doc
         }
         workingDir(noteId).deleteRecursively()
         openKeys.remove(noteId)?.fill(0)
+        unpacked -= noteId
+        lockedPacks.remove(noteId)
+        document
     }
+
+    /**
+     * [unlockNote] without a working copy: the inner ZIP's entries are written into a plain container as they are.
+     * Null (nothing written) when the payload's document needs the migration path (a v1 document). Wrong [master] or
+     * modified data throws [TamperedDataException].
+     */
+    private fun unlockFromContainer(noteId: String, master: ByteArray): NoteDocument? {
+        val container = containerFile(noteId)
+        val budget = InflateBudget(container.length())
+        val inner = ZipFile(container).use { zf ->
+            val info = readManifestInfo(zf)
+            val dek = LockCrypto.unwrapNoteKey(master, noteId, info.wrappedKey ?: throw IOException("Locked note has no key"))
+            try {
+                val payload = zf.getEntry(PAYLOAD_FILE) ?: throw IOException("Locked note has no payload")
+                val sealed = zf.getInputStream(payload).use { it.readBytesLimited(container.length(), PAYLOAD_FILE) }
+                LockCrypto.openPayload(dek, noteId, sealed)
+            } finally {
+                dek.fill(0)
+            }
+        }
+        var document: NoteDocument? = null
+        try {
+            writeContainer(container) { zos ->
+                writeEntry(zos, MANIFEST_FILE, manifestBytes(noteId, null), stored = false)
+                ZipInputStream(inner.inputStream()).use { zin ->
+                    while (true) {
+                        val entry = zin.nextEntry ?: break
+                        budget.countEntry()
+                        if (entry.isDirectory || !isAllowedEntry(entry.name)) continue
+                        val limited = budget.limit(zin, entry.name)
+                        val bytes = limited.readBytes()
+                        budget.consume(limited.count)
+                        if (entry.name == DOCUMENT_FILE) {
+                            val text = bytes.decodeToString()
+                            val version = documentVersion(text)
+                            if (version < 2) throw NeedsMigration()
+                            document = parseDocument(text, version)
+                        }
+                        writeEntry(zos, entry.name, bytes, stored = entry.method == ZipEntry.STORED)
+                    }
+                }
+                if (document == null) throw IOException("Container has no document.json")
+            }
+        } catch (e: NeedsMigration) {
+            return null
+        }
+        lockedCache[noteId] = false
+        return document
+    }
+
+    private class NeedsMigration : IOException()
 
     private fun openLockedBlocking(noteId: String, master: ByteArray) {
         val container = containerFile(noteId)
@@ -533,9 +798,11 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
         val tmpDir = File(workingRoot, "${checkId(noteId)}.unpack")
         tmpDir.deleteRecursively()
         tmpDir.mkdirs()
+        var upgrade = false
         try {
             ZipFile(container).use { zf ->
                 val info = readManifestInfo(zf)
+                upgrade = info.containerVersion < CONTAINER_VERSION
                 // ZIP headers are not trusted: each entry and the total are inflated under caps (zip bombs).
                 val budget = InflateBudget(container.length())
                 if (info.locked) {
@@ -564,6 +831,8 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
             val working = workingDir(noteId)
             working.deleteRecursively()
             if (!tmpDir.renameTo(working)) throw IOException("Could not create working copy")
+            // An older container is rewritten in the current layout on the next flush.
+            if (upgrade) unpacked += noteId else unpacked -= noteId
         } catch (e: Throwable) {
             tmpDir.deleteRecursively() // a failed extraction must not leave (possibly decrypted) files behind
             throw e
@@ -616,6 +885,8 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
             wrappedKey = ZipFile(container).use { readManifestInfo(it).wrappedKey } ?: throw IOException("Locked note has no key")
         }
 
+        val started = clockMs()
+        unpacked -= noteId // a write that lands while this pack runs marks the note again
         try {
             FileOutputStream(tmp).use { fos ->
                 val bos = BufferedOutputStream(fos)
@@ -624,9 +895,9 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
                 if (lockKey == null) {
                     writeContent(zos, dir, docFile)
                 } else {
-                    val inner = java.io.ByteArrayOutputStream()
+                    val inner = ExposedByteArrayOutputStream(workingSize(dir))
                     ZipOutputStream(inner).use { writeContent(it, dir, docFile) }
-                    writeEntry(zos, PAYLOAD_FILE, LockCrypto.sealPayload(lockKey, noteId, inner.toByteArray()), stored = true)
+                    writeEntry(zos, PAYLOAD_FILE, LockCrypto.sealPayload(lockKey, noteId, inner.buffer, inner.size()), stored = true)
                 }
                 zos.finish()
                 bos.flush()
@@ -634,12 +905,21 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
             }
             Files.move(tmp.toPath(), container.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
         } catch (e: Throwable) {
+            unpacked += noteId
             tmp.delete()
             throw e
         }
         // Equal timestamps mean "in sync": a later autosave makes the working copy strictly newer.
         docFile.setLastModified(container.lastModified())
+        if (lockKey != null) {
+            val ended = clockMs()
+            lockedPacks[noteId] = longArrayOf(ended, ended - started)
+        }
     }
+
+    /** Bytes in the working copy (the inner ZIP of a locked note is about this big: sizes the buffer once). */
+    private fun workingSize(dir: File): Int =
+        dir.walkTopDown().filter { it.isFile }.sumOf { it.length() }.coerceAtMost(Int.MAX_VALUE - 1L).toInt() + 64 * 1024
 
     private fun writeContent(zos: ZipOutputStream, dir: File, docFile: File) {
         writeEntry(zos, DOCUMENT_FILE, docFile.readBytes(), stored = false)
@@ -684,7 +964,7 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
         }
     }
 
-    private class ManifestInfo(val noteId: String, val locked: Boolean, val wrappedKey: ByteArray?)
+    private class ManifestInfo(val noteId: String, val locked: Boolean, val wrappedKey: ByteArray?, val containerVersion: Int = CONTAINER_VERSION)
 
     /** Validates the manifest (v1 containers have no `containerVersion`/`locked`; both default to plain). */
     private fun readManifestInfo(zf: ZipFile): ManifestInfo {
@@ -700,7 +980,7 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
         val locked = containerVersion >= 2 && obj["locked"]?.jsonPrimitive?.content == "true"
         val key = if (locked) obj["wrappedKey"]?.jsonPrimitive?.content?.let { Base64.getDecoder().decode(it) } else null
         return ManifestInfo(
-            obj["noteId"]?.jsonPrimitive?.content ?: throw IOException("Bad manifest"), locked, key,
+            obj["noteId"]?.jsonPrimitive?.content ?: throw IOException("Bad manifest"), locked, key, containerVersion,
         )
     }
 
@@ -769,6 +1049,15 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
         return File(File(dir, "ink"), "$pageId.ink")
     }
 }
+
+/** A [java.io.ByteArrayOutputStream] whose buffer can be read without the copy `toByteArray` makes. */
+internal class ExposedByteArrayOutputStream(initial: Int) : java.io.ByteArrayOutputStream(initial.coerceAtLeast(32)) {
+    val buffer: ByteArray get() = buf
+}
+
+/** Locked-note pack throttle (see `NoteDocumentStore.packLockedAfterCommit`). */
+private const val LOCKED_PACK_DUTY = 20L
+private const val LOCKED_PACK_MAX_INTERVAL_MS = 15_000L
 
 /** Uncompressed size allowed for one container entry. */
 private fun entryLimit(name: String): Long =

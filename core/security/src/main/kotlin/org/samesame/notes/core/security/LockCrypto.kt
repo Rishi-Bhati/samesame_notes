@@ -47,12 +47,23 @@ object LockCrypto {
         }
     }
 
-    fun seal(key: ByteArray, plaintext: ByteArray, aad: ByteArray = ByteArray(0)): ByteArray {
+    fun seal(key: ByteArray, plaintext: ByteArray, aad: ByteArray = ByteArray(0)): ByteArray =
+        seal(key, plaintext, plaintext.size, aad)
+
+    /**
+     * Seals the first [length] bytes of [plaintext]. The result is written straight into one array (nonce first), so a
+     * large note payload is not copied again for the concatenation.
+     */
+    fun seal(key: ByteArray, plaintext: ByteArray, length: Int, aad: ByteArray): ByteArray {
+        require(length in 0..plaintext.size) { "Bad length" }
         val nonce = randomBytes(NONCE_BYTES)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(TAG_BITS, nonce))
         cipher.updateAAD(aad)
-        return nonce + cipher.doFinal(plaintext)
+        val out = ByteArray(NONCE_BYTES + cipher.getOutputSize(length))
+        nonce.copyInto(out)
+        val written = cipher.doFinal(plaintext, 0, length, out, NONCE_BYTES)
+        return if (NONCE_BYTES + written == out.size) out else out.copyOf(NONCE_BYTES + written)
     }
 
     /** @throws TamperedDataException when the tag does not verify (wrong key, wrong aad, or modified data). */
@@ -101,8 +112,8 @@ object LockCrypto {
         open(master, wrapped, AAD_NOTE_KEY + noteId.encodeToByteArray())
 
     /** Note payload sealed with the note key; bound to [noteId]. */
-    fun sealPayload(dek: ByteArray, noteId: String, plaintext: ByteArray): ByteArray =
-        seal(dek, plaintext, AAD_PAYLOAD + noteId.encodeToByteArray())
+    fun sealPayload(dek: ByteArray, noteId: String, plaintext: ByteArray, length: Int = plaintext.size): ByteArray =
+        seal(dek, plaintext, length, AAD_PAYLOAD + noteId.encodeToByteArray())
 
     fun openPayload(dek: ByteArray, noteId: String, sealed: ByteArray): ByteArray =
         open(dek, sealed, AAD_PAYLOAD + noteId.encodeToByteArray())

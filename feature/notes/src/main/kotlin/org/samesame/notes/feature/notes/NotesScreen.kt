@@ -97,6 +97,7 @@ import org.samesame.notes.core.model.SortDirection
 import org.samesame.notes.core.model.SortField
 import org.samesame.notes.core.model.ViewMode
 import org.samesame.notes.feature.lock.LockAuthFlow
+import org.samesame.notes.feature.lock.LockFlowTransition
 import org.samesame.notes.feature.lock.LockAuthMode
 import org.samesame.notes.feature.lock.UnlockConfirmDialog
 
@@ -502,7 +503,8 @@ internal fun NotesScreen(
                 }
             }
         }
-        lockAction?.let { action ->
+        // The password page slides in and out like the reference's lock activity.
+        LockFlowTransition(lockAction) { action ->
             LockAuthFlow(
                 mode = if (action is LockAction.Lock) LockAuthMode.VerifyOrCreate else LockAuthMode.VerifyOnly,
                 onCancel = { lockAction = null },
