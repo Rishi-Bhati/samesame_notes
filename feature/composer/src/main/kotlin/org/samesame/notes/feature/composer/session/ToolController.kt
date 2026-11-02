@@ -40,12 +40,17 @@ class ToolController(
     private val scope: CoroutineScope,
     private val repo: EditorPreferencesRepository,
     initial: ToolbarState = ToolbarState(),
+    /**
+     * The stored tool prefs when the caller already has them (opening a note reads them off the main thread): the editor's
+     * first composition then already has the real pen/highlighter setup instead of recomposing once when they arrive.
+     */
+    initialPrefs: EditorPreferences = EditorPreferences(),
     private val onModeOrToolChanged: () -> Unit = {},
 ) {
     private val _toolbar = MutableStateFlow(initial)
     val toolbar: StateFlow<ToolbarState> = _toolbar.asStateFlow()
 
-    private val _tools = MutableStateFlow(ToolsState())
+    private val _tools = MutableStateFlow(ToolsState(initialPrefs))
     val tools: StateFlow<ToolsState> = _tools.asStateFlow()
 
     init {

@@ -247,6 +247,7 @@ import org.samesame.notes.feature.composer.menus.SelectionMoreMenu
 import org.samesame.notes.feature.composer.menus.SelectionPill
 import org.samesame.notes.feature.composer.pages.PageSorterScreen
 import org.samesame.notes.feature.composer.pages.PageTemplateScreen
+import org.samesame.notes.feature.composer.perf.EditorTrace
 import org.samesame.notes.feature.composer.toolbar.Menu
 import java.io.File
 import java.io.IOException
@@ -270,11 +271,26 @@ fun ComposerRoute(
     val session by viewModel.session.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val s = session
+    val ready by viewModel.ready.collectAsStateWithLifecycle()
     val locked by viewModel.isLocked.collectAsStateWithLifecycle()
     val lockedOut by viewModel.lockedOut.collectAsStateWithLifecycle()
     val favorite by viewModel.isFavorite.collectAsStateWithLifecycle()
-    val meta by viewModel.meta.collectAsStateWithLifecycle()
     val relocked by viewModel.relocked.collectAsStateWithLifecycle()
+    // The editor composes once, after the note's first catalog/settings values are in (see ComposerViewModel.ready):
+    // composing earlier recomposed the whole screen for each late value while the open animation ran. The timeout is
+    // the failsafe: a source that never emits must not leave the editor on its placeholder.
+    var forceReady by remember { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(s) {
+        forceReady = false
+        if (s == null) return@LaunchedEffect
+        kotlinx.coroutines.delay(READY_FAILSAFE_MS)
+        forceReady = true
+    }
+    // Derived (reads the states, not the local copies), so a late `ready` change cannot recompose the route — and with
+    // it the editor — once the editor is shown.
+    val placeholder by remember {
+        derivedStateOf { session == null || (!ready && !forceReady) }
+    }
     androidx.compose.runtime.LaunchedEffect(lockedOut) { if (lockedOut) onBack() }
     LockedNoteWindowGuard(locked)
     LifecycleEventEffect(Lifecycle.Event.ON_START) { viewModel.onStart() }
@@ -285,7 +301,7 @@ fun ComposerRoute(
             onToken = viewModel::reopenLocked,
             onCancel = onBack,
         )
-    } else if (s == null) {
+    } else if (s == null || placeholder) {
         // A plain page while the note loads (usually well under the open animation); the spinner only shows when
         // loading is slow, so opening a note doesn't flash a progress indicator.
         var slow by remember { mutableStateOf(false) }
@@ -294,6 +310,9 @@ fun ComposerRoute(
             if (slow) CircularProgressIndicator()
         }
     } else {
+        // One `editor:compose` slice per composition of the editor's body (composition of the children happens inside
+        // this call), so a perfetto capture shows how many whole-screen compositions an open — or a save — really costs.
+        val traced = EditorTrace.begin("editor:compose")
         ComposerEditor(
             s,
             onBack = onBack,
@@ -303,7 +322,7 @@ fun ComposerRoute(
             locked = locked,
             onUnlock = viewModel::unlock,
             favorite = favorite,
-            noteMeta = meta,
+            noteMetaFlow = viewModel.meta,
             onToggleFavorite = viewModel::toggleFavorite,
             onMoveToTrash = { viewModel.moveToTrash(onBack) },
             onLock = { token -> viewModel.lockNote(token, onBack) },
@@ -312,7 +331,51 @@ fun ComposerRoute(
             voiceFile = viewModel::voiceFile,
             newDrawingSession = viewModel::newDrawingSession,
         )
+        EditorTrace.end(traced)
     }
+}
+
+/** The editor's placeholder may not outlive this (see `ComposerRoute`). */
+private const val READY_FAILSAFE_MS = 300L
+
+/**
+ * The top bar and the note metadata it shows, one composable lower than the editor: the metadata changes with every save
+ * (`modifiedAt`), and reading it here keeps those emissions from recomposing the whole editor screen.
+ */
+@Composable
+private fun NoteMetaTopBar(
+    metaFlow: kotlinx.coroutines.flow.StateFlow<NoteMeta>,
+    title: String,
+    reading: Boolean,
+    onTitleChange: (String) -> Unit,
+    onTitleDone: () -> Unit,
+    onBack: () -> Unit,
+    onReading: () -> Unit,
+    onEdit: () -> Unit,
+    onInsert: () -> Unit,
+    onSearch: () -> Unit,
+    onMore: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    viewState: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val meta by metaFlow.collectAsStateWithLifecycle()
+    ComposerTopBar(
+        title = title,
+        reading = reading,
+        onTitleChange = onTitleChange,
+        onTitleDone = onTitleDone,
+        onBack = onBack,
+        onReading = onReading,
+        onEdit = onEdit,
+        onInsert = onInsert,
+        onSearch = onSearch,
+        onMore = onMore,
+        meta = meta,
+        onToggleFavorite = onToggleFavorite,
+        modifier = modifier,
+        viewState = viewState,
+    )
 }
 
 /**
@@ -341,7 +404,12 @@ internal fun ComposerEditor(
     locked: Boolean = false,
     onUnlock: (org.samesame.notes.core.security.LockToken) -> Unit = { it.close() },
     favorite: Boolean = false,
-    noteMeta: NoteMeta = NoteMeta(),
+    /**
+     * The note's catalog metadata for the expanded title header. Passed as a flow (not a value) on purpose:
+     * `modifiedAt` changes with every save (`noteDao.updatePreview`), and as a parameter it recomposed this whole screen
+     * a few hundred ms after each edit and once more while closing. The top bar reads it itself (see [NoteMetaTopBar]).
+     */
+    noteMetaFlow: kotlinx.coroutines.flow.StateFlow<NoteMeta>,
     onToggleFavorite: () -> Unit = {},
     onMoveToTrash: () -> Unit = {},
     onLock: (org.samesame.notes.core.security.LockToken) -> Unit = { it.close() },
@@ -405,9 +473,14 @@ internal fun ComposerEditor(
     // ---- text layer
     val body = remember(session) {
         (session.body as? BodyTextBinding)?.body
-            ?: BodyText(session.initialBody, TextRenderEnv()).also { session.bindBody(BodyTextBinding(it, session)) }
+            ?: EditorTrace.section("open:body") {
+                BodyText(session.initialBody, TextRenderEnv()).also { session.bindBody(BodyTextBinding(it, session)) }
+            }
     }
-    val textState = rememberRichTextEditorState(body, layout)
+    // The session already shaped the body and its layout off the main thread when it opened (ComposerViewModel); the
+    // engine adopts that layout instead of shaping the whole note on this, the first, frame.
+    val preparedText = remember(session) { (session.body as? BodyTextBinding)?.prepared }
+    val textState = rememberRichTextEditorState(body, layout, preparedText)
     textState.sensitive = locked
     // ---- text box editing: while a box is edited the toolbar, panels and Undo/Redo target its own body
     var editor by remember(session) { mutableStateOf<TextBoxEditor?>(null) }
@@ -1701,7 +1774,8 @@ internal fun ComposerEditor(
                     onClose = { searchOpen = false; searchQuery = "" },
                 )
             } else if (!tb.fullScreen) {
-                ComposerTopBar(
+                NoteMetaTopBar(
+                    metaFlow = noteMetaFlow,
                     title = title,
                     reading = tb.mode == EditorMode.Reading,
                     onTitleChange = { title = it; session.setTitle(it) },
@@ -1712,7 +1786,6 @@ internal fun ComposerEditor(
                     onInsert = { session.dispatch(ToolbarIntent.OpenMenu(Menu.Insert)) },
                     onSearch = { searchOpen = true },
                     onMore = { session.dispatch(ToolbarIntent.OpenMenu(Menu.Overflow)) },
-                    meta = noteMeta,
                     onToggleFavorite = onToggleFavorite,
                     viewState = tb.viewMode,
                     // The expanded title header hangs over the page below the bar, so the bar draws (and takes touches) on top.
