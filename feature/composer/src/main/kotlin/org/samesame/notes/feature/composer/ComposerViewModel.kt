@@ -51,6 +51,8 @@ import org.samesame.notes.feature.composer.session.EditorSession
 import org.samesame.notes.feature.composer.text.BodyTextBinding
 import org.samesame.notes.feature.composer.text.prepareEditorText
 import org.samesame.notes.feature.composer.toolbar.EditorMode
+import java.util.logging.Level
+import java.util.logging.Logger
 
 /**
  * Owns the [EditorSession] of one note (assisted [noteId]). The session is null while the note opens.
@@ -398,7 +400,25 @@ class ComposerViewModel @AssistedInject constructor(
     override fun onCleared() {
         relockJob?.cancel()
         val s = _session.value?.takeIf { it !== retired }
-        if (s != null) closeSession(s, endRecording = true) else VoicePlaybackHub.peek()?.close()
+        if (s != null) {
+            closeSession(s, endRecording = true)
+        } else {
+            VoicePlaybackHub.peek()?.close()
+            // Closed before the session finished opening (or it never opened): an untouched FAB note still has to go.
+            // A locked note is left alone by deleteIfEmpty, and one with content is never touched.
+            if (retired == null) appScope.launch { discardIfEmpty() }
+        }
+    }
+
+    /** Discards the note when nothing but blank pages was left in it. Logged, never thrown to the caller. */
+    private suspend fun discardIfEmpty() {
+        try {
+            notes.deleteIfEmpty(id)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            log.log(Level.WARNING, "Could not discard empty note ${id.value}", e)
+        }
     }
 
     /**
@@ -413,12 +433,27 @@ class ComposerViewModel @AssistedInject constructor(
         if (recordingHere && endRecording) recorder?.stopForClose()
         // Started immediately on the main thread, so the final snapshot is taken before anything else can run.
         val job = appScope.launch(Dispatchers.Main.immediate) {
-            recorder?.results?.value?.filter { it.noteId == id.value }?.forEach { claimRecording(s, it, notify = false) }
-            EditorTrace.section("close:finish") { s.finish() }
+            try {
+                recorder?.results?.value?.filter { it.noteId == id.value }?.forEach { claimRecording(s, it, notify = false) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log.log(Level.WARNING, "Could not claim the finished recordings of note ${id.value}", e)
+            }
+            val finished = try {
+                EditorTrace.section("close:finish") { s.finish() }
+                true
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log.log(Level.WARNING, "Could not finish the editor session of note ${id.value}", e)
+                false
+            }
             // Closing a note the user never wrote into (or emptied later) leaves nothing behind: no blank entry
             // in the list or the Recycle bin. Runs after the final save/pack, on the same scope, so no autosave
             // or flush can recreate the note (the repository treats the missing catalog row as the tombstone).
-            runCatching { notes.deleteIfEmpty(id) }
+            // A failed finish keeps the note: its unsaved content may never have reached disk.
+            if (finished) discardIfEmpty()
         }
         closeGate.register(id.value, job)
     }
@@ -429,5 +464,7 @@ class ComposerViewModel @AssistedInject constructor(
 
         /** A locked note left in the background longer than this is closed and asks for the password again. */
         const val RELOCK_AFTER_MS = 3_000L
+
+        val log: Logger = Logger.getLogger(ComposerViewModel::class.java.name)
     }
 }

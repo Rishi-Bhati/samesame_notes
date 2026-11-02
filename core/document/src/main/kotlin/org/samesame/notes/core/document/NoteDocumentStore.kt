@@ -223,10 +223,14 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
         packIfLocked(document.id)
     }
 
-    /** Empty content when the page has no file yet. */
+    /** Empty content when the page has no file yet (or the file holds no bytes: a page that was never written). */
     suspend fun readPage(noteId: String, pageId: String): PageContent = withContext(Dispatchers.IO) {
         val file = pageFile(ensureWorking(noteId), pageId)
-        val elements = if (!file.exists()) emptyList() else file.inputStream().buffered().use { PageLayerCodec.decode(it) }
+        val elements = if (!file.exists() || file.length() == 0L) {
+            emptyList()
+        } else {
+            file.inputStream().buffered().use { PageLayerCodec.decode(it) }
+        }
         PageContent(pageId, elements, 0)
     }
 
