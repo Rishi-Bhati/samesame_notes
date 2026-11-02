@@ -6,6 +6,7 @@ import org.samesame.notes.core.model.PageTemplate
 import org.samesame.notes.core.model.document.NoteDocument
 import org.samesame.notes.core.model.document.ImageObject
 import org.samesame.notes.core.model.document.NoteRecording
+import org.samesame.notes.core.model.document.PageSize
 import org.samesame.notes.core.model.document.PageSpec
 import org.samesame.notes.core.model.document.PdfBackground
 import org.samesame.notes.core.model.document.TemplateRef
@@ -72,5 +73,15 @@ class EmptyNotePolicyTest {
     @Test fun `extra empty pages do not make a note non-empty`() {
         val pages = listOf(PageSpec("p1"), PageSpec("p2"))
         assertThat(isNoteEmpty(note(pages = pages), listOf(0, 0))).isTrue()
+    }
+
+    @Test fun `page colour, bookmark and size alone are not content`() {
+        val page = PageSpec("p1", backgroundColor = 0xFFF4E4D7, isBookmarked = true, size = PageSize(612f, 792f))
+        assertThat(isNoteEmpty(note(pages = listOf(page)), listOf(0))).isTrue()
+    }
+
+    @Test fun `several blank pages with a built-in template are not content`() {
+        val pages = List(5) { PageSpec("p$it", template = TemplateRef.Builtin(PageTemplate.GridMedium)) }
+        assertThat(isNoteEmpty(note(pages = pages), List(5) { 0 })).isTrue()
     }
 }

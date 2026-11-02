@@ -45,6 +45,8 @@ import org.samesame.notes.core.model.SortField
 import org.samesame.notes.core.model.SortOrder
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import java.util.logging.Level
+import java.util.logging.Logger
 import javax.inject.Inject
 
 internal class DefaultNoteRepository @Inject constructor(
@@ -560,14 +562,39 @@ internal class DefaultNoteRepository @Inject constructor(
         if (row.isLocked || documents.isLocked(id.value)) return@withLock false
         val doc = try {
             documents.readDocument(id.value, titleFromDb = row.title)
-        } catch (e: java.io.IOException) {
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            log.log(Level.WARNING, "Cannot inspect note ${id.value} (unreadable bundle); keeping it", e)
             return@withLock false // unreadable bundle: never destroy data we cannot inspect
         }
         if (row.title.isNotBlank() || doc.title.isNotBlank()) return@withLock false
         // Imported notes keep their lossless re-export side-channel; an imported note is never "blank".
-        val imported = runCatching { documents.readExtras(id.value).isNotEmpty() }.getOrDefault(false)
-        if (imported) return@withLock false
-        val counts = doc.pages.map { documents.readPage(id.value, it.id).elements.size }
+        val imported = try {
+            documents.readExtras(id.value).isNotEmpty()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            log.log(Level.WARNING, "Cannot read the side channel of note ${id.value}; keeping it", e)
+            return@withLock false
+        }
+        // A page is empty when it has no file (or an empty one, see readPage) or no elements. One unreadable page
+        // must not abort the whole check silently: keep the note and say why (content we cannot inspect is never
+        // thrown away).
+        val counts = ArrayList<Int>(doc.pages.size)
+        for (page in doc.pages) {
+            val count = try {
+                documents.readPage(id.value, page.id).elements.size
+            } catch (e: java.io.FileNotFoundException) {
+                0 // no page file was ever written: an empty page
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log.log(Level.WARNING, "Cannot read page ${page.id} of note ${id.value}; keeping it", e)
+                return@withLock false
+            }
+            counts += count
+        }
         if (!isNoteEmpty(doc, counts)) return@withLock false
         noteDao.delete(listOf(id.value))
         searchDao.deleteForNote(id.value)
@@ -678,6 +705,7 @@ internal class DefaultNoteRepository @Inject constructor(
     private companion object {
         const val PREVIEW_LENGTH = 300
         const val LOCK_PARALLELISM = 3
+        val log: Logger = Logger.getLogger(DefaultNoteRepository::class.java.name)
     }
 }
 
