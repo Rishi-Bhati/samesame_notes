@@ -52,7 +52,7 @@ class EmptyNoteDeletionTest {
             override suspend fun update(transform: (AppSettings) -> AppSettings) = Unit
         }
         notes = DefaultNoteRepository(
-            db.noteDao(), db.searchDao(), documents, clock, NoteExporter(), settings,
+            db.noteDao(), db.searchDao(), db.viewStateDao(), documents, clock, NoteExporter(), settings,
             PreviewFailureStore(tmp.newFolder("previews")),
             org.samesame.notes.core.database.DatabaseMaintenance(db),
             org.samesame.notes.core.data.transfer.ShareCache(tmp.newFolder("share")),

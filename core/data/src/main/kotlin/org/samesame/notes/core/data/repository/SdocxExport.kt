@@ -27,9 +27,9 @@ internal object SdocxExport {
     private fun nowUs(): Long = System.currentTimeMillis() * 1000
 
     /** Lossy native export: text boxes + one full-page image per page. */
-    suspend fun exportNative(source: ExportSource, out: OutputStream) {
+    suspend fun exportNative(source: ExportSource, out: OutputStream, lastViewedPageIndex: Int = 0) {
         val document = source.document()
-        val base = SdocxDocumentBuilder.toArchive(document, nowUs())
+        val base = SdocxDocumentBuilder.toArchive(document, nowUs(), lastViewedPageIndex = lastViewedPageIndex)
         val pageImages = renderPageImages(source)
         val withPages = SdocxPageImageFallback.apply(base, pageImages, nowUs = ::nowUs)
         // Note-level recordings become the note's voice-data list (spec §3.4 bit 13, objects §7).
@@ -46,9 +46,11 @@ internal object SdocxExport {
         originalBytes: ByteArray? = null,
         /** Audio bytes of recordings added in SameSame, keyed by [org.samesame.notes.core.model.document.NoteRecording.id]. */
         recordingAudio: Map<String, ByteArray> = emptyMap(),
+        /** The note's stored page, or null to keep the archive's own value. */
+        lastViewedPageIndex: Int? = null,
     ) {
         val now = nowUs()
-        val textEdited = SdocxMapper.applyDocumentEdits(archive, document, now)
+        val textEdited = SdocxMapper.applyDocumentEdits(archive, document, now, lastViewedPageIndex = lastViewedPageIndex)
         val edited = SdocxVoiceList.apply(textEdited, document.recordings, now) { recordingAudio[it.id] }
         if (edited === archive && originalBytes != null) {
             out.write(originalBytes)

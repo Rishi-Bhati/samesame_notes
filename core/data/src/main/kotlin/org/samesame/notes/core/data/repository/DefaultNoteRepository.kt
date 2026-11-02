@@ -9,9 +9,11 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import org.samesame.notes.core.data.Clock
 import org.samesame.notes.core.database.dao.NoteDao
+import org.samesame.notes.core.database.dao.NoteViewStateDao
 import org.samesame.notes.core.database.dao.SearchDao
 import org.samesame.notes.core.database.entity.NoteEntity
 import org.samesame.notes.core.database.entity.NoteSearchEntity
+import org.samesame.notes.core.database.entity.NoteViewStateEntity
 import org.samesame.notes.core.database.entity.asExternalModel
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -26,6 +28,7 @@ import org.samesame.notes.core.ink.page.ElementId
 import org.samesame.notes.core.ink.page.PageContent
 import org.samesame.notes.core.model.document.NoteDocument
 import org.samesame.notes.core.model.document.TemplateRef
+import org.samesame.notes.core.model.document.ViewState
 import org.samesame.notes.core.model.richtext.RichText
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ThreadLocalRandom
@@ -47,6 +50,7 @@ import javax.inject.Inject
 internal class DefaultNoteRepository @Inject constructor(
     private val noteDao: NoteDao,
     private val searchDao: SearchDao,
+    private val viewStateDao: NoteViewStateDao,
     private val documents: NoteDocumentStore,
     private val clock: Clock,
     private val exporter: org.samesame.notes.core.export.NoteExporter,
@@ -180,11 +184,31 @@ internal class DefaultNoteRepository @Inject constructor(
     override suspend fun openContent(id: NoteId): NoteDocument = lockFor(id.value).withLock {
         val row = noteDao.get(id.value)
         noteDao.markOpened(id.value, clock.now())
-        val doc = documents.readDocument(id.value, titleFromDb = row?.title.orEmpty())
+        val (doc, legacyViewState) = documents.readDocumentWithLegacyViewState(
+            id.value, titleFromDb = row?.title.orEmpty(),
+        )
         documents.sweepOrphans(id.value, doc)
+        // A v6 (or older) document still carries the reading position; move it into the store that v7 uses. From then
+        // on the document does not carry it at all.
+        legacyViewState?.let { legacy ->
+            if (viewStateDao.get(id.value) == null) {
+                viewStateDao.upsert(NoteViewStateEntity(id.value, legacy.pageIndex, legacy.offsetInPage, legacy.zoom))
+            }
+        }
         // The catalog is authoritative for titles; a locked note is read from its decrypted document (its title is
         // restored to the catalog when the note is opened).
         if (row != null && !row.isLocked && doc.title != row.title) doc.copy(title = row.title) else doc
+    }
+
+    override suspend fun loadViewState(id: NoteId): ViewState? = viewStateDao.get(id.value)?.let {
+        ViewState(it.pageIndex, it.offsetInPage, it.zoom)
+    }
+
+    override suspend fun saveViewState(id: NoteId, state: ViewState) = lockFor(id.value).withLock {
+        // A reading position is not an edit: this writes one small row and touches neither the document, the catalog
+        // (modified_at) nor the container. The row is dropped with the note (see deleteForever / deleteIfEmpty).
+        if (noteDao.get(id.value) == null) return@withLock
+        viewStateDao.upsert(NoteViewStateEntity(id.value, state.pageIndex, state.offsetInPage, state.zoom))
     }
 
     override suspend fun flushToContainer(id: NoteId, close: Boolean) =
@@ -213,6 +237,8 @@ internal class DefaultNoteRepository @Inject constructor(
             val sideChannel = runCatching { documents.readExtras(id.value) }.getOrDefault(emptyMap())
             val original = runCatching { org.samesame.notes.core.sdocx.SdocxSideChannel.decode(sideChannel) }.getOrNull()
             val target = org.samesame.notes.core.export.ExportTarget(SdocxExport.EXTENSION, SdocxExport.MIME)
+            // The reading position is stored per note, not in the document; sdocx still records it.
+            val lastViewedPageIndex = loadViewState(id)?.pageIndex
             if (original != null) {
                 val document = currentDocument(id.value)
                 // Only recordings made in SameSame (no sdocx source id) need their audio shipped.
@@ -222,6 +248,7 @@ internal class DefaultNoteRepository @Inject constructor(
                     original, document, out,
                     sideChannel[org.samesame.notes.core.sdocx.SdocxSideChannel.RAW_ARCHIVE_PATH],
                     audio,
+                    lastViewedPageIndex = lastViewedPageIndex,
                 )
             } else {
                 val source = object : org.samesame.notes.core.export.ExportSource {
@@ -229,7 +256,7 @@ internal class DefaultNoteRepository @Inject constructor(
                     override suspend fun page(pageId: String): PageContent = documents.readPage(id.value, pageId)
                     override suspend fun media(path: String): ByteArray? = documents.readMedia(id.value, path)
                 }
-                SdocxExport.exportNative(source, out)
+                SdocxExport.exportNative(source, out, lastViewedPageIndex = lastViewedPageIndex ?: 0)
             }
             return target
         }
@@ -297,6 +324,9 @@ internal class DefaultNoteRepository @Inject constructor(
             ),
         )
         searchDao.replace(NoteSearchEntity(noteId = id, title = bundle.title, body = plain, inkText = ""))
+        bundle.viewState?.let {
+            viewStateDao.upsert(NoteViewStateEntity(id, it.pageIndex, it.offsetInPage, it.zoom))
+        }
         return NoteId(id)
     }
 
@@ -372,7 +402,7 @@ internal class DefaultNoteRepository @Inject constructor(
     }
 
     override suspend fun importNote(input: java.io.InputStream, folderId: FolderId?): NoteId {
-        val doc = documents.import(input)
+        val (doc, legacyViewState) = documents.importWithLegacyViewState(input)
         val plain = doc.body.plainText()
         val now = clock.now()
         noteDao.upsert(
@@ -393,6 +423,9 @@ internal class DefaultNoteRepository @Inject constructor(
             ),
         )
         searchDao.replace(NoteSearchEntity(noteId = doc.id, title = doc.title, body = plain, inkText = ""))
+        legacyViewState?.let {
+            viewStateDao.upsert(NoteViewStateEntity(doc.id, it.pageIndex, it.offsetInPage, it.zoom))
+        }
         return NoteId(doc.id)
     }
 
@@ -515,6 +548,7 @@ internal class DefaultNoteRepository @Inject constructor(
         noteDao.delete(raw)
         raw.forEach { id ->
             searchDao.deleteForNote(id)
+            viewStateDao.delete(id)
             documents.delete(id)
             previewFailures.forget(id)
             previewCache?.forget(id)
@@ -537,6 +571,7 @@ internal class DefaultNoteRepository @Inject constructor(
         if (!isNoteEmpty(doc, counts)) return@withLock false
         noteDao.delete(listOf(id.value))
         searchDao.deleteForNote(id.value)
+        viewStateDao.delete(id.value)
         documents.delete(id.value)
         previewFailures.forget(id.value)
         NewNoteRegistry.forget(id.value)

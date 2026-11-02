@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.samesame.notes.core.data.repository.EditorPreferencesRepository
@@ -130,6 +131,13 @@ class EditorSession(
     undoLimit: Int = Limits.MAX_UNDO_STEPS,
     autosaveDebounceMs: Long = Autosaver.DEBOUNCE_MS,
     autosaveMaxIntervalMs: Long = Autosaver.MAX_INTERVAL_MS,
+    /**
+     * Reading position restored on open. It is stored per note, outside the document: scrolling is not an edit, so it
+     * must not make the note dirty, bump `modified_at`, invalidate the preview or repack the container.
+     */
+    val initialViewState: ViewState? = null,
+    /** Stores a pure view change (a small per-note row); never called for content. */
+    private val viewStateSink: suspend (ViewState) -> Unit = {},
 ) : EditTarget {
 
     val holder = DocumentHolder(initialDocument)
@@ -173,6 +181,8 @@ class EditorSession(
     private var boundBody: BodyTextTarget = fallbackBody
     private var applyingHistory = false
     private val historyMutex = Mutex()
+    private var lastViewState: ViewState? = initialViewState
+    private val viewStateMutex = Mutex()
 
     init {
         holder.bindBody(boundBody)
@@ -267,8 +277,17 @@ class EditorSession(
         autosaver.onEdit()
     }
 
-    /** Saved with the next save/flush; does not trigger one by itself (scrolling is not an edit). */
-    fun setViewState(v: ViewState?) = holder.setViewState(v)
+    /**
+     * Saves a pure view change: only the per-note reading position is written, never the document. Not routed through
+     * [autosaver] and never marking [DocumentHolder] dirty, so a scroll cannot bump `modified_at`, invalidate the home
+     * card's preview or repack (re-encrypt) the container. Writes are serialised so a fast scroll leaves the newest
+     * position behind.
+     */
+    fun setViewState(v: ViewState) {
+        if (v == lastViewState) return
+        lastViewState = v
+        scope.launch { viewStateMutex.withLock { runCatching { viewStateSink(v) } } }
+    }
 
     fun setLayout(layout: PageLayout) {
         holder.setLayout(layout)

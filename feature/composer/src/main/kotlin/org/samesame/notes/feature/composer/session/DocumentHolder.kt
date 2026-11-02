@@ -9,7 +9,6 @@ import org.samesame.notes.core.model.document.NoteRecording
 import org.samesame.notes.core.model.document.NoteStyle
 import org.samesame.notes.core.model.document.PageLayout
 import org.samesame.notes.core.model.document.PageSpec
-import org.samesame.notes.core.model.document.ViewState
 import org.samesame.notes.core.model.richtext.RichText
 import org.samesame.notes.feature.composer.history.BodyTextTarget
 
@@ -53,7 +52,6 @@ class DocumentHolder(initial: NoteDocument) {
     fun setStyle(style: NoteStyle) = update { it.copy(style = style) }
     fun setPages(pages: List<PageSpec>) = update { it.copy(pages = pages) }
     fun setRecordings(recordings: List<NoteRecording>) = update { it.copy(recordings = recordings) }
-    fun setViewState(v: ViewState?) = update { it.copy(viewState = v) }
 
     fun updatePage(spec: PageSpec) = update { d -> d.copy(pages = d.pages.map { if (it.id == spec.id) spec else it }) }
 

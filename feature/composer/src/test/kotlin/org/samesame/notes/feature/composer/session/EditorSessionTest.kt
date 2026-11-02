@@ -13,6 +13,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import org.samesame.notes.core.model.document.PageSpec
 import org.samesame.notes.core.model.document.TemplateRef
+import org.samesame.notes.core.model.document.ViewState
 import org.samesame.notes.feature.composer.FakePrefs
 import org.samesame.notes.feature.composer.FakeStorage
 import org.samesame.notes.feature.composer.doc
@@ -314,5 +315,37 @@ class EditorSessionTest {
         s.typeText("b")
         advanceTimeBy(100); runCurrent() // first write completes
         assertThat(s.hasUnsavedChanges()).isTrue()
+    }
+
+    /**
+     * rel011: a pure view change (scroll, zoom, page) goes to the per-note store and never to the document. It must not
+     * bump the document revision, make the note dirty, or trigger a save/pack.
+     */
+    @Test fun viewStateIsStoredOutsideTheDocumentAndNeverDirtiesIt() = runTest {
+        val saved = mutableListOf<ViewState>()
+        val s = EditorSession(
+            noteId = "n1", initialDocument = doc("p1"), scope = backgroundScope, io = StandardTestDispatcher(testScheduler),
+            pageLoader = storage::load,
+            saveSink = storage::save,
+            packContainer = storage::pack, prefs = FakePrefs(), clock = { testScheduler.currentTime },
+            initialViewState = ViewState(0, 5f, 1f),
+            viewStateSink = { saved += it },
+        )
+        runCurrent()
+        val revision = s.holder.revision
+        assertThat(s.initialViewState).isEqualTo(ViewState(0, 5f, 1f))
+
+        // The restored position is not written back.
+        s.setViewState(ViewState(0, 5f, 1f))
+        runCurrent()
+        assertThat(saved).isEmpty()
+
+        s.setViewState(ViewState(2, 30f, 1.25f))
+        runCurrent()
+        assertThat(saved).containsExactly(ViewState(2, 30f, 1.25f)).inOrder()
+        assertThat(s.holder.revision).isEqualTo(revision)
+        assertThat(s.hasUnsavedChanges()).isFalse()
+        assertThat(storage.saved).isEmpty()
+        assertThat(storage.packs).isEmpty()
     }
 }

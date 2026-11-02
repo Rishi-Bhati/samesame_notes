@@ -31,6 +31,8 @@ object SdocxDocumentBuilder {
     fun toArchive(
         document: NoteDocument,
         nowUs: Long,
+        /** The note's stored reading position (it is no longer part of [document]). */
+        lastViewedPageIndex: Int = 0,
         uuid: () -> String = { java.util.UUID.randomUUID().toString() },
     ): SdocxArchive {
         val pageSpecs = document.pages.ifEmpty { listOf(PageSpec(id = uuid())) }
@@ -112,7 +114,7 @@ object SdocxDocumentBuilder {
             appPatchName = "",
             minFormatVersion = SdocxFormat.WRITE_FORMAT_VERSION,
             createdTime = nowUs,
-            lastViewedPageIndex = document.viewState?.pageIndex ?: 0,
+            lastViewedPageIndex = lastViewedPageIndex,
             pageMode = if (document.layout.mode == PageMode.Pages) SdocxFormat.PageMode.SINGLE else SdocxFormat.PageMode.LIST,
             documentType = SdocxFormat.DocumentType.UNLOCKED,
             ownerId = "",

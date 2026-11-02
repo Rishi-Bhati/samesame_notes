@@ -1,17 +1,34 @@
 package org.samesame.notes.core.document
 
+import kotlinx.serialization.Serializable
 import org.samesame.notes.core.document.legacy.NoteDocumentV1
 import org.samesame.notes.core.ink.page.PageContent
 import org.samesame.notes.core.ink.page.PageLayerCodec
 import org.samesame.notes.core.model.document.NOTE_DOCUMENT_FORMAT_VERSION
 import org.samesame.notes.core.model.document.NoteDocument
+import org.samesame.notes.core.model.document.NoteJson
 import org.samesame.notes.core.model.document.PageLayout
 import org.samesame.notes.core.model.document.PageSpec
 import org.samesame.notes.core.model.document.TemplateRef
+import org.samesame.notes.core.model.document.ViewState
 import org.samesame.notes.core.model.richtext.RichText
 import java.io.File
 
 object NoteDocumentMigrations {
+    /** A v6 (or older) document's remaining field: v7 moved the reading position to the per-note store. */
+    @Serializable
+    private data class LegacyDocumentViewState(val viewState: ViewState? = null)
+
+    /**
+     * Reads the `viewState` field that v6 documents still carried (the old reader). v7 has no such field; the value is
+     * copied into the per-note view-state store on open and never written back into the document.
+     */
+    fun legacyViewState(text: String): ViewState? =
+        runCatching { NoteJson.decodeFromString(LegacyDocumentViewState.serializer(), text).viewState }.getOrNull()
+
+    /** v6 -> v7 removed the document's `viewState` field; everything else is the same document. */
+    fun v6ToV7(v6: NoteDocument): NoteDocument = v6.copy(formatVersion = NOTE_DOCUMENT_FORMAT_VERSION)
+
     /**
      * v5 -> v6 only adds the defaulted [org.samesame.notes.core.model.document.PageSpec.size]. A v5 page has none, which
      * means "the note's global page ratio", so every old page (imported PDF pages included) keeps exactly its old shape.
