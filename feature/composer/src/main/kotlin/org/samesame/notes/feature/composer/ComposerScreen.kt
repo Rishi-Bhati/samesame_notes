@@ -1143,9 +1143,16 @@ internal fun ComposerEditor(
     // Pull past the end of the last page to add one (Pages mode, editing): one undo step, same template/size as the last.
     val pullToAdd = remember(session) { PullToAddPageState() }
     pullToAdd.onCommit = {
+        val expected = session.holder.current.pages.size + 1
         addBlankPage()
-        androidx.compose.runtime.withFrameNanos { }
-        androidx.compose.runtime.withFrameNanos { }
+        // The sheet covers the canvas, so insertion and the scroll below are invisible. Two frames let the session's
+        // document flow and the recomposed layout land (as before); if the layout is somehow still stale, wait up to
+        // two more so the scroll lands on the real last page instead of the old one.
+        repeat(2) { androidx.compose.runtime.withFrameNanos { } }
+        var guard = 0
+        while (latestLayout.pageCount < expected && guard++ < 2) {
+            androidx.compose.runtime.withFrameNanos { }
+        }
         val l = latestLayout
         if (l.pageCount > 0) {
             val o = l.pageOrigin(l.pageCount - 1)
@@ -1858,8 +1865,12 @@ internal fun ComposerEditor(
                 if (!infinite) PullToAddPageIndicator(
                     state = pullToAdd,
                     horizontal = layout.horizontal,
-                    pageColor = if (darkAdjust) org.samesame.notes.feature.composer.canvas.CanvasColors.DarkPage
-                        else org.samesame.notes.feature.composer.canvas.CanvasColors.LightPage,
+                    // The colour of the page that will be added (the last page's follower: same colour/template), so
+                    // the sheet slid over the viewport turns into the real page without a colour flash at the end.
+                    pageColor = org.samesame.notes.feature.composer.canvas.pageColor(
+                        doc.pages.lastOrNull()?.follower("") ?: PageSpec(id = ""),
+                        doc.style.backgroundColor, dark, darkAdjust,
+                    ),
                     inkColor = if (darkAdjust) Color(0xFFBDBDBD) else Color(0xFF6E6E6E),
                 )
                 // Crop mode (object menu "Crop"): modal over the canvas until Cancel / Done / Back.

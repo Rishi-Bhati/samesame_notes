@@ -37,6 +37,13 @@ object PullToAddPageMath {
     fun commits(visible: Float, threshold: Float): Boolean = threshold > 0f && visible >= threshold
 
     /**
+     * Opacity of the "+" and label while a committed release rises from [from] (the released distance) to [full] (the
+     * viewport covered): 1 at the start, 0 once the new page fills the view, so the sheet ends as a plain page colour.
+     */
+    fun labelAlpha(visible: Float, from: Float, full: Float): Float =
+        if (full <= from) 0f else (1f - (visible - from) / (full - from)).coerceIn(0f, 1f)
+
+    /**
      * Splits one pan step along the scroll axis ([along] px; negative = towards the end) while a pull of [raw] px is shown:
      * returns (pull change, rest for the scroll). A pull is undone first when the finger comes back.
      */
@@ -55,7 +62,12 @@ class PullToAddPageState {
         private set
     var released by mutableStateOf(false)
         private set
+    /** A release past the threshold is playing out: the sheet rises, the page is added underneath, then it fades. */
+    var committing by mutableStateOf(false)
+        private set
     private val anim = Animatable(0f)
+    private val fade = Animatable(1f)
+    private var commitFrom = 0f
 
     var maxPx = 0f
     var thresholdPx = 0f
@@ -68,7 +80,19 @@ class PullToAddPageState {
     /** Shown distance (px); read it in draw / layout phases. */
     val visible: Float get() = if (released) anim.value else PullToAddPageMath.visible(raw, maxPx)
 
-    val armed: Boolean get() = !released && PullToAddPageMath.commits(visible, thresholdPx)
+    /** Opacity of the whole sheet: stays 1 while dragging and rising, then fades out over the settled page. */
+    val alpha: Float get() = fade.value
+
+    /**
+     * Opacity of the "+" and the label: fades out while the sheet rises to cover the viewport, so the last frames are
+     * a plain page colour that can cross-fade into the real page without a frozen title/flash.
+     */
+    val labelAlpha: Float get() =
+        if (committing) PullToAddPageMath.labelAlpha(anim.value, commitFrom, fullPx) else 1f
+
+    /** Keeps "Release to add page." through the whole commit rise; only untitled/idle pulls read the drag text. */
+    val armed: Boolean get() =
+        if (released) committing else PullToAddPageMath.commits(visible, thresholdPx)
 
     fun dragBy(deltaPx: Float) {
         if (released) return
@@ -87,20 +111,29 @@ class PullToAddPageState {
         anim.snapTo(shown)
         try {
             if (commit) {
-                // The new page rises over the viewport, then the canvas jumps to the real page under it.
+                committing = true
+                commitFrom = shown
+                // One continuous rise: the new page sheet covers the viewport (its label fades out on the way).
                 anim.animateTo(fullPx.coerceAtLeast(shown), tween(COMMIT_MS, easing = SameSameMotion.SineInOut70))
+                // The page is inserted and the viewport moved while the sheet hides everything; then cross-fade the
+                // sheet out over the page that is already settled in view, so there is no jump, flash or frozen frame.
                 onCommit()
+                fade.animateTo(0f, tween(FADE_MS, easing = SameSameMotion.SineInOut90))
             } else {
                 anim.animateTo(0f, spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMediumLow))
             }
         } finally {
             anim.snapTo(0f)
+            fade.snapTo(1f)
             raw = 0f
             released = false
+            committing = false
+            commitFrom = 0f
         }
     }
 
     private companion object {
         const val COMMIT_MS = 250
+        const val FADE_MS = 110
     }
 }

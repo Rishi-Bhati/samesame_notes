@@ -43,4 +43,18 @@ class PullToAddPageMathTest {
         assertThat(PullToAddPageMath.takeBack(-30f, 20f)).isEqualTo(0f to -30f)
         assertThat(PullToAddPageMath.takeBack(30f, 0f)).isEqualTo(0f to 30f)
     }
+
+    @Test fun committedReleaseFadesTheLabelOutWhileTheSheetRises() {
+        // The label is fully visible at the released distance and gone once the sheet covers the viewport.
+        assertThat(PullToAddPageMath.labelAlpha(visible = 120f, from = 120f, full = 1200f)).isEqualTo(1f)
+        assertThat(PullToAddPageMath.labelAlpha(visible = 1200f, from = 120f, full = 1200f)).isEqualTo(0f)
+        assertThat(PullToAddPageMath.labelAlpha(visible = 660f, from = 120f, full = 1200f)).isWithin(1e-4f).of(0.5f)
+        // Monotonic, never out of range.
+        assertThat(PullToAddPageMath.labelAlpha(visible = 1000f, from = 120f, full = 1200f))
+            .isLessThan(PullToAddPageMath.labelAlpha(visible = 500f, from = 120f, full = 1200f))
+        assertThat(PullToAddPageMath.labelAlpha(visible = 0f, from = 120f, full = 1200f)).isEqualTo(1f)
+        assertThat(PullToAddPageMath.labelAlpha(visible = 5000f, from = 120f, full = 1200f)).isEqualTo(0f)
+        // Degenerate geometry (no distance to travel) must not divide by zero.
+        assertThat(PullToAddPageMath.labelAlpha(visible = 120f, from = 120f, full = 120f)).isEqualTo(0f)
+    }
 }
