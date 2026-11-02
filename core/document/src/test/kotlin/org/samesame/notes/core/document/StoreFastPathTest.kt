@@ -11,7 +11,7 @@ import org.samesame.notes.core.security.LockCrypto
 import java.io.File
 import java.util.zip.ZipFile
 
-/** The rel011 fast paths: no-op flushes, lock/unlock without a working copy, the locked-autosave pack throttle. */
+/** The rel011 fast paths: no-op flushes, lock/unlock without a working copy; locked autosaves sealed at once. */
 class StoreFastPathTest {
     @get:Rule val tmp = TemporaryFolder()
 
@@ -106,47 +106,22 @@ class StoreFastPathTest {
         assertThat(NoteDocumentStore(notes, tmp.newFolder("w2")).readDocument("n1").title).isEqualTo("Edited while open")
     }
 
-    @Test fun lockedAutosavesOfASlowNoteAreThrottledButNeverLost() = runBlocking<Unit> {
+    @Test fun everyAutosaveOfALockedNoteIsSealedOnDiskImmediately() = runBlocking<Unit> {
         val s = NoteDocumentStore(notes, working)
-        var now = 1_000_000L
-        s.clockMs = { now.also { now += 100 } } // every pack "takes" 100 ms: the throttle interval is 20 x 100 ms
         note(s)
         s.lockNote("n1", master, title = "v0")
         s.openLocked("n1", master)
         val doc = s.readDocument("n1")
-        fun sealedTitle() = runBlocking {
-            NoteDocumentStore(notes, tmp.newFolder()).run { openLocked("n1", master); readDocument("n1").title }
+        for (title in listOf("v1 SECRET-EDIT", "v2 SECRET-EDIT", "v3 SECRET-EDIT")) {
+            s.commit("n1", NoteSnapshot(doc.copy(title = title)))
+            // A "process death" right after the save: a new store wipes the decrypted copy; the edit is in the container.
+            val after = NoteDocumentStore(notes, tmp.newFolder())
+            after.openLocked("n1", master)
+            assertThat(after.readDocument("n1").title).isEqualTo(title)
+            assertThat(entries("n1")).containsExactly("manifest.json", "payload.enc")
+            assertThat(String(container("n1").readBytes(), Charsets.ISO_8859_1)).doesNotContain("SECRET-EDIT")
         }
-
-        s.commit("n1", NoteSnapshot(doc.copy(title = "v1"))) // the first commit after opening packs
-        assertThat(sealedTitle()).isEqualTo("v1")
-        s.commit("n1", NoteSnapshot(doc.copy(title = "v2"))) // 100 ms later: stays in the working copy
-        assertThat(sealedTitle()).isEqualTo("v1")
-        assertThat(s.readDocument("n1").title).isEqualTo("v2")
-        now += 5_000
-        s.commit("n1", NoteSnapshot(doc.copy(title = "v3"))) // the interval passed: packs again
-        assertThat(sealedTitle()).isEqualTo("v3")
-        s.commit("n1", NoteSnapshot(doc.copy(title = "v4")))
-        s.flush("n1") // the editor's periodic / ON_STOP flush packs what was deferred
-        assertThat(sealedTitle()).isEqualTo("v4")
-        s.commit("n1", NoteSnapshot(doc.copy(title = "v5")))
-        s.flush("n1", close = true) // and so does closing
-        assertThat(sealedTitle()).isEqualTo("v5")
+        NoteDocumentStore(notes, working) // restart: the stale decrypted working copy is wiped
         assertThat(File(working, "n1").exists()).isFalse()
-    }
-
-    @Test fun smallLockedNotesStillPackOnEveryCommit() = runBlocking<Unit> {
-        val s = NoteDocumentStore(notes, working)
-        var now = 1_000_000L
-        s.clockMs = { now } // packs take 0 ms
-        note(s)
-        s.lockNote("n1", master, title = "v0")
-        s.openLocked("n1", master)
-        val doc = s.readDocument("n1")
-        s.commit("n1", NoteSnapshot(doc.copy(title = "v1")))
-        s.commit("n1", NoteSnapshot(doc.copy(title = "v2")))
-        val fresh = NoteDocumentStore(notes, tmp.newFolder())
-        fresh.openLocked("n1", master)
-        assertThat(fresh.readDocument("n1").title).isEqualTo("v2")
     }
 }

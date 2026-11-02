@@ -119,8 +119,6 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
     /** Test seam: invoked after the page files are written and before `document.json` is replaced. */
     internal var beforeDocumentCommit: (() -> Unit)? = null
 
-    /** Test seam: monotonic milliseconds (the locked-note pack throttle). */
-    internal var clockMs: () -> Long = { System.nanoTime() / 1_000_000 }
 
     /**
      * Notes whose working copy was written in this process since its last pack. A [flush] of a note that is neither in
@@ -129,8 +127,6 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
      */
     private val unpacked = ConcurrentHashMap.newKeySet<String>()
 
-    /** Last pack of each open locked note: when it ended and how long it took (see [packLockedAfterCommit]). */
-    private val lockedPacks = ConcurrentHashMap<String, LongArray>()
 
     suspend fun create(
         noteId: String,
@@ -387,7 +383,9 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
         writeFileAtomically(File(dir, DOCUMENT_FILE)) { it.write(doc.toJson().encodeToByteArray()) }
         unpacked += noteId
         sweepOrphansIn(dir, doc)
-        packLockedAfterCommit(noteId)
+        // A locked note's decrypted working copy does not survive the process: every autosave is sealed into the
+        // container right away (temp file + fsync + atomic rename), so no acknowledged edit can be lost.
+        packIfLocked(noteId)
     }
 
     /** Deletes page files not listed in [document], and stale temp files. */
@@ -422,7 +420,6 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
             } finally {
                 dir.deleteRecursively()
                 openKeys.remove(noteId)?.fill(0)
-                lockedPacks.remove(noteId)
             }
             return@withContext
         }
@@ -430,8 +427,7 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
         if (close) {
             dir.deleteRecursively()
             openKeys.remove(noteId)?.fill(0)
-            lockedPacks.remove(noteId)
-        }
+            }
     }
 
     /**
@@ -444,23 +440,6 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
         val container = containerFile(noteId)
         val doc = File(workingDir(noteId), DOCUMENT_FILE)
         return container.exists() && doc.exists() && doc.lastModified() == container.lastModified()
-    }
-
-    /**
-     * An autosave of an open locked note re-encrypts the whole note, which is cheap for a small note but not for one
-     * with many pages or images. Each commit still packs, unless the previous pack ended less than [LOCKED_PACK_DUTY]
-     * times its own duration ago (capped at [LOCKED_PACK_MAX_INTERVAL_MS]): then the commit stays in the working copy
-     * and the next commit, the editor's periodic or ON_STOP flush, or closing packs it. Small notes (a pack of a few
-     * ms) keep packing on every commit.
-     */
-    private fun packLockedAfterCommit(noteId: String) {
-        if (!isLockedContainer(noteId)) return
-        val last = lockedPacks[noteId]
-        if (last != null) {
-            val interval = (last[1] * LOCKED_PACK_DUTY).coerceAtMost(LOCKED_PACK_MAX_INTERVAL_MS)
-            if (clockMs() - last[0] < interval) return
-        }
-        pack(noteId)
     }
 
     // ---- locked notes ----------------------------------------------------------------------
@@ -498,7 +477,6 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
         workingDir(noteId).deleteRecursively()
         openKeys.remove(noteId)?.fill(0)
         unpacked -= noteId
-        lockedPacks.remove(noteId)
     }
 
     /**
@@ -616,7 +594,6 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
         workingDir(noteId).deleteRecursively()
         openKeys.remove(noteId)?.fill(0)
         unpacked -= noteId
-        lockedPacks.remove(noteId)
         document
     }
 
@@ -885,7 +862,6 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
             wrappedKey = ZipFile(container).use { readManifestInfo(it).wrappedKey } ?: throw IOException("Locked note has no key")
         }
 
-        val started = clockMs()
         unpacked -= noteId // a write that lands while this pack runs marks the note again
         try {
             FileOutputStream(tmp).use { fos ->
@@ -911,10 +887,6 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
         }
         // Equal timestamps mean "in sync": a later autosave makes the working copy strictly newer.
         docFile.setLastModified(container.lastModified())
-        if (lockKey != null) {
-            val ended = clockMs()
-            lockedPacks[noteId] = longArrayOf(ended, ended - started)
-        }
     }
 
     /** Bytes in the working copy (the inner ZIP of a locked note is about this big: sizes the buffer once). */
@@ -1054,10 +1026,6 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
 internal class ExposedByteArrayOutputStream(initial: Int) : java.io.ByteArrayOutputStream(initial.coerceAtLeast(32)) {
     val buffer: ByteArray get() = buf
 }
-
-/** Locked-note pack throttle (see `NoteDocumentStore.packLockedAfterCommit`). */
-private const val LOCKED_PACK_DUTY = 20L
-private const val LOCKED_PACK_MAX_INTERVAL_MS = 15_000L
 
 /** Uncompressed size allowed for one container entry. */
 private fun entryLimit(name: String): Long =

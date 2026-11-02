@@ -77,7 +77,11 @@ class Autosaver(
 
     /** Saves any pending changes now, then packs the container. Call on ON_STOP and when the editor closes. */
     suspend fun flush(close: Boolean = false, force: Boolean = false) {
-        if (enabled || force) saveOnce()
+        if (enabled || force) {
+            // Closing is the last chance to write what is only in memory: retry a failed save (e.g. storage full).
+            var attempt = 0
+            while (!saveOnce() && close && attempt < CLOSE_SAVE_RETRIES) delay(500L shl attempt++)
+        }
         mutex.withLock {
             if (!containerDirty && !close) return
             try {
@@ -158,5 +162,6 @@ class Autosaver(
         const val CONTAINER_FLUSH_MS = 30_000L
         const val RETRY_INITIAL_MS = 1_000L
         const val RETRY_MAX_MS = 30_000L
+        const val CLOSE_SAVE_RETRIES = 3
     }
 }
