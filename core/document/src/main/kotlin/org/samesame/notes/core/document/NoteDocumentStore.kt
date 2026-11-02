@@ -2,6 +2,7 @@ package org.samesame.notes.core.document
 
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -27,9 +28,13 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.nio.channels.FileChannel
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption
 import java.util.UUID
+import java.util.logging.Level
+import java.util.logging.Logger
 import java.util.zip.CRC32
 import java.util.zip.ZipEntry
 import java.util.Base64
@@ -66,6 +71,13 @@ internal const val PAYLOAD_FILE = "payload.enc"
 class NoteLockedException(val noteId: String) : IOException("Note $noteId is locked")
 
 /**
+ * Sealing a locked note's container failed (e.g. storage full). Its plaintext working copy was **kept** on disk: the
+ * container may not hold the latest edits, so the next open with the password adopts it. The editor shows a message.
+ */
+class LockedNoteSaveException(val noteId: String, cause: Throwable? = null) :
+    IOException("Could not save locked note $noteId", cause)
+
+/**
  * Notes on disk. // NOTE(WP-D): per the owner's scope change, each note is ONE file.
  *
  * Canonical: `<notesRoot>/<noteId>.ssnote`, a ZIP with `manifest.json` first, then `document.json`,
@@ -97,15 +109,26 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
     }
 
     /**
-     * A decrypted working copy of a locked note must not outlive the process that opened it: delete
-     * those at start (edits are packed on every commit, so nothing is lost).
+     * A working copy left by a previous process is deleted only when it cannot hold newer edits. For a locked note that
+     * means its `document.json` is not newer than the container: a newer one is kept and adopted by [openLocked] (a failed
+     * seal or a kill before the final pack must cost nothing). Extraction staging (`.unpack`) is always disposable.
      */
     private fun wipeStaleLockedWorkingCopies() {
         workingRoot.listFiles()?.forEach { dir ->
             val id = dir.name.removeSuffix(".unpack")
             if (!isSafeId(id)) return@forEach
-            if (dir.name.endsWith(".unpack") || isLockedContainer(id)) dir.deleteRecursively()
+            when {
+                dir.name.endsWith(".unpack") -> dir.deleteRecursively()
+                isLockedContainer(id) && !hasNewerWorkingCopy(id, dir) -> dir.deleteRecursively()
+            }
         }
+    }
+
+    /** The working copy holds edits the container does not: its document is newer than the container. */
+    private fun hasNewerWorkingCopy(noteId: String, dir: File = workingDir(noteId)): Boolean {
+        val doc = File(dir, DOCUMENT_FILE)
+        val container = containerFile(noteId)
+        return doc.exists() && (!container.exists() || doc.lastModified() > container.lastModified())
     }
 
     /** Whether the note's container is locked (reads the plaintext manifest; false when there is none). */
@@ -118,6 +141,9 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
 
     /** Test seam: invoked after the page files are written and before `document.json` is replaced. */
     internal var beforeDocumentCommit: (() -> Unit)? = null
+
+    /** Test seam: invoked before the packed temp is renamed over the container (simulates a failed seal). */
+    internal var beforePackRename: (() -> Unit)? = null
 
 
     /**
@@ -406,21 +432,29 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
     }
 
     /**
-     * Packs the working copy into the container. When [close] is true the working dir is deleted
-     * afterwards (only after a successful pack, except for a locked note, whose decrypted copy is always
-     * deleted). No-op when there is no working copy.
+     * Packs the working copy into the container. When [close] is true the working dir is deleted afterwards, but only
+     * once the container is verified to hold it. For a locked note a failed seal keeps the plaintext working copy (the
+     * only copy of the latest edits), drops the key and throws [LockedNoteSaveException] to the caller. No-op when
+     * there is no working copy.
      */
     suspend fun flush(noteId: String, close: Boolean = false) = withContext(Dispatchers.IO) {
         val dir = workingDir(noteId)
         if (!File(dir, DOCUMENT_FILE).exists()) return@withContext
         if (close && isLockedContainer(noteId)) {
-            // A locked note's plaintext and key go even when the last pack fails (autosave packs every commit).
             try {
                 if (!isInSync(noteId)) pack(noteId)
-            } finally {
-                dir.deleteRecursively()
+                if (!isInSync(noteId)) throw IOException("Sealed container does not match the working copy")
+            } catch (e: CancellationException) {
                 openKeys.remove(noteId)?.fill(0)
+                throw e
+            } catch (e: Throwable) {
+                // Never delete the only durable copy: the container may not hold the latest edits.
+                log.log(Level.WARNING, "Could not seal locked note $noteId; keeping its working copy", e)
+                openKeys.remove(noteId)?.fill(0)
+                throw if (e is LockedNoteSaveException) e else LockedNoteSaveException(noteId, e)
             }
+            dir.deleteRecursively()
+            openKeys.remove(noteId)?.fill(0)
             return@withContext
         }
         if (!isInSync(noteId)) pack(noteId)
@@ -539,6 +573,7 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
                 fos.fd.sync()
             }
             Files.move(tmp.toPath(), container.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+            syncDirectory(notesRoot)
         } catch (e: Throwable) {
             tmp.delete()
             throw e
@@ -555,12 +590,26 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
         val info = ZipFile(container).use { readManifestInfo(it) }
         if (!info.locked) return@withContext
         val dek = LockCrypto.unwrapNoteKey(master, noteId, info.wrappedKey ?: throw IOException("Locked note has no key"))
+        val workingDoc = File(workingDir(noteId), DOCUMENT_FILE)
         val existing = openKeys[noteId]
-        if (existing != null && existing.contentEquals(dek) && File(workingDir(noteId), DOCUMENT_FILE).exists()) {
+        if (existing != null && existing.contentEquals(dek) && workingDoc.exists()) {
             dek.fill(0) // already open in this process: keep the working copy (it may hold unsaved edits)
             return@withContext
         }
         openKeys.put(noteId, dek)?.fill(0)
+        if (hasNewerWorkingCopy(noteId)) {
+            // Unsealed edits from a crash or a failed save: this plaintext copy is the newest state, so never decrypt over
+            // it. Seal it right away with the key that is now available; if that fails, keep it and let the editor
+            // continue (the next autosave retries and the failure is surfaced there).
+            try {
+                pack(noteId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                log.log(Level.WARNING, "Could not seal the recovered working copy of locked note $noteId", e)
+            }
+            return@withContext
+        }
         try {
             unpack(container, noteId)
         } catch (e: Throwable) {
@@ -577,6 +626,9 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
      */
     suspend fun unlockNote(noteId: String, master: ByteArray): NoteDocument = withContext(Dispatchers.IO) {
         if (!isLockedContainer(noteId)) return@withContext readDocument(noteId)
+        // A newer plaintext working copy (failed save / crash) is the newest state: adopt and seal it first, otherwise the
+        // fast path would decrypt the stale container and drop those edits.
+        if (hasNewerWorkingCopy(noteId)) openLocked(noteId, master)
         val open = File(workingDir(noteId), DOCUMENT_FILE).exists() && openKeys.containsKey(noteId)
         val fast = if (open) null else unlockFromContainer(noteId, master)
         val document = fast ?: run {
@@ -879,7 +931,9 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
                 bos.flush()
                 fos.fd.sync()
             }
+            beforePackRename?.invoke()
             Files.move(tmp.toPath(), container.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+            syncDirectory(notesRoot)
         } catch (e: Throwable) {
             unpacked += noteId
             tmp.delete()
@@ -930,9 +984,20 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
                 }
             }
             Files.move(tmp.toPath(), dst.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+            dst.parentFile?.let(::syncDirectory)
         } catch (e: Throwable) {
             tmp.delete()
             throw e
+        }
+    }
+
+    /** Makes a finished rename durable: fsync the directory that now holds the new file (best effort). */
+    private fun syncDirectory(dir: File) {
+        try {
+            FileChannel.open(dir.toPath(), StandardOpenOption.READ).use { it.force(true) }
+        } catch (e: Exception) {
+            // Some filesystems refuse to open a directory; the rename itself is already atomic.
+            log.log(Level.FINE, "Could not fsync $dir", e)
         }
     }
 
@@ -1019,6 +1084,10 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
     private fun pageFile(dir: File, pageId: String): File {
         require(isSafeId(pageId)) { "Bad page id" }
         return File(File(dir, "ink"), "$pageId.ink")
+    }
+
+    private companion object {
+        val log: Logger = Logger.getLogger(NoteDocumentStore::class.java.name)
     }
 }
 

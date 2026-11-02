@@ -754,9 +754,15 @@ internal fun ComposerEditor(
     // ---- save errors
     val snackbar = remember { SnackbarHostState() }
     val saveFailed = stringResource(R.string.feature_composer_save_failed)
+    val lockedSaveFailed = stringResource(R.string.feature_composer_locked_save_failed)
     val pdfFailed = stringResource(R.string.feature_composer_pdf_failed)
     val cameraFailed = stringResource(R.string.feature_composer_camera_failed)
-    LaunchedEffect(session) { session.saveErrors.collect { snackbar.showSnackbar(saveFailed) } }
+    LaunchedEffect(session) {
+        session.saveErrors.collect { e ->
+            // A locked note that could not be sealed keeps its plaintext working copy; retrying silently is not enough.
+            snackbar.showSnackbar(if (e is org.samesame.notes.core.document.LockedNoteSaveException) lockedSaveFailed else saveFailed)
+        }
+    }
 
     // ---- mode transitions
     var prevMode by remember { mutableStateOf(tb.mode) }

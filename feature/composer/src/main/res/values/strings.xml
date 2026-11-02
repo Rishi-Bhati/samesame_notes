@@ -103,6 +103,7 @@
     <string name="feature_composer_leave_save">Save</string>
     <string name="feature_composer_leave_discard">Discard</string>
     <string name="feature_composer_save_failed">Couldn\'t save. Trying again.</string>
+    <string name="feature_composer_locked_save_failed">Couldn\'t save the locked note. Free up space and open it again.</string>
     <string name="feature_composer_erase_all">All</string>
     <string name="feature_composer_erase_current_page">Current page(%1$d/%2$d)</string>
 
