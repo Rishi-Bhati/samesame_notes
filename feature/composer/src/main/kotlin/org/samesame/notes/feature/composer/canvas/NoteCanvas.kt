@@ -674,10 +674,16 @@ private fun LiveInk(
     val latestLayout by rememberUpdatedState(layout)
     val latestSource by rememberUpdatedState(source)
     val latestBrush by rememberUpdatedState(brush)
+    // The ink library captures nextBrush once per pointer handler: read the current brush at stroke start (see the KDoc).
+    // A pen down on a page that keeps its light surface (PDF page in a dark note) draws with the stored colour.
+    val liveDisplay = rememberLiveBrushProvider(displayBrush)
+    val liveBrush: () -> Brush = remember(transform, liveDisplay) {
+        { if (transform.downOnLightPage) latestBrush else liveDisplay() }
+    }
 
     InProgressStrokes(
         defaultBrush = displayBrush,
-        nextBrush = { if (transform.downOnLightPage) latestBrush else displayBrush },
+        nextBrush = liveBrush,
         pointerEventToWorldTransform = transform.pointerToWorld,
         strokeToWorldTransform = transform.docToView,
         maskPath = transform.mask,
@@ -693,6 +699,20 @@ private fun LiveInk(
             }
         },
     )
+}
+
+/**
+ * A stable `nextBrush` provider for `InProgressStrokes` that always returns the brush of the current composition.
+ *
+ * The ink library starts every live stroke from the provider captured by its `pointerInput` coroutine, and that coroutine
+ * only restarts when its keys (the world transforms, not the brush) change. Closing over the brush value therefore draws
+ * every live stroke with the brush of the first composition (the default pen, #335FFF) while the committed stroke gets the
+ * current one. Reading a [rememberUpdatedState] at stroke start keeps the two identical after every tool/colour change.
+ */
+@Composable
+internal fun rememberLiveBrushProvider(brush: Brush): () -> Brush {
+    val latest = rememberUpdatedState(brush)
+    return remember { { latest.value } }
 }
 
 /** [maskPath] into [out] in place ([view] and [pages] are scratch paths). */

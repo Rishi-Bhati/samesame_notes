@@ -24,11 +24,16 @@ data class PenSpec(
     fun widthPu(level: Int): Float =
         REFERENCE_WIDTH_PU * (level.coerceIn(sizeLevels).toFloat() / REFERENCE_LEVEL).pow(0.8f)
 
+    /** The ARGB painted for [colorArgb]: the pen's forced alpha, or [alpha] (0..255) when given (highlighter opacity). */
+    fun colorFor(colorArgb: Long = defaultColor, alpha: Int? = null): Long =
+        (alpha ?: fixedAlpha)?.let { (colorArgb and 0x00FFFFFF) or (it.toLong() shl 24) } ?: colorArgb
+
     /** Brush for [level]; translucent pens get their forced alpha, or [alpha] (0..255) when given (highlighter opacity). */
-    fun brush(level: Int, colorArgb: Long = defaultColor, pressure: Boolean = true, alpha: Int? = null): Brush {
-        val argb = (alpha ?: fixedAlpha)?.let { (colorArgb and 0x00FFFFFF) or (it.toLong() shl 24) } ?: colorArgb
-        return Brush.createWithColorIntArgb(if (roundTip) PenBrushes.markerFamily() else PenBrushes.familyFor(type, pressure), argb.toInt(), widthPu(level), 0.1f)
-    }
+    fun brush(level: Int, colorArgb: Long = defaultColor, pressure: Boolean = true, alpha: Int? = null): Brush =
+        Brush.createWithColorIntArgb(
+            if (roundTip) PenBrushes.markerFamily() else PenBrushes.familyFor(type, pressure),
+            colorFor(colorArgb, alpha).toInt(), widthPu(level), 0.1f,
+        )
 
     private companion object {
         const val REFERENCE_LEVEL = 30f

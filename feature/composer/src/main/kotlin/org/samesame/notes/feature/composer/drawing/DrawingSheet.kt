@@ -36,7 +36,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -46,7 +45,6 @@ import org.samesame.notes.core.designsystem.icon.AppIcons
 import org.samesame.notes.core.designsystem.theme.SameSameText
 import org.samesame.notes.core.designsystem.theme.SameSameTheme
 import org.samesame.notes.core.designsystem.theme.capped
-import org.samesame.notes.core.ink.brush.PenCatalog
 import org.samesame.notes.core.ink.page.InkElement
 import org.samesame.notes.core.ink.page.PageElement
 import org.samesame.notes.core.model.AppSettings
@@ -74,6 +72,7 @@ import org.samesame.notes.feature.composer.toolbar.EditorMode
 import org.samesame.notes.feature.composer.toolbar.Panel
 import org.samesame.notes.feature.composer.toolbar.PenModeTool
 import org.samesame.notes.feature.composer.toolbar.PenModeToolbar
+import org.samesame.notes.feature.composer.toolbar.PenStyles
 import org.samesame.notes.feature.composer.toolbar.PenToolbarModel
 import org.samesame.notes.feature.composer.toolbar.ToolbarHeight
 import org.samesame.notes.feature.composer.toolbar.ToolbarIntent
@@ -176,10 +175,10 @@ private fun SheetEditor(
         fingerDrawing = prefs.fingerDrawing,
         zoomLock = prefs.zoomLock && settings.toolbarZoomLock,
     )
-    val brush = remember(tb.tool, prefs.penType, prefs.penLevel, prefs.penColor, prefs.penPressureSensitive, prefs.highlighterLevel, prefs.highlighterColor, prefs.highlighterOpacity, prefs.highlighterTip) {
-        if (tb.tool == PenModeTool.Highlighter) PenCatalog.highlighterFor(prefs.highlighterTip).brush(prefs.highlighterLevel, prefs.highlighterColor, alpha = (prefs.highlighterOpacity.coerceIn(0, 100) * 255 / 100f).roundToInt())
-        else PenCatalog.specFor(prefs.penType).brush(prefs.penLevel, prefs.penColor, prefs.penPressureSensitive)
+    val penStyle = remember(tb.tool, prefs.penType, prefs.penLevel, prefs.penColor, prefs.penPressureSensitive, prefs.highlighterLevel, prefs.highlighterColor, prefs.highlighterOpacity, prefs.highlighterTip) {
+        PenStyles.current(tb.tool, prefs)
     }
+    val brush = remember(penStyle) { penStyle.brush() }
 
     var eraseAllOpen by remember { mutableStateOf(false) }
     androidx.compose.runtime.LaunchedEffect(tb.panel) { if (tb.panel != Panel.Eraser) eraseAllOpen = false }
@@ -280,7 +279,7 @@ private fun SheetEditor(
                     darkTheme = dark,
                     toolHandler = handlers::forTool,
                     onStylusSeen = { if (!prefs.stylusSeen) session.toolController.updatePrefs { it.withStylusSeen() } },
-                    straightLine = tb.tool == PenModeTool.Highlighter && PenCatalog.isStraightTip(prefs.highlighterTip),
+                    straightLine = penStyle.straightLine,
                     overlay = { ToolOverlayLayer(handlers, selectionState, listOf(DrawingGeometry.SHEET_PAGE_ID), layout, viewport, dark) },
                 )
             }

@@ -110,6 +110,7 @@ import org.samesame.notes.feature.composer.toolbar.EditorMode
 import org.samesame.notes.feature.composer.toolbar.Panel
 import org.samesame.notes.feature.composer.toolbar.PenModeTool
 import org.samesame.notes.feature.composer.toolbar.PenModeToolbar
+import org.samesame.notes.feature.composer.toolbar.PenStyles
 import org.samesame.notes.feature.composer.toolbar.PenToolbarModel
 import org.samesame.notes.feature.composer.toolbar.TextToolbar
 import org.samesame.notes.feature.composer.toolbar.TextToolbarButton
@@ -827,10 +828,10 @@ internal fun ComposerEditor(
         // The lock only applies while the Zoom lock add-on is on.
         zoomLock = prefs.zoomLock && settings.toolbarZoomLock,
     )
-    val brush = remember(tb.tool, prefs.penType, prefs.penLevel, prefs.penColor, prefs.penPressureSensitive, prefs.highlighterLevel, prefs.highlighterColor, prefs.highlighterOpacity, prefs.highlighterTip) {
-        if (tb.tool == PenModeTool.Highlighter) PenCatalog.highlighterFor(prefs.highlighterTip).brush(prefs.highlighterLevel, prefs.highlighterColor, alpha = (prefs.highlighterOpacity.coerceIn(0, 100) * 255 / 100f).roundToInt())
-        else PenCatalog.specFor(prefs.penType).brush(prefs.penLevel, prefs.penColor, prefs.penPressureSensitive)
+    val penStyle = remember(tb.tool, prefs.penType, prefs.penLevel, prefs.penColor, prefs.penPressureSensitive, prefs.highlighterLevel, prefs.highlighterColor, prefs.highlighterOpacity, prefs.highlighterTip) {
+        PenStyles.current(tb.tool, prefs)
     }
+    val brush = remember(penStyle) { penStyle.brush() }
 
     // ---- title
     var title by remember(session) { mutableStateOf(chrome.title) }
@@ -1741,7 +1742,7 @@ internal fun ComposerEditor(
                         val m = s.liveTransform
                         if (m != null && s.pageId != null) LiveSelection(s.pageId, s.ids, m) else null
                     },
-                    straightLine = tb.tool == PenModeTool.Highlighter && PenCatalog.isStraightTip(prefs.highlighterTip),
+                    straightLine = penStyle.straightLine,
                     // Body text: static glyphs cached per page layer, selection / search / caret live (perf ux5b).
                     pageText = textState.pagePainter,
                     overlay = {
