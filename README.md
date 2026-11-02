@@ -5,7 +5,7 @@
 
 **Same same. But open source.**
 
-> **Alpha.** SameSame notes 0.1.0-alpha is an early release for testing. Expect bugs and rough edges, and expect
+> **Alpha.** SameSame notes 0.1.1-alpha is an early release for testing. Expect bugs and rough edges, and expect
 > file formats and behaviour to change before a stable release.
 > Please [report issues](https://reportary.onrender.com/p/KpEraP6diT5xj5xzvnJzZ23Zob2lSvfm8LKBM1RhEyJkCIplAZx_Dqc3uCeuJw9V/) when you find them.
 
@@ -26,7 +26,7 @@ SameSame notes is not affiliated with, endorsed by or sponsored by Samsung Elect
 
 | Item | Status |
 |---|---|
-| Version | 0.1.0-alpha |
+| Version | 0.1.1-alpha |
 | Stage | Alpha. Expect bugs. Formats and behaviour may change. |
 | Platform | Android 8.0 (API 26) and newer. Designed phone first; tablet and large-screen layouts are not yet polished. |
 | Language | English only |
