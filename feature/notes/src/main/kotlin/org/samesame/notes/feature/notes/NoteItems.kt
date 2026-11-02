@@ -65,12 +65,24 @@ private fun ViewMode.cardRatio() = when (this) {
 
 @Composable
 internal fun noteDisplayTitle(note: Note): String {
-    if (note.isLocked) return stringResource(R.string.feature_notes_locked_note_title)
-    if (note.title.isNotBlank()) return note.title
+    if (note.isLocked) {
+        // A locked note's title stays visible (owner decision); only its content is hidden.
+        return noteTitleText(note, untitled = "", locked = stringResource(R.string.feature_notes_locked_note_title))
+    }
     // Remembered: a card entering the screen while scrolling must not build a SimpleDateFormat.
     val locale = androidx.compose.ui.text.intl.Locale.current.platformLocale
     val date = remember(note.createdAt, locale) { SimpleDateFormat("d/M", locale).format(Date(note.createdAt)) }
-    return stringResource(R.string.feature_notes_default_title, date)
+    return noteTitleText(note, untitled = stringResource(R.string.feature_notes_default_title, date), locked = "")
+}
+
+/**
+ * Pure part of [noteDisplayTitle]: a user-set title wins; an untitled locked note reads [locked], an untitled
+ * unlocked one gets the date-based [untitled].
+ */
+internal fun noteTitleText(note: Note, untitled: String, locked: String): String = when {
+    note.isLocked -> note.title.ifBlank { locked }
+    note.title.isNotBlank() -> note.title
+    else -> untitled
 }
 
 @Composable

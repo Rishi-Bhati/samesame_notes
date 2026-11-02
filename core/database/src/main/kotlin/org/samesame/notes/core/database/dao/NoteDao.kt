@@ -68,12 +68,16 @@ interface NoteDao {
     @Query("UPDATE notes SET title = :title, modified_at = :now, is_dirty = 1 WHERE id = :id")
     suspend fun updateTitle(id: String, title: String, now: Long)
 
+    /** Restores a locked note's visible catalog title without bumping its modified time (used when it is first opened). */
+    @Query("UPDATE notes SET title = :title WHERE id = :id")
+    suspend fun updateTitleOnly(id: String, title: String)
+
     @Query(
         "UPDATE notes SET preview_text = :previewText, modified_at = :now, is_dirty = 1 WHERE id = :id",
     )
     suspend fun updatePreview(id: String, previewText: String, now: Long)
 
-    /** Locking hides the title and preview from the catalog; unlocking restores them. */
+    /** Locking keeps the title visible in the catalog but drops the preview text; unlocking restores both. */
     @Query("UPDATE notes SET is_locked = :locked, title = :title, preview_text = :preview, is_dirty = 1 WHERE id = :id")
     suspend fun setLocked(id: String, locked: Boolean, title: String, preview: String)
 

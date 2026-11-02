@@ -59,15 +59,17 @@ internal fun PullToAddPageIndicator(
         Box(
             Modifier.fillMaxSize().graphicsLayer {
                 val v = state.visible
-                alpha = if (v <= 0.5f) 0f else 1f
+                val sheet = state.alpha
+                alpha = if (v <= 0.5f) 0f else sheet
                 if (horizontal) translationX = size.width - v else translationY = size.height - v
-                shadowElevation = if (v > 0.5f) 6.dp.toPx() else 0f
+                shadowElevation = if (v > 0.5f) 6.dp.toPx() * sheet else 0f
             },
         ) {
             Canvas(Modifier.fillMaxSize()) { drawRect(pageColor) }
             Column(
                 Modifier.align(if (horizontal) Alignment.CenterStart else Alignment.TopCenter)
-                    .padding(top = if (horizontal) 0.dp else 20.dp, start = if (horizontal) 12.dp else 20.dp, end = 20.dp),
+                    .padding(top = if (horizontal) 0.dp else 20.dp, start = if (horizontal) 12.dp else 20.dp, end = 20.dp)
+                    .graphicsLayer { alpha = state.labelAlpha },
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Canvas(Modifier.size(32.dp).graphicsLayer { rotationZ = PullToAddPageMath.progress(state.visible, state.thresholdPx) * 90f }) {

@@ -166,7 +166,8 @@ internal class DefaultNoteRepository @Inject constructor(
         noteDao.markOpened(id.value, clock.now())
         val doc = documents.readDocument(id.value, titleFromDb = row?.title.orEmpty())
         documents.sweepOrphans(id.value, doc)
-        // The catalog is authoritative for titles, except for locked notes whose title only lives encrypted.
+        // The catalog is authoritative for titles; a locked note is read from its decrypted document (its title is
+        // restored to the catalog when the note is opened).
         if (row != null && !row.isLocked && doc.title != row.title) doc.copy(title = row.title) else doc
     }
 
@@ -400,8 +401,11 @@ internal class DefaultNoteRepository @Inject constructor(
         val plain = doc.body.plainText()
         val now = clock.now()
         if (row.isLocked) {
-            // Title, preview and search text of a locked note stay out of the catalog.
+            // Owner decision: a locked note's title stays in the catalog and is visible; only the body preview and the
+            // searchable body are removed (title search still finds it).
+            if (row.title != doc.title) noteDao.updateTitle(id.value, doc.title, now)
             noteDao.updatePreview(id.value, "", now)
+            searchDao.replace(NoteSearchEntity(noteId = id.value, title = doc.title, body = "", inkText = ""))
             return@withLock
         }
         if (row.title != doc.title) noteDao.updateTitle(id.value, doc.title, now)
@@ -464,7 +468,12 @@ internal class DefaultNoteRepository @Inject constructor(
 
     override suspend fun updateTitle(id: NoteId, title: String) {
         if (noteDao.get(id.value)?.isLocked == true) {
-            lockFor(id.value).withLock { runCatching { documents.readDocument(id.value).let { documents.writeDocument(it.copy(title = title)) } } }
+            lockFor(id.value).withLock {
+                runCatching { documents.readDocument(id.value).let { documents.writeDocument(it.copy(title = title)) } }
+                // The catalog keeps the visible title of a locked note (owner decision); the body stays out of search.
+                noteDao.updateTitle(id.value, title, clock.now())
+                searchDao.replace(NoteSearchEntity(noteId = id.value, title = title, body = "", inkText = ""))
+            }
             return
         }
         noteDao.updateTitle(id.value, title, clock.now())
@@ -529,12 +538,13 @@ internal class DefaultNoteRepository @Inject constructor(
             for (id in ids) lockFor(id.value).withLock {
                 val row = noteDao.get(id.value) ?: return@withLock
                 if (row.isLocked) return@withLock
-                // The encrypted document carries the real title; the catalog keeps none.
+                // The encrypted document carries the body; the catalog keeps the visible title (owner decision).
                 val doc = documents.readDocument(id.value, row.title)
                 documents.writeDocument(doc.copy(title = row.title))
                 documents.lockNote(id.value, master)
-                noteDao.setLocked(id.value, true, title = "", preview = "")
-                searchDao.deleteForNote(id.value)
+                noteDao.setLocked(id.value, true, title = row.title, preview = "")
+                // Only the title stays searchable, never the body.
+                searchDao.replace(NoteSearchEntity(noteId = id.value, title = row.title, body = "", inkText = ""))
             }
         } finally {
             master.fill(0)
@@ -570,6 +580,16 @@ internal class DefaultNoteRepository @Inject constructor(
             val master = token.masterKey()
             try {
                 documents.openLocked(id.value, master)
+                // Notes locked before titles stayed in the catalog have an empty title there: restore it now that the
+                // document is decrypted, so the home page can show it without bumping the modified time.
+                val row = noteDao.get(id.value)
+                if (row != null && row.isLocked && row.title.isBlank()) {
+                    val title = runCatching { documents.readDocument(id.value).title }.getOrDefault("")
+                    if (title.isNotBlank()) {
+                        noteDao.updateTitleOnly(id.value, title)
+                        searchDao.replace(NoteSearchEntity(noteId = id.value, title = title, body = "", inkText = ""))
+                    }
+                }
             } finally {
                 master.fill(0)
             }
