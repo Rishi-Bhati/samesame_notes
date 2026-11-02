@@ -27,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -142,6 +143,10 @@ fun FastScrollBar(
     var touchTick by remember { mutableIntStateOf(0) }
     // The thumb position while dragged (px along the travel), so it follows the finger exactly.
     var dragAlong by remember { mutableFloatStateOf(-1f) }
+    // The fraction the thumb was released at. The list reports its new position one layout frame later, so the
+    // thumb keeps this fraction until the list agrees and then hands back: releasing never jumps.
+    var heldFraction by remember { mutableFloatStateOf(-1f) }
+    var handoffTick by remember { mutableIntStateOf(0) }
     var area by remember { mutableStateOf(IntSize.Zero) }
     // Where the thumb was last placed along its axis (px from the area start): thumb-local pointer positions add to it.
     val placedHolder = remember { FloatArray(1) }
@@ -172,7 +177,11 @@ fun FastScrollBar(
     } else {
         FastScrollBarGeometry.travel(area.height.toFloat(), px(thumbH), px(topMargin), px(BOTTOM_MARGIN))
     }
-    fun thumbAlong(): Float = if (dragging && dragAlong >= 0f) dragAlong else FastScrollBarGeometry.along(travel(), fraction())
+    fun thumbAlong(): Float = when {
+        dragging && dragAlong >= 0f -> dragAlong
+        heldFraction >= 0f -> FastScrollBarGeometry.along(travel(), heldFraction)
+        else -> FastScrollBarGeometry.along(travel(), fraction())
+    }
     fun thumbTopLeft(): IntOffset {
         val along = startMargin() + thumbAlong()
         return if (horizontal) {
@@ -191,9 +200,12 @@ fun FastScrollBar(
         position: (PointerEvent) -> Float?,
     ) {
         val track = travel()
-        val start = FastScrollBarGeometry.along(track, fraction())
+        // Start from the thumb the user sees (it may still be handed off from the previous drag), never from a
+        // list-derived fraction that lags behind it: grabbing the thumb must not move it.
+        val start = thumbAlong()
         dragAlong = start
         dragging = true
+        var released = -1f
         try {
             while (true) {
                 val ev = awaitPointerEvent(pass)
@@ -205,14 +217,44 @@ fun FastScrollBar(
                 ch.consume()
                 val at = position(ev) ?: break
                 val delta = at - fingerStart
+                // The thumb follows the finger exactly (clamped to the track); the list gets the same fraction.
                 dragAlong = (start + delta).coerceIn(0f, track)
-                scrub(ScrollBarGeometry.dragFraction(track, 0f, start, delta))
+                released = ScrollBarGeometry.dragFraction(track, 0f, start, delta)
+                scrub(released)
             }
         } finally {
             dragging = false
             dragAlong = -1f
+            if (released >= 0f) {
+                // Hold the released position until the list reports it (one layout frame after the last scrub).
+                heldFraction = released
+                handoffTick++
+            }
             touchTick++
         }
+    }
+
+    LaunchedEffect(handoffTick) {
+        if (handoffTick == 0 || heldFraction < 0f) return@LaunchedEffect
+        // The drag's last scroll reaches the layout after the release. Keep showing the released fraction until the
+        // list-derived one agrees (hand back without a jump), or for a few frames at most. If the last drag frame
+        // targeted a row whose height was still estimated, the first laid-out frame re-targets it now that the height
+        // is known, so the list lands exactly under the released thumb.
+        val target = heldFraction
+        var corrected = false
+        repeat(HANDOFF_FRAMES) { frame ->
+            withFrameNanos { }
+            if (dragging) return@repeat
+            if (abs(fraction() - target) <= HANDOFF_EPS) {
+                heldFraction = -1f
+                return@LaunchedEffect
+            }
+            if (!corrected && frame > 0) {
+                corrected = true
+                scrub(target)
+            }
+        }
+        heldFraction = -1f
     }
 
     Box(modifier.fillMaxSize().onSizeChanged { area = it }) {
@@ -381,6 +423,10 @@ internal fun fastScrollThumbGlyph(w: Float, h: Float): Path {
 
 private const val FADE_MS = 333
 private const val SHOW_MS = 2_500L
+/** Frames the thumb keeps the released fraction while the list catches up with the drag's last scroll. */
+private const val HANDOFF_FRAMES = 4
+/** Hand-back tolerance in fraction units (~4 px on a phone-height bar): below this the switch is invisible. */
+private const val HANDOFF_EPS = 0.002f
 private const val BUBBLE_ALPHA = 0xE6 / 255f
 private val END_MARGIN = 10.dp
 private val BOTTOM_MARGIN = 20.dp

@@ -140,8 +140,8 @@ internal fun SearchScreen(
                         )
                     }
                 }
-                // The same draggable scroll bar as the home lists.
-                GridScrollBar(gridState, scrollEstimate)
+                // The same draggable scroll bar as the home lists (two note columns, no full-span rows).
+                GridScrollBar(gridState, scrollEstimate, columns = 2, headerItems = 0)
             }
         }
     }
