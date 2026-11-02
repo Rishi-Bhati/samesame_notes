@@ -39,7 +39,9 @@ class SdocxPersistenceTest {
             )
         }
         val document = SdocxMapper.toNoteDocument(archive, "imported").copy(recordings = recordings)
-        val bundle = SdocxMapper.ImportBundle(document, document.title, SdocxMapper.lockOf(archive), audio, emptyMap())
+        val bundle = SdocxMapper.ImportBundle(
+            document, document.title, SdocxMapper.lockOf(archive), SdocxMapper.viewStateOf(archive), audio, emptyMap(),
+        )
         val bytes = externalZipMetadata(SdocxWriter().writeToBytes(archive))
         verifyPersistence(bundle, SdocxReader().read(bytes), bytes)
     }

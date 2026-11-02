@@ -21,6 +21,7 @@ import org.samesame.notes.core.model.document.NOTE_DOCUMENT_FORMAT_VERSION
 import org.samesame.notes.core.model.document.NoteDocument
 import org.samesame.notes.core.model.document.PageLayout
 import org.samesame.notes.core.model.document.PageSpec
+import org.samesame.notes.core.model.document.ViewState
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileNotFoundException
@@ -188,7 +189,17 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
      * bundle to v2 and packing it. [titleFromDb] is only used by that migration. Throws [IOException]
      * for versions newer than this app.
      */
-    suspend fun readDocument(noteId: String, titleFromDb: String = ""): NoteDocument = withContext(Dispatchers.IO) {
+    suspend fun readDocument(noteId: String, titleFromDb: String = ""): NoteDocument =
+        readDocumentWithLegacyViewState(noteId, titleFromDb).first
+
+    /**
+     * [readDocument] plus the `viewState` that a v2-v6 document still carried. v7 moved it to the per-note store;
+     * this is the old reader the repository uses to copy it there once. Null for v1 (which never had one) and v7.
+     */
+    suspend fun readDocumentWithLegacyViewState(
+        noteId: String,
+        titleFromDb: String = "",
+    ): Pair<NoteDocument, ViewState?> = withContext(Dispatchers.IO) {
         val dir = ensureWorking(noteId)
         val text = File(dir, DOCUMENT_FILE).readText()
         val version = documentVersion(text)
@@ -196,22 +207,34 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
             version > NOTE_DOCUMENT_FORMAT_VERSION ->
                 throw IOException("Note format version $version is newer than this app supports")
             version == 1 -> NoteDocumentMigrations.migrateBundleV1(dir, NoteDocumentV1.fromJson(text), titleFromDb)
-                .also { pack(noteId) }
-            else -> parseDocument(text, version)
+                .also { pack(noteId) } to null
+            else -> parseDocument(text, version) to
+                if (version < NOTE_DOCUMENT_FORMAT_VERSION) NoteDocumentMigrations.legacyViewState(text) else null
         }
     }
 
     private fun documentVersion(text: String): Int =
         (Json.parseToJsonElement(text) as JsonObject)["formatVersion"]?.jsonPrimitive?.int ?: 1
 
-    /** Reads a document of the current version or of v2-v5 (upgraded in memory); anything else is refused. */
+    /** Reads a document of the current version or of v2-v6 (upgraded in memory); anything else is refused. */
     private fun parseDocument(text: String, version: Int): NoteDocument = when (version) {
         NOTE_DOCUMENT_FORMAT_VERSION -> NoteDocument.fromJson(text)
-        5 -> NoteDocumentMigrations.v5ToV6(NoteDocument.fromJson(text))
-        4 -> NoteDocumentMigrations.v5ToV6(NoteDocumentMigrations.v4ToV5(NoteDocument.fromJson(text)))
-        3 -> NoteDocumentMigrations.v5ToV6(NoteDocumentMigrations.v4ToV5(NoteDocumentMigrations.v3ToV4(NoteDocument.fromJson(text))))
-        2 -> NoteDocumentMigrations.v5ToV6(
-            NoteDocumentMigrations.v4ToV5(NoteDocumentMigrations.v3ToV4(NoteDocumentMigrations.v2ToV3(NoteDocument.fromJson(text)))),
+        6 -> NoteDocumentMigrations.v6ToV7(NoteDocument.fromJson(text))
+        5 -> NoteDocumentMigrations.v6ToV7(NoteDocumentMigrations.v5ToV6(NoteDocument.fromJson(text)))
+        4 -> NoteDocumentMigrations.v6ToV7(
+            NoteDocumentMigrations.v5ToV6(NoteDocumentMigrations.v4ToV5(NoteDocument.fromJson(text))),
+        )
+        3 -> NoteDocumentMigrations.v6ToV7(
+            NoteDocumentMigrations.v5ToV6(
+                NoteDocumentMigrations.v4ToV5(NoteDocumentMigrations.v3ToV4(NoteDocument.fromJson(text))),
+            ),
+        )
+        2 -> NoteDocumentMigrations.v6ToV7(
+            NoteDocumentMigrations.v5ToV6(
+                NoteDocumentMigrations.v4ToV5(
+                    NoteDocumentMigrations.v3ToV4(NoteDocumentMigrations.v2ToV3(NoteDocument.fromJson(text))),
+                ),
+            ),
         )
         else -> throw IOException("Unsupported note format version $version")
     }
@@ -747,21 +770,28 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
      * someone else could collide with, or shadow the staging paths of, an existing note). Every entry is
      * inflated once under [Limits] caps, so a zip bomb is refused here rather than on first open.
      */
-    suspend fun import(input: InputStream): NoteDocument = withContext(Dispatchers.IO) {
+    suspend fun import(input: InputStream): NoteDocument = importWithLegacyViewState(input).first
+
+    /** [import] plus the reading position an older (v2-v6) document still carried, for the per-note store. */
+    suspend fun importWithLegacyViewState(input: InputStream): Pair<NoteDocument, ViewState?> = withContext(Dispatchers.IO) {
         notesRoot.mkdirs()
         val staged = File(notesRoot, "import-${UUID.randomUUID()}.$NOTE_CONTAINER_EXTENSION$TMP_SUFFIX")
         try {
             staged.outputStream().use { LimitedInputStream(input, Limits.MAX_IMPORT_BYTES, "Note file", closeInput = false).copyTo(it) }
+            var text = ""
+            var version = 0
             val doc = ZipFile(staged).use { zf ->
                 val info = readManifestInfo(zf)
                 if (info.locked) throw IOException("Locked notes can't be imported: their key lives on the original device")
                 checkEntrySizes(zf, staged.length())
-                val text = readEntryLimited(zf, zf.getEntry(DOCUMENT_FILE) ?: throw IOException("No document.json")).decodeToString()
-                parseDocument(text, documentVersion(text))
+                text = readEntryLimited(zf, zf.getEntry(DOCUMENT_FILE) ?: throw IOException("No document.json")).decodeToString()
+                version = documentVersion(text)
+                parseDocument(text, version)
             }
             val id = UUID.randomUUID().toString()
             rewriteContainer(staged, containerFile(id), id)
-            doc.copy(id = id)
+            doc.copy(id = id) to
+                if (version < NOTE_DOCUMENT_FORMAT_VERSION) NoteDocumentMigrations.legacyViewState(text) else null
         } finally {
             staged.delete()
         }

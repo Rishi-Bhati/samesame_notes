@@ -35,7 +35,7 @@ class SdocxMapperTest {
         // pageMode 0 (list) is still a fixed-page document: list only describes scrolling.
         assertThat(doc.layout.mode).isEqualTo(PageMode.Pages)
         assertThat(doc.style.adjustForDarkMode).isTrue()
-        assertThat(doc.viewState?.pageIndex).isEqualTo(0)
+        assertThat(SdocxMapper.toImportBundle(archive, "note-1").viewState?.pageIndex).isEqualTo(0)
     }
 
     @Test

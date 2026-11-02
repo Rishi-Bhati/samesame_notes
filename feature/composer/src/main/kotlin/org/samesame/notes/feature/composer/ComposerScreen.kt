@@ -821,11 +821,11 @@ internal fun ComposerEditor(
         val idx = l.nearestPage(viewport.scroll) ?: return
         val r = l.pageRects[idx]
         val vs = ViewState(idx, (if (l.horizontal) viewport.scroll.x - r.left else viewport.scroll.y - r.top), viewport.zoom)
-        if (vs != session.holder.current.viewState) session.setViewState(vs)
+        session.setViewState(vs)
     }
     LaunchedEffect(session, viewport) {
         snapshotFlow { viewport.size.width > 0 && viewport.content.width > 0f }.first { it }
-        session.holder.current.viewState?.let { vs ->
+        session.initialViewState?.let { vs ->
             val l = latestLayout
             val r = l.pageRects.getOrNull(vs.pageIndex.coerceIn(0, (l.pageCount - 1).coerceAtLeast(0)))
             if (r != null) {

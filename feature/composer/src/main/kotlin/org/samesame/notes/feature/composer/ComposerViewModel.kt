@@ -254,6 +254,11 @@ class ComposerViewModel @AssistedInject constructor(
             _lockedOut.value = true
             return false
         }
+        // The reading position is its own per-note row, not part of the document: opening and scrolling must not touch
+        // the note's content, modified time, preview or container.
+        val viewState = EditorTrace.section("open:viewstate") {
+            runCatching { notes.loadViewState(id) }.getOrNull()
+        }
         // The two things the editor needs before it can compose with final values, off the main thread while the blank
         // page shows: the body text + the one layout that shapes the whole note (see prepareEditorText), and the tool
         // prefs (so the first composition has the real pen setup instead of recomposing when it arrives).
@@ -279,6 +284,8 @@ class ComposerViewModel @AssistedInject constructor(
                 prefs = prefs,
                 initialPrefs = toolPrefs,
                 clipboard = clipboard,
+                initialViewState = viewState,
+                viewStateSink = { state -> notes.saveViewState(id, state) },
             )
         }.also { it.autoSave = autoSave }
         // Binds the prepared body before the session is published, so the editor adopts it instead of building one.

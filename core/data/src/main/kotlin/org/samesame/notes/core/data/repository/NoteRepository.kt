@@ -7,6 +7,7 @@ import org.samesame.notes.core.document.NoteDocument as NoteDocumentV1View
 import org.samesame.notes.core.document.NoteSnapshot
 import org.samesame.notes.core.ink.page.PageContent
 import org.samesame.notes.core.model.document.NoteDocument
+import org.samesame.notes.core.model.document.ViewState
 import org.samesame.notes.core.model.FolderId
 import org.samesame.notes.core.model.Note
 import org.samesame.notes.core.model.NoteFilter
@@ -53,6 +54,16 @@ interface NoteRepository {
 
     /** Throws [org.samesame.notes.core.document.NoteLockedException] from the content calls until [openLockedNote] ran. */
     suspend fun loadPage(id: NoteId, pageId: String): PageContent
+
+    /**
+     * The note's stored reading position (page, offset in page, zoom), or null when it was never scrolled. It lives
+     * outside the document bundle: reading and scrolling a note must not change it (no `modified_at` bump, no preview
+     * re-render, no container repack). A locked note stores only these three numbers here, never its content.
+     */
+    suspend fun loadViewState(id: NoteId): ViewState? = null
+
+    /** Stores a reading position only. Never touches the document, the catalog or the container. */
+    suspend fun saveViewState(id: NoteId, state: ViewState) {}
 
     /**
      * Writes image/media bytes into the note's bundle (`media/<sha256>.<ext>`) and returns the stored

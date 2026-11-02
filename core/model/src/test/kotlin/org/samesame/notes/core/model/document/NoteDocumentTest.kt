@@ -31,17 +31,27 @@ class NoteDocumentTest {
                 PageSpec("p1", TemplateRef.Builtin(PageTemplate.GridMedium), 5L, true, PdfBackground("media/x.pdf", 2)),
                 PageSpec("p2", TemplateRef.Image("media/bg.png"), size = PageSize(612f, 792f)),
             ),
-            viewState = ViewState(1, 20f, 1.5f),
         )
         assertThat(NoteDocument.fromJson(doc.toJson())).isEqualTo(doc)
     }
 
-    @Test fun `defaults are written and version is 6`() {
+    @Test fun `defaults are written and version is 7`() {
         val json = NoteDocument(id = "n", pages = listOf(PageSpec("p"))).toJson()
-        assertThat(json).contains("\"formatVersion\":6")
+        assertThat(json).contains("\"formatVersion\":7")
         assertThat(json).contains("\"size\":null")
         assertThat(json).contains("\"recordings\":[]")
+        // v7 moved the reading position out of the document: it must never be written there again.
+        assertThat(json).doesNotContain("\"viewState\"")
         assertThat(NoteDocument.fromJson(json).formatVersion).isEqualTo(NOTE_DOCUMENT_FORMAT_VERSION)
+    }
+
+    @Test fun `a v6 document's view state field is ignored`() {
+        // The old reader lives in core:document (the store migration); the model itself has no such field in v7.
+        val v6 = """{"formatVersion":6,"id":"n","pages":[{"id":"p"}],""" +
+            """"viewState":{"pageIndex":2,"offsetInPage":40.0,"zoom":1.5}}"""
+        val doc = NoteDocument.fromJson(v6)
+        assertThat(doc.pages.single().id).isEqualTo("p")
+        assertThat(doc.toJson()).doesNotContain("\"viewState\"")
     }
 
     @Test fun `unknown keys are ignored and missing defaults filled`() {

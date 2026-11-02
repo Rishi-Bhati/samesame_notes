@@ -81,7 +81,7 @@ class NoteDocumentMigrationsTest {
     fun newerVersionIsRejected() = runBlocking<Unit> {
         val root = tmp.newFolder("notes")
         File(root, "n1").mkdirs()
-        File(root, "n1/document.json").writeText("""{"formatVersion":7,"id":"n1","pages":[]}""")
+        File(root, "n1/document.json").writeText("""{"formatVersion":8,"id":"n1","pages":[]}""")
         assertThrows(IOException::class.java) { runBlocking { store(root).readDocument("n1") } }
         Unit
     }
@@ -192,8 +192,29 @@ class NoteDocumentMigrationsTest {
             """{"formatVersion":6,"id":"n1","pages":[{"id":"p1","size":{"widthPt":842.0,"heightPt":595.0}},{"id":"p2"}]}""",
         )
         val doc = store(root).readDocument("n1")
+        assertThat(doc.formatVersion).isEqualTo(NOTE_DOCUMENT_FORMAT_VERSION)
         assertThat(doc.pages[0].size).isEqualTo(org.samesame.notes.core.model.document.PageSize(842f, 595f))
         assertThat(doc.pages[1].size).isNull()
+    }
+
+    /** v7 moved the reading position out of the document; a v6 value must still be readable for the store migration. */
+    @Test
+    fun v6DocumentStillReadsItsViewStateAndNeverWritesItBack() = runBlocking<Unit> {
+        val root = tmp.newFolder("notes")
+        File(root, "n1").mkdirs()
+        File(root, "n1/document.json").writeText(
+            """{"formatVersion":6,"id":"n1","pages":[{"id":"p1"}],""" +
+                """"viewState":{"pageIndex":1,"offsetInPage":120.0,"zoom":1.25}}""",
+        )
+        val store = store(root)
+        val (doc, legacyViewState) = store.readDocumentWithLegacyViewState("n1")
+        assertThat(doc.formatVersion).isEqualTo(NOTE_DOCUMENT_FORMAT_VERSION)
+        assertThat(legacyViewState).isEqualTo(org.samesame.notes.core.model.document.ViewState(1, 120f, 1.25f))
+
+        store.commit("n1", NoteSnapshot(doc.copy(title = "edited")))
+        val onDisk = File(working("n1"), "document.json").readText()
+        assertThat(onDisk).doesNotContain("\"viewState\"")
+        assertThat(NoteDocument.fromJson(onDisk).title).isEqualTo("edited")
     }
 
     @Test

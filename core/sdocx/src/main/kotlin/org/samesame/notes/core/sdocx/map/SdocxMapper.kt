@@ -46,6 +46,8 @@ object SdocxMapper {
         val document: NoteDocument,
         val title: String,
         val lock: SdocxLock,
+        /** The archive's reading position; v7 keeps it in the per-note store, not in the document. */
+        val viewState: ViewState?,
         /** Original entry name (`media/<name>`) → bytes. */
         val media: Map<String, ByteArray>,
         /** ZIP entries outside the modelled set, preserved verbatim. */
@@ -56,9 +58,15 @@ object SdocxMapper {
         document = toNoteDocument(archive, noteId),
         title = title(archive),
         lock = lockOf(archive),
+        viewState = viewStateOf(archive),
         media = archive.mediaFiles,
         extraEntries = archive.extraEntries,
     )
+
+    /** The `lastViewedPageIndex` sdocx stores, as a reading position (offset and zoom are not in the format). */
+    fun viewStateOf(archive: SdocxArchive): ViewState? = archive.endTag.lastViewedPageIndex
+        .takeIf { it in 0 until archive.pages.size }
+        ?.let { ViewState(it, 0f, 1f) }
 
     /**
      * Rewrites `TemplateRef.Image("media/<original name>")` to the stored bundle path returned for
@@ -95,6 +103,8 @@ object SdocxMapper {
         archive: SdocxArchive,
         document: NoteDocument,
         nowUs: Long,
+        /** The note's stored page; null keeps the archive's own value (a scroll is not a document edit). */
+        lastViewedPageIndex: Int? = null,
         newUuid: () -> String = { java.util.UUID.randomUUID().toString() },
     ): SdocxArchive {
         val titleChanged = title(archive) != document.title
@@ -144,7 +154,7 @@ object SdocxMapper {
             appPatchName = archive.endTag.appPatchName,
             minFormatVersion = archive.endTag.minFormatVersion,
             createdTime = archive.endTag.createdTime,
-            lastViewedPageIndex = (document.viewState?.pageIndex ?: archive.endTag.lastViewedPageIndex)
+            lastViewedPageIndex = (lastViewedPageIndex ?: archive.endTag.lastViewedPageIndex)
                 .coerceIn(0, maxOf(archive.pages.size - 1, 0)),
             // Keep the imported note's sdocx page mode: list and single both map to SameSame Pages on
             // import (see toNoteDocument), so deriving it from the layout would turn a LIST note into
@@ -187,9 +197,6 @@ object SdocxMapper {
         val mode = PageMode.Pages
         val ratio = if (pages.isNotEmpty()) ratioOf(archive.pages.first()) else PageRatio.A4Portrait
         val backgroundColor = pages.firstOrNull()?.backgroundColor
-        val viewState = archive.endTag.lastViewedPageIndex
-            .takeIf { it in 0 until pages.size }
-            ?.let { ViewState(it, 0f, 1f) }
 
         return NoteDocument(
             id = noteId,
@@ -202,7 +209,6 @@ object SdocxMapper {
             body = body,
             recordings = mapRecordings(archive),
             pages = pages,
-            viewState = viewState,
         )
     }
 
