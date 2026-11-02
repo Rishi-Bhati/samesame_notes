@@ -693,11 +693,11 @@ private fun NotesGrid(
     requestPreview: (Note) -> PreviewTicket?,
 ) {
     val mode = state.viewMode
-    val columns = when (mode) {
-        ViewMode.GridSmall, ViewMode.GridMedium -> 3
-        ViewMode.GridLarge -> 2
-        else -> 1
-    }
+    val config = androidx.compose.ui.platform.LocalConfiguration.current
+    val columns = notesGridColumns(
+        mode, config.screenWidthDp, config.smallestScreenWidthDp,
+        landscape = config.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE,
+    )
     val now = remember { System.currentTimeMillis() }
     val verticalGap = when (mode) {
         ViewMode.List -> 25.1.dp

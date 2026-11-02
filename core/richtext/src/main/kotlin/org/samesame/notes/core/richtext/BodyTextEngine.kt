@@ -107,6 +107,37 @@ class BodyTextEngine(val body: BodyText, geometry: TextPageGeometry) {
     var layout: Layout = createLayout()
         private set
 
+    /**
+     * Pages for which this returns true sit on a light surface (an imported PDF page in a dark-adjusted note): their text
+     * is painted with the light-mode colours although [colors] is the dark set. The host keeps the static page layers in
+     * step (its layer key includes the answer), because this does not bump [staticVersion] itself.
+     */
+    var lightPage: (Int) -> Boolean = { false }
+
+    /** The colour set the draw functions read: the light set while [onPageSurface] paints a light page, else [colors]. */
+    private var activeColors: RichTextColors? = null
+    private val drawColors: RichTextColors get() = activeColors ?: colors
+
+    private inline fun onPageSurface(pageIndex: Int, block: () -> Unit) {
+        val light = RichTextColors.Light
+        if (colors == light || !lightPage(pageIndex)) { block(); return }
+        val savedPaint = paint.color
+        val savedTransform = body.env.colorTransform
+        val savedPage = body.env.pageColor
+        activeColors = light
+        paint.color = light.text
+        body.env.colorTransform = KEEP_COLOUR
+        body.env.pageColor = light.page
+        try {
+            block()
+        } finally {
+            activeColors = null
+            paint.color = savedPaint
+            body.env.colorTransform = savedTransform
+            body.env.pageColor = savedPage
+        }
+    }
+
     private var cached: Pagination? = null
     private var cachedVersion = -1L
     private val path = Path()
@@ -404,11 +435,13 @@ class BodyTextEngine(val body: BodyText, geometry: TextPageGeometry) {
         val save = enterPage(canvas, pageIndex, inPageSpace)
         if (save < 0) return
         val slice = pagination().slices[pageIndex]
-        if (body.length == 0 && decorations.hint != null && pageIndex == 0) {
-            drawHint(canvas, decorations.hint)
+        onPageSurface(pageIndex) {
+            if (body.length == 0 && decorations.hint != null && pageIndex == 0) {
+                drawHint(canvas, decorations.hint)
+            }
+            drawBodyText(canvas, slice.firstLine, slice.lastLine, decorations.links)
+            if (decorations.links) drawLinks(canvas)
         }
-        drawBodyText(canvas, slice.firstLine, slice.lastLine, decorations.links)
-        if (decorations.links) drawLinks(canvas)
         canvas.restoreToCount(save)
     }
 
@@ -425,10 +458,12 @@ class BodyTextEngine(val body: BodyText, geometry: TextPageGeometry) {
         if (empty != null) {
             val line = layout.lineCount - 1
             if (line in slice.firstLine..slice.lastLine) {
-                ParagraphSpan.drawMarker(
-                    canvas, paint, empty.indent * BodyTextMetrics.INDENT_STEP, layout.getLineBaseline(line).toFloat(),
-                    fontSizePu(body.typingStyle?.fontSize), empty, body.numbers.lastOrNull() ?: 0, body.env,
-                )
+                onPageSurface(pageIndex) {
+                    ParagraphSpan.drawMarker(
+                        canvas, paint, empty.indent * BodyTextMetrics.INDENT_STEP, layout.getLineBaseline(line).toFloat(),
+                        fontSizePu(body.typingStyle?.fontSize), empty, body.numbers.lastOrNull() ?: 0, body.env,
+                    )
+                }
             }
         }
         if (caret) {
@@ -436,7 +471,7 @@ class BodyTextEngine(val body: BodyText, geometry: TextPageGeometry) {
             if (pag.sliceForLine(line).pageIndex == pageIndex) {
                 val x = caretX(sel.min, line)
                 val w = BodyTextMetrics.CARET_WIDTH
-                tmpPaint.color = colors.caret
+                tmpPaint.color = drawColors.caret
                 tmpPaint.style = Paint.Style.FILL
                 canvas.drawRect(x - w / 2f, layout.getLineTop(line).toFloat(), x + w / 2f, lineBottomForCaret(line), tmpPaint)
             }
@@ -643,24 +678,24 @@ class BodyTextEngine(val body: BodyText, geometry: TextPageGeometry) {
         if (!linkPath.isEmpty) {
             save = canvas.save()
             canvas.clipPath(linkPath)
-            paint.color = colors.handle
+            paint.color = drawColors.handle
             layout.draw(canvas)
             canvas.restoreToCount(save)
         }
         if (!checkedPath.isEmpty) {
             save = canvas.save()
             canvas.clipPath(checkedPath)
-            paint.color = blend(colors.text, colors.page, BodyTextMetrics.CHECKED_ALPHA)
+            paint.color = blend(drawColors.text, drawColors.page, BodyTextMetrics.CHECKED_ALPHA)
             layout.draw(canvas)
             canvas.restoreToCount(save)
             drawStrikes(canvas, checkedLineList, firstLine, lastLine)
         }
-        paint.color = colors.text
+        paint.color = drawColors.text
     }
 
     private fun drawStrikes(canvas: Canvas, lines: List<Int>, firstLine: Int, lastLine: Int) {
         tmpPaint.style = Paint.Style.STROKE
-        tmpPaint.color = blend(colors.text, colors.page, BodyTextMetrics.CHECKED_STRIKE_ALPHA)
+        tmpPaint.color = blend(drawColors.text, drawColors.page, BodyTextMetrics.CHECKED_STRIKE_ALPHA)
         tmpPaint.strokeWidth = paint.textSize * BodyTextMetrics.CHECKBOX_STROKE_EM * 0.92f
         val y = paint.textSize * 0.30f
         for (line in lines) {
@@ -687,7 +722,7 @@ class BodyTextEngine(val body: BodyText, geometry: TextPageGeometry) {
     private fun drawLinks(canvas: Canvas) {
         if (underlineCount == 0) return
         tmpPaint.style = Paint.Style.STROKE
-        tmpPaint.color = colors.handle
+        tmpPaint.color = drawColors.handle
         tmpPaint.strokeWidth = 1.5f
         canvas.drawLines(underlines, 0, underlineCount * 4, tmpPaint)
         tmpPaint.style = Paint.Style.FILL
@@ -714,9 +749,10 @@ class BodyTextEngine(val body: BodyText, geometry: TextPageGeometry) {
                 .build()
             hintText = hint
         }
-        hintLayout!!.paint.color = colors.hint
+        hintLayout!!.paint.color = drawColors.hint
         hintLayout!!.draw(canvas)
     }
 }
 
 private val DEFAULT_PARAGRAPH = ParagraphStyle()
+private val KEEP_COLOUR: (Int) -> Int = { it }

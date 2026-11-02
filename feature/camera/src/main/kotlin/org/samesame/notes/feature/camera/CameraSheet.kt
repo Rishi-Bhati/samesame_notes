@@ -104,6 +104,23 @@ fun CameraSheet(
         }
     }
 
+    // The activity handles rotation itself (no recreation), so the use cases are told the new display rotation: the
+    // preview stays upright and the saved JPEG carries the right orientation.
+    DisposableEffect(context, preview, capture, previewView) {
+        val displays = context.getSystemService(android.hardware.display.DisplayManager::class.java)
+        val listener = object : android.hardware.display.DisplayManager.DisplayListener {
+            override fun onDisplayAdded(displayId: Int) = Unit
+            override fun onDisplayRemoved(displayId: Int) = Unit
+            override fun onDisplayChanged(displayId: Int) {
+                val rotation = previewView.display?.rotation ?: return
+                preview.targetRotation = rotation
+                capture.targetRotation = rotation
+            }
+        }
+        displays?.registerDisplayListener(listener, android.os.Handler(android.os.Looper.getMainLooper()))
+        onDispose { displays?.unregisterDisplayListener(listener) }
+    }
+
     BoxWithConstraints(modifier.fillMaxSize()) {
         val sheetPx = with(density) { CameraSheetMath.sheetHeight(maxHeight.toPx()) }
         val sheetDp = with(density) { sheetPx.toDp() }

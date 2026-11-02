@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -86,7 +88,8 @@ internal fun PanelCard(
         else if (SameSameTheme.colors.isDark) null else BorderStroke(0.5.dp, Color(0xFFC7C7C7)),
         shadowElevation = 2.dp,
     ) {
-        androidx.compose.foundation.layout.Box(Modifier.alpha(if (dimmed) 0.3f else 1f)) { content() }
+        // Scrolls when the window is shorter than the panel (landscape phones): the card shrinks to the window and the foot stays reachable.
+        androidx.compose.foundation.layout.Box(Modifier.alpha(if (dimmed) 0.3f else 1f).verticalScroll(rememberScrollState())) { content() }
     }
 }
 

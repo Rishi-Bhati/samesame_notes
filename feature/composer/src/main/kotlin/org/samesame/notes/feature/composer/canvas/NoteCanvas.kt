@@ -196,7 +196,14 @@ fun NoteCanvas(
                 awaitPointerEventScope {
                     while (true) {
                         val ev = awaitPointerEvent(PointerEventPass.Initial)
-                        if (ev.changes.any { it.pressed && !it.previousPressed }) liveTransform.sync(viewport, layout)
+                        val down = ev.changes.firstOrNull { it.pressed && !it.previousPressed }
+                        if (down != null) {
+                            liveTransform.sync(viewport, layout)
+                            // The stroke about to start shows with the page it lands on: a PDF page keeps the stored colours.
+                            liveTransform.downOnLightPage = darkAdjust &&
+                                StrokePlacement.pageFor(viewport.viewToDoc(down.position), layout)
+                                    ?.let { i -> source.document.pages.getOrNull(i)?.let { !adjustsForDark(it, true) } } == true
+                        }
                     }
                 }
             }
@@ -251,6 +258,13 @@ private const val INDICATOR_RIGHT_PX = 42
 private const val INDICATOR_BOTTOM_PX = 0
 
 private fun Color.luminanceIsDark(): Boolean = (red * 0.299f + green * 0.587f + blue * 0.114f) < 0.5f
+
+/**
+ * Whether a page takes the dark-mode colour adjustment. A page with a picture as its background (an imported PDF page, an
+ * image template) keeps its own light surface in a dark note, so everything written on it (ink, text, text boxes) keeps its
+ * stored colours: inverting them put black pen strokes and light text on white paper, where they could not be seen.
+ */
+internal fun adjustsForDark(spec: PageSpec, darkAdjust: Boolean): Boolean = darkAdjust && spec.template !is TemplateRef.Image
 
 /**
  * Page background. Default: near-black on a dark adjusted page like #26, white otherwise. A stored colour is
@@ -395,11 +409,12 @@ private class PageDrawer(
             val layer = backgroundLayer(this, i)
             inPage(r, org, sc) { replay(layer) }
             if (isPages) {
+                val adjusted = adjustsForDark(d.pages[i], darkAdjust)
                 val pageWidth = r.width
                 val bottom = org.y + r.bottom * sc
                 // Page bottom edge (#26: row 1974 is #171717 and row 1975 #363636, the page ending at 1974).
                 val edgeX = org.x + r.left * sc
-                if (darkAdjust) {
+                if (adjusted) {
                     drawRect(EDGE_DARK_INNER, Offset(edgeX, bottom - 1f), Size(pageWidth * sc, 1f))
                     drawRect(EDGE_DARK_OUTER, Offset(edgeX, bottom), Size(pageWidth * sc, 1f))
                 } else {
@@ -442,10 +457,11 @@ private class PageDrawer(
             if (content.elements.isEmpty()) continue
             val r = lay.pageRects[i]
             if (live != null && live.pageId == spec.id) {
+                val adjusted = adjustsForDark(spec, darkAdjust)
                 inPage(r, org, sc) {
                     if (isPages) clipRect(0f, 0f, r.width, r.height) {
-                        drawInk(renderer, cache, spec, content.elements, darkAdjust, objectImage, live, painters, hidden, ObjectPass.Front)
-                    } else drawInk(renderer, cache, spec, content.elements, darkAdjust, objectImage, live, painters, hidden, ObjectPass.Front)
+                        drawInk(renderer, cache, spec, content.elements, adjusted, objectImage, live, painters, hidden, ObjectPass.Front)
+                    } else drawInk(renderer, cache, spec, content.elements, adjusted, objectImage, live, painters, hidden, ObjectPass.Front)
                 }
                 continue
             }
@@ -477,7 +493,7 @@ private class PageDrawer(
     private fun backgroundKey(i: Int): LayerKey {
         val spec = d.pages[i]
         val pageSize = lay.pageSize(i)
-        val bg = pageColor(spec, d.style.backgroundColor, darkTheme, darkAdjust)
+        val bg = pageColor(spec, d.style.backgroundColor, darkTheme, adjustsForDark(spec, darkAdjust))
         val tpl = (spec.template as? TemplateRef.Builtin)?.template ?: PageTemplate.Blank
         val lineColor = if (bg.luminanceIsDark()) LINE_ON_DARK else LINE_ON_LIGHT
         val phase = if (lay.isInfinite) lay.pageRects[i].top else 0f
@@ -501,7 +517,7 @@ private class PageDrawer(
     private fun recordBackground(scope: DrawScope, i: Int) = with(scope) {
         val spec = d.pages[i]
         val pageSize = lay.pageSize(i)
-        val bg = pageColor(spec, d.style.backgroundColor, darkTheme, darkAdjust)
+        val bg = pageColor(spec, d.style.backgroundColor, darkTheme, adjustsForDark(spec, darkAdjust))
         val tpl = (spec.template as? TemplateRef.Builtin)?.template ?: PageTemplate.Blank
         val lineColor = if (bg.luminanceIsDark()) LINE_ON_DARK else LINE_ON_LIGHT
         val phase = if (lay.isInfinite) lay.pageRects[i].top else 0f
@@ -517,7 +533,7 @@ private class PageDrawer(
         val pageSize = lay.pageSize(i)
         return cache.key.set(
             a = content, b = objectKey, c = liveHere?.ids,
-            l1 = if (darkAdjust) 1L else 0L, l2 = hiddenKey,
+            l1 = if (adjustsForDark(d.pages[i], darkAdjust)) 1L else 0L, l2 = hiddenKey,
             width = pageSize.width.toInt(), height = pageSize.height.toInt() + 1,
         )
     }
@@ -528,14 +544,16 @@ private class PageDrawer(
         return cache.layer(cache.slot(spec.id, LayerSlots.KIND_BEHIND), k, scope) {
             val pageSize = lay.pageSize(i)
             clipRect(0f, 0f, pageSize.width, pageSize.height) {
-                drawInk(renderer, cache, spec, content.elements, darkAdjust, objectImage, liveHere, painters, hidden, ObjectPass.Behind)
+                drawInk(renderer, cache, spec, content.elements, adjustsForDark(spec, darkAdjust), objectImage, liveHere, painters, hidden, ObjectPass.Behind)
             }
         }
     }
 
     private fun textKey(i: Int): LayerKey {
         val pageSize = lay.pageSize(i)
-        return cache.key.set(l1 = textVersion, l2 = i.toLong(), width = pageSize.width.toInt(), height = pageSize.height.toInt() + 1)
+        // l3: the page sits on a light surface in a dark note (PDF page), its text is painted with the light colours.
+        val light = if (darkAdjust && !adjustsForDark(d.pages[i], darkAdjust)) 1L else 0L
+        return cache.key.set(l1 = textVersion, l2 = i.toLong(), l3 = light, width = pageSize.width.toInt(), height = pageSize.height.toInt() + 1)
     }
 
     private fun textLayer(scope: DrawScope, i: Int, pageText: PageTextPainter): GraphicsLayer {
@@ -549,7 +567,7 @@ private class PageDrawer(
         val pageSize = lay.pageSize(i)
         return cache.key.set(
             a = content, b = objectKey,
-            l1 = if (darkAdjust) 1L else 0L, l2 = hiddenKey,
+            l1 = if (adjustsForDark(d.pages[i], darkAdjust)) 1L else 0L, l2 = hiddenKey,
             width = pageSize.width.toInt(), height = pageSize.height.toInt() + 1,
         )
     }
@@ -560,9 +578,10 @@ private class PageDrawer(
         return cache.layer(cache.slot(spec.id, LayerSlots.KIND_INK), k, scope) {
             cache.pruneDisplay(spec.id, content.elements.mapTo(HashSet()) { it.id })
             val pageSize = lay.pageSize(i)
+            val adjusted = adjustsForDark(spec, darkAdjust)
             if (d.layout.mode == PageMode.Pages) clipRect(0f, 0f, pageSize.width, pageSize.height) {
-                drawInk(renderer, cache, spec, content.elements, darkAdjust, objectImage, null, painters, hidden, ObjectPass.Front)
-            } else drawInk(renderer, cache, spec, content.elements, darkAdjust, objectImage, null, painters, hidden, ObjectPass.Front)
+                drawInk(renderer, cache, spec, content.elements, adjusted, objectImage, null, painters, hidden, ObjectPass.Front)
+            } else drawInk(renderer, cache, spec, content.elements, adjusted, objectImage, null, painters, hidden, ObjectPass.Front)
         }
     }
 
@@ -609,6 +628,9 @@ internal class LiveInkTransform {
     val docToView = Matrix()
     val pointerToWorld = Matrix()
     val mask = Path()
+
+    /** The pen went down on a page that keeps its light surface in a dark note (PDF page): the live stroke uses the stored colour. */
+    @Volatile var downOnLightPage = false
     private val view = Path()
     private val pages = Path()
     private var lastOrigin = Offset.Unspecified
@@ -655,7 +677,7 @@ private fun LiveInk(
 
     InProgressStrokes(
         defaultBrush = displayBrush,
-        nextBrush = { displayBrush },
+        nextBrush = { if (transform.downOnLightPage) latestBrush else displayBrush },
         pointerEventToWorldTransform = transform.pointerToWorld,
         strokeToWorldTransform = transform.docToView,
         maskPath = transform.mask,

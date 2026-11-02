@@ -146,6 +146,21 @@ class EditorSessionTest {
         assertThat(s.insertPagesAfter("p1", emptyList())).isFalse()
     }
 
+    @Test fun insertedPdfPagesTakeInkAndKeepItThroughUndoRedo() = runTest {
+        val s = session("p1", "p2")
+        runCurrent()
+        val pdf = listOf(PageSpec("q1", TemplateRef.Image("media/a.png")), PageSpec("q2", TemplateRef.Image("media/b.png")))
+        s.insertPagesAfter("p1", pdf)
+        assertThat(s.addElements("q1", listOf(fakeElement(5)))).isTrue()
+        assertThat(s.addElements("q2", listOf(fakeElement(6)))).isTrue()
+        assertThat(s.content("q1")!!.elements.map { it.id.value }).containsExactly(5L)
+        s.undo() // the stroke on q2
+        s.undo() // the stroke on q1
+        assertThat(s.content("q1")!!.elements).isEmpty()
+        s.redo()
+        assertThat(s.content("q1")!!.elements.map { it.id.value }).containsExactly(5L)
+    }
+
     @Test fun deletedPageComesBackWithItsInkOnUndo() = runTest {
         val s = session("p1", "p2")
         runCurrent()

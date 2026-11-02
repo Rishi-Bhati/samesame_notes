@@ -177,6 +177,9 @@ import org.samesame.notes.feature.composer.voice.VoiceDockedMenu
 import org.samesame.notes.feature.composer.voice.VoiceRecordPill
 import org.samesame.notes.feature.composer.voice.VoiceListState
 import org.samesame.notes.feature.composer.voice.VoicePlaybackHub
+import org.samesame.notes.feature.composer.voice.isChangingConfigurations
+import org.samesame.notes.feature.composer.voice.onEditorDisposed
+import org.samesame.notes.feature.composer.voice.onEditorStopped
 import org.samesame.notes.feature.composer.voice.VoiceRecordService
 import org.samesame.notes.feature.composer.voice.VoiceRecording
 import org.samesame.notes.feature.composer.voice.VoiceRecordingHub
@@ -206,6 +209,7 @@ import org.samesame.notes.feature.composer.text.TextActions
 import org.samesame.notes.feature.composer.canvas.LassoCropOverlay
 import org.samesame.notes.feature.composer.canvas.LiveSelection
 import org.samesame.notes.feature.composer.canvas.ObjectImageCache
+import org.samesame.notes.feature.composer.canvas.adjustsForDark
 import org.samesame.notes.feature.composer.canvas.InlineObjectPainter
 import org.samesame.notes.feature.composer.canvas.ObjectPainters
 import org.samesame.notes.feature.share.PageSaveFormats
@@ -549,6 +553,10 @@ internal fun ComposerEditor(
     /** The last press in the view state came from a stylus (or its eraser end): its tap edits in pen mode. */
     var lastViewDownStylus by remember { mutableStateOf(false) }
     SideEffect { textState.readOnlySelect = tb.mode == EditorMode.Reading && tb.viewMode }
+    // A page with a picture as its background (imported PDF) stays light in a dark note, so its text keeps the light colours too.
+    SideEffect {
+        textState.engine.lightPage = { i -> darkAdjust && session.holder.current.pages.getOrNull(i)?.let { !adjustsForDark(it, true) } == true }
+    }
     LaunchedEffect(textMode, pendingEditTap) {
         val d = pendingEditTap ?: return@LaunchedEffect
         if (!textMode) return@LaunchedEffect
@@ -733,7 +741,8 @@ internal fun ComposerEditor(
         snapshotFlow { viewport.scroll to viewport.zoom }.debounce(600).collect { saveViewState() }
     }
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
-        VoicePlaybackHub.peek()?.pause() // a recording keeps going in its service; playback does not
+        // a recording keeps going in its service; playback pauses, but not across a rotation (the player is process-wide)
+        VoicePlaybackHub.peek()?.onEditorStopped(appContext.isChangingConfigurations())
         endTextBoxEdit()
         saveViewState()
         onStop()
@@ -1256,7 +1265,7 @@ internal fun ComposerEditor(
         player.setTracks(recordingRows.map { Track(it.id, voiceFile(it.media), it.durationMs) })
     }
     LaunchedEffect(recordingRows) { registerTracks() }
-    DisposableEffect(session) { onDispose { player.close(); player.setTracks(emptyList()) } }
+    DisposableEffect(session) { onDispose { player.onEditorDisposed(context.isChangingConfigurations()) } }
     fun startRecording() {
         val pageIndex = currentPage
         val pageId = doc.pages.getOrNull(pageIndex)?.id

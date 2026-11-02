@@ -86,7 +86,7 @@ fun SaveAsFileDialog(
                         color = MaterialTheme.colorScheme.onSurface, maxLines = 1,
                     )
                 }
-                Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp)) {
+                Column(Modifier.heightIn(max = 420.dp).weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp)) {
                     rows.forEach { (format, label) ->
                         Row(
                             Modifier.fillMaxWidth().height(52.dp)
