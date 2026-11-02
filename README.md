@@ -35,7 +35,7 @@ SameSame notes is not affiliated with, endorsed by or sponsored by Samsung Elect
 | Samsung Notes files | `.sdocx` import and export |
 | Cloud sync and backup | Not built yet (see the roadmap) |
 | Licence | MIT OR Apache-2.0, at your option |
-| Downloads | Alpha builds will be published on the GitHub Releases page. Until then, build from source. |
+| Downloads | Released alpha builds are on the [GitHub Releases](https://github.com/Rishi-Bhati/samesame_notes/releases) page. |
 
 <!-- Screenshots: add images of the home screen, the editor and dark theme here once alpha builds are published. Do not add placeholder images. -->
 
@@ -158,11 +158,12 @@ Everything in this section is planned, not built. The items are in rough order.
 
 ## Download and install
 
-Alpha builds will be attached to the
-[GitHub Releases](https://github.com/Rishi-Bhati/samesame_notes/releases) page. Only install alpha builds from
-this repository's Releases page. Android asks you to allow installing from an unknown source the first time.
+Alpha builds are published on the
+[GitHub Releases](https://github.com/Rishi-Bhati/samesame_notes/releases) page. 0.1.0-alpha and 0.1.1-alpha are
+available there. Only install alpha builds from this repository's Releases page. Android asks you to allow
+installing from an unknown source the first time.
 
-Until a release is published, build the app from source as described below.
+Installing a new build over an old one keeps your notes and settings. To build the app from source, see below.
 
 ## Getting started
 
