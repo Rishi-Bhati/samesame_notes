@@ -25,6 +25,7 @@ import org.samesame.notes.core.richtext.BodyTextEngine
 import org.samesame.notes.core.richtext.TextLink
 import org.samesame.notes.core.richtext.CaretGeometry
 import org.samesame.notes.core.richtext.PageTextPainter
+import org.samesame.notes.core.richtext.PreparedTextLayout
 import org.samesame.notes.core.richtext.RichTextColors
 import org.samesame.notes.core.richtext.TextDecorations
 import org.samesame.notes.core.richtext.edit.TextEditEvent
@@ -47,8 +48,10 @@ class RichTextEditorState(
     val body: BodyText,
     geometry: TextPageGeometry,
     private val context: Context,
+    /** Text shaped earlier on a background thread ([BodyTextEngine.prepare]); the first frame then draws instead of shaping. */
+    prepared: PreparedTextLayout? = null,
 ) {
-    val engine = BodyTextEngine(body, geometry)
+    val engine = BodyTextEngine(body, geometry, prepared)
 
     /** Bumped on every body change; read it in draw code to redraw. */
     var revision by mutableLongStateOf(0L)
@@ -504,9 +507,13 @@ internal object RichClipboard {
 
 /** Remembers a [RichTextEditorState] for [body]; disposes it when it leaves composition. */
 @Composable
-fun rememberRichTextEditorState(body: BodyText, geometry: TextPageGeometry): RichTextEditorState {
+fun rememberRichTextEditorState(
+    body: BodyText,
+    geometry: TextPageGeometry,
+    prepared: PreparedTextLayout? = null,
+): RichTextEditorState {
     val context = LocalContext.current
-    val state = remember(body) { RichTextEditorState(body, geometry, context.applicationContext) }
+    val state = remember(body) { RichTextEditorState(body, geometry, context.applicationContext, prepared) }
     state.geometry = geometry
     DisposableEffect(state) { onDispose { state.dispose() } }
     return state

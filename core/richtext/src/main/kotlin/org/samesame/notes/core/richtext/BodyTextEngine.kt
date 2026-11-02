@@ -69,19 +69,27 @@ data class TextDecorations(
 )
 
 /**
+ * The paint and the shaped [layout] of a body, built by [BodyTextEngine.prepare] on any thread and then adopted by the
+ * engine (see [BodyTextEngine]). The engine must use the same paint instance the layout was built with: `Layout.draw`
+ * paints with the paint it holds, and the engine retints it (link/checked runs, dark mode).
+ */
+class PreparedTextLayout(val paint: TextPaint, val layout: Layout)
+
+/**
  * Lays the body out as one `DynamicLayout` column (pu, incremental on edits), maps it onto pages
  * ([pagination]), answers hit tests and caret/selection geometry in document space and draws page
  * slices (doc §2.2). Main thread only.
+ *
+ * @param prepared layout already shaped by [prepare] (off the main thread, e.g. while the editor's placeholder shows):
+ *   adopted as is, so opening a note does not shape its whole text on the first frame.
  */
-class BodyTextEngine(val body: BodyText, geometry: TextPageGeometry) {
+class BodyTextEngine(
+    val body: BodyText,
+    geometry: TextPageGeometry,
+    prepared: PreparedTextLayout? = null,
+) {
 
-    val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-        textSize = BodyTextMetrics.DEFAULT_TEXT_SIZE_PU
-        isSubpixelText = true
-        @Suppress("DEPRECATION")
-        isLinearText = true // glyphs are scaled by the canvas zoom, not hinted at 1×
-        typeface = body.env.typeface
-    }
+    val paint: TextPaint = prepared?.paint ?: paintFor(body)
 
     var colors: RichTextColors = RichTextColors.Light
         set(value) {
@@ -104,7 +112,9 @@ class BodyTextEngine(val body: BodyText, geometry: TextPageGeometry) {
             body.invalidateDrawing()
         }
 
-    var layout: Layout = createLayout()
+    // A prepared layout is only adopted when it was shaped for this column; otherwise build one now (never mix widths).
+    var layout: Layout =
+        prepared?.layout?.takeIf { it.width == geometry.columnWidth.toInt() } ?: createLayout()
         private set
 
     /**
@@ -149,39 +159,13 @@ class BodyTextEngine(val body: BodyText, geometry: TextPageGeometry) {
         body.env.maxObjectWidth = geometry.columnWidth
     }
 
-    private fun createLayout(): Layout {
-        val width = geometry.columnWidth.toInt()
-        body.env.maxObjectWidth = width.toFloat()
-        // Ruled pages: the line height is a whole number of template rules (LinePitchSpan), so leave the line
-        // spacing multiplier at 1 and let the span do the work.
-        body.setLinePitch(templateLinePitch())
-        val mult = if (templateLinePitch() != null) 1f else BodyTextMetrics.LINE_SPACING_MULT
-        return if (Build.VERSION.SDK_INT >= 28) {
-            DynamicLayout.Builder.obtain(body.editable, paint, width)
-                .setAlignment(Layout.Alignment.ALIGN_NORMAL)
-                .setLineSpacing(0f, mult)
-                .setIncludePad(false)
-                .setUseLineSpacingFromFallbacks(true)
-                .build()
-        } else {
-            @Suppress("DEPRECATION")
-            DynamicLayout(body.editable, paint, width, Layout.Alignment.ALIGN_NORMAL, mult, 0f, false)
-        }
-    }
+    private fun createLayout(): Layout = buildLayout(body, paint, geometry)
 
     /**
      * The ruled-template spacing shared by every ruled page (null when no page has one, or when pages mix
      * different templates: one column layout can only use one pitch). Blank/image/PDF pages are not counted.
      */
-    fun templateLinePitch(): Float? {
-        if (geometry.pageCount <= 0) return null
-        var found: Float? = null
-        for (i in 0 until geometry.pageCount) {
-            val p = geometry.linePitch(i) ?: continue
-            if (found == null) found = p else if (found != p) return null
-        }
-        return found
-    }
+    fun templateLinePitch(): Float? = templateLinePitch(geometry)
 
     /** Extra shift (doc pu) that puts the first line of page [pageIndex] on the page's first template rule. */
     private fun templateShift(pageIndex: Int): Float {
@@ -752,6 +736,59 @@ class BodyTextEngine(val body: BodyText, geometry: TextPageGeometry) {
         hintLayout!!.paint.color = drawColors.hint
         hintLayout!!.draw(canvas)
     }
+
+    companion object {
+        /** The engine's paint for [body]; [prepare] shapes with the same configuration so the metrics match. */
+        fun paintFor(body: BodyText): TextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            textSize = BodyTextMetrics.DEFAULT_TEXT_SIZE_PU
+            isSubpixelText = true
+            @Suppress("DEPRECATION")
+            isLinearText = true // glyphs are scaled by the canvas zoom, not hinted at 1×
+            typeface = body.env.typeface
+        }
+
+        /**
+         * Shapes the whole body for [geometry] on the calling thread: call it on Dispatchers.Default while the editor
+         * still shows its placeholder, then pass the result to [BodyTextEngine] (which adopts it instead of shaping
+         * again on the first frame). The body must not be edited meanwhile — the editor is not composed yet.
+         */
+        fun prepare(body: BodyText, geometry: TextPageGeometry): PreparedTextLayout {
+            val paint = paintFor(body)
+            return PreparedTextLayout(paint, buildLayout(body, paint, geometry))
+        }
+    }
+}
+
+/** One `DynamicLayout` column of [body], `geometry.columnWidth` wide (see [BodyTextEngine.createLayout]). */
+private fun buildLayout(body: BodyText, paint: TextPaint, geometry: TextPageGeometry): Layout {
+    val width = geometry.columnWidth.toInt()
+    body.env.maxObjectWidth = width.toFloat()
+    // Ruled pages: the line height is a whole number of template rules (LinePitchSpan), so leave the line
+    // spacing multiplier at 1 and let the span do the work.
+    val pitch = templateLinePitch(geometry)
+    body.setLinePitch(pitch)
+    val mult = if (pitch != null) 1f else BodyTextMetrics.LINE_SPACING_MULT
+    return if (Build.VERSION.SDK_INT >= 28) {
+        DynamicLayout.Builder.obtain(body.editable, paint, width)
+            .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+            .setLineSpacing(0f, mult)
+            .setIncludePad(false)
+            .setUseLineSpacingFromFallbacks(true)
+            .build()
+    } else {
+        @Suppress("DEPRECATION")
+        DynamicLayout(body.editable, paint, width, Layout.Alignment.ALIGN_NORMAL, mult, 0f, false)
+    }
+}
+
+private fun templateLinePitch(geometry: TextPageGeometry): Float? {
+    if (geometry.pageCount <= 0) return null
+    var found: Float? = null
+    for (i in 0 until geometry.pageCount) {
+        val p = geometry.linePitch(i) ?: continue
+        if (found == null) found = p else if (found != p) return null
+    }
+    return found
 }
 
 private val DEFAULT_PARAGRAPH = ParagraphStyle()

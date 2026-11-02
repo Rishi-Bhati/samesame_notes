@@ -15,6 +15,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.samesame.notes.core.document.NoteSnapshot
+import org.samesame.notes.feature.composer.perf.EditorTrace
 
 /** A snapshot taken on the main thread plus what to do once it is on disk. */
 class PendingSave(val snapshot: NoteSnapshot, val onSaved: () -> Unit)
@@ -81,7 +82,7 @@ class Autosaver(
         mutex.withLock {
             if (!containerDirty && !close) return
             try {
-                withContext(io) { packContainer(close) }
+                withContext(io) { EditorTrace.section("close:pack") { packContainer(close) } }
                 containerDirty = false
             } catch (e: CancellationException) {
                 throw e
@@ -138,9 +139,9 @@ class Autosaver(
 
     /** True when clean or saved; false when the write failed (flags kept). */
     private suspend fun saveOnce(): Boolean = mutex.withLock {
-        val pending = source.takeSnapshot() ?: return@withLock true
+        val pending = EditorTrace.section("save:snapshot") { source.takeSnapshot() } ?: return@withLock true
         try {
-            withContext(io) { write(pending.snapshot) }
+            withContext(io) { EditorTrace.section("save:write") { write(pending.snapshot) } }
             pending.onSaved()
             containerDirty = true
             true

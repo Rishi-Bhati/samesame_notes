@@ -122,6 +122,8 @@ class EditorSession(
     /** Writes image bytes into the bundle and returns the stored `media/<name>` path. */
     private val mediaSink: suspend (bytes: ByteArray, extension: String) -> String = { _, _ -> "" },
     prefs: EditorPreferencesRepository,
+    /** Tool prefs already read off the main thread (see [ToolController]); defaults are used only when not given. */
+    initialPrefs: org.samesame.notes.core.data.repository.EditorPreferences = org.samesame.notes.core.data.repository.EditorPreferences(),
     val clipboard: EditorClipboard = EditorClipboard(),
     clock: () -> Long = System::currentTimeMillis,
     maxLoadedPages: Int = PageStore.DEFAULT_MAX_LOADED,
@@ -138,6 +140,7 @@ class EditorSession(
         scope,
         prefs,
         initial = ToolbarState(mode = initialMode, viewMode = initialMode == EditorMode.Reading),
+        initialPrefs = initialPrefs,
         onModeOrToolChanged = { history.breakBurst() },
     )
 

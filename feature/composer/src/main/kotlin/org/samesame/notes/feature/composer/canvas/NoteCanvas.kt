@@ -75,6 +75,7 @@ import org.samesame.notes.feature.composer.input.InputSettings
 import org.samesame.notes.feature.composer.input.ToolHandler
 import org.samesame.notes.feature.composer.input.InputTool
 import org.samesame.notes.feature.composer.input.editorInput
+import org.samesame.notes.feature.composer.perf.EditorTrace
 
 /** The live selection transform of one page (docs 2.5): selected elements are drawn transformed while a drag is in flight. */
 class LiveSelection(val pageId: String, val ids: Set<ElementId>, val matrix: AffineTransform)
@@ -363,6 +364,8 @@ private class PageDrawer(
     private var keptPages: List<PageSpec>? = null
     private var lastAxis = Float.NaN
     private var forward = true
+    /** Traces the very first frame of a session: opening a note records all visible layers then (see `open:firstDraw`). */
+    private var firstFrame = true
 
     // Per-frame inputs (set at the top of drawFrame; read by the helpers below).
     private lateinit var d: CanvasDocument
@@ -383,6 +386,12 @@ private class PageDrawer(
         objectKey: Any?, live: LiveSelection?, hidden: ElementId?, pageText: PageTextPainter?,
         drawPageText: (DrawScope.(pageIndex: Int) -> Unit)?,
     ) = with(scope) {
+        val tracing = firstFrame
+        var traced = false
+        if (tracing) {
+            firstFrame = false
+            traced = EditorTrace.begin("open:firstDraw")
+        }
         this@PageDrawer.d = d
         this@PageDrawer.lay = lay
         this@PageDrawer.source = source
@@ -475,6 +484,7 @@ private class PageDrawer(
         ) {
             prefetch(this, LayerRetention.neighbour(visible, lay.pageCount, forward, 1), pageText)
         }
+        if (tracing) EditorTrace.end(traced)
     }
 
     /** Releases layers outside visible +- 1 page; only does work when that window (or the page list) changes. */

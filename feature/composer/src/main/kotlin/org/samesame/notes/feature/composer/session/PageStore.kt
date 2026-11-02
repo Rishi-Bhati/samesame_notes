@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.samesame.notes.core.ink.page.PageContent
 import org.samesame.notes.core.ink.page.PageElement
+import org.samesame.notes.feature.composer.perf.EditorTrace
 
 sealed interface PageSlot {
     data object Loading : PageSlot
@@ -46,7 +47,7 @@ class PageStore(
         val entry = e ?: Entry(PageSlot.Loading, savedVersion = NEVER_SAVED).also { entries[pageId] = it }
         entry.slot = PageSlot.Loading
         entry.job = scope.launch {
-            val result = runCatching { loader(pageId) }
+            val result = runCatching { EditorTrace.section("open:page") { loader(pageId) } }
             if (entries[pageId] !== entry) return@launch // removed meanwhile
             result.onSuccess {
                 entry.slot = PageSlot.Loaded(it)

@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.samesame.notes.core.data.di.ApplicationScope
 import org.samesame.notes.core.data.pdf.PdfNoteBuilder
 import org.samesame.notes.core.data.repository.AppSettingsRepository
@@ -33,6 +34,7 @@ import org.samesame.notes.core.data.repository.EditorPreferencesRepository
 import org.samesame.notes.core.data.repository.NoteRepository
 import org.samesame.notes.core.model.AppSettings
 import org.samesame.notes.core.model.Limits
+import org.samesame.notes.core.model.Note
 import org.samesame.notes.core.model.NoteId
 import org.samesame.notes.feature.composer.voice.DiscardReason
 import org.samesame.notes.feature.composer.voice.FinishReason
@@ -41,9 +43,13 @@ import org.samesame.notes.feature.composer.voice.RecordingResult
 import org.samesame.notes.feature.composer.voice.VoiceNotice
 import org.samesame.notes.feature.composer.voice.VoicePlaybackHub
 import org.samesame.notes.feature.composer.voice.VoiceRecordingHub
+import org.samesame.notes.feature.composer.canvas.DocumentLayout
+import org.samesame.notes.feature.composer.perf.EditorTrace
 import org.samesame.notes.feature.composer.session.CloseGate
 import org.samesame.notes.feature.composer.session.EditorClipboard
 import org.samesame.notes.feature.composer.session.EditorSession
+import org.samesame.notes.feature.composer.text.BodyTextBinding
+import org.samesame.notes.feature.composer.text.prepareEditorText
 import org.samesame.notes.feature.composer.toolbar.EditorMode
 
 /**
@@ -78,23 +84,47 @@ class ComposerViewModel @AssistedInject constructor(
     val settings: StateFlow<AppSettings> =
         appSettings.settings.stateIn(viewModelScope, SharingStarted.Eagerly, AppSettings())
 
+    /** True once the first real [settings] snapshot is in (the editor waits for it before composing, see [ready]). */
+    private val settingsLoaded = MutableStateFlow(false)
+
+    /** The open note's catalog row and folder name; null until the first emission. */
+    private data class NoteInfo(val note: Note?, val folderName: String?)
+
+    // One subscription for everything the header and the star need: the row changes on every save (modified_at), and
+    // three separate observeNote flows meant three queries and three emissions per change.
+    private val noteInfo: StateFlow<NoteInfo?> =
+        kotlinx.coroutines.flow.combine(notes.observeNote(id), folderRepository.observeFolders()) { n, folders ->
+            NoteInfo(n, folders.firstOrNull { it.id == n?.folderId }?.name)
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
     /** True when the note is locked in the catalog (Save as file / Share need it unlocked first). */
-    val isLocked: StateFlow<Boolean> = notes.observeNote(id)
-        .map { it?.isLocked == true }
+    val isLocked: StateFlow<Boolean> = noteInfo
+        .map { it?.note?.isLocked == true }
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     /** Favourite star of the open note (overflow "Favourite"; filled when on). */
-    val isFavorite: StateFlow<Boolean> = notes.observeNote(id)
-        .map { it?.isFavorite == true }
+    val isFavorite: StateFlow<Boolean> = noteInfo
+        .map { it?.note?.isFavorite == true }
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     /** Folder, created and modified times for the expanded title header. */
-    val meta: StateFlow<NoteMeta> = kotlinx.coroutines.flow.combine(notes.observeNote(id), folderRepository.observeFolders()) { n, folders ->
-        if (n == null) NoteMeta() else NoteMeta(
-            folderName = folders.firstOrNull { it.id == n.folderId }?.name,
-            createdAt = n.createdAt, modifiedAt = n.modifiedAt, favorite = n.isFavorite,
-        )
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, NoteMeta())
+    val meta: StateFlow<NoteMeta> = noteInfo
+        .map { info ->
+            val n = info?.note ?: return@map NoteMeta()
+            NoteMeta(folderName = info.folderName, createdAt = n.createdAt, modifiedAt = n.modifiedAt, favorite = n.isFavorite)
+        }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, NoteMeta())
+
+    /**
+     * True when the editor may compose: the session is open and its first values (catalog row, app settings) are in.
+     * Composing earlier made the full editor recompose once per late value (2-4 whole-screen recompositions while the
+     * open animation ran); with the gate it composes once, already final. The screen keeps a failsafe timeout so a
+     * source that never emits cannot leave the editor on its placeholder.
+     */
+    val ready: StateFlow<Boolean> =
+        kotlinx.coroutines.flow.combine(_session, noteInfo, settingsLoaded) { s, info, settingsIn ->
+            s != null && info != null && settingsIn
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     fun toggleFavorite() {
         appScope.launch { runCatching { notes.setFavorite(listOf(id), !isFavorite.value) } }
@@ -209,6 +239,7 @@ class ComposerViewModel @AssistedInject constructor(
         }
         viewModelScope.launch {
             val initial = appSettings.settings.first()
+            settingsLoaded.value = true
             if (!openSession(initial.autoSaveNotes)) return@launch
             appSettings.settings.collect { s -> _session.value?.autoSave = s.autoSaveNotes }
         }
@@ -218,26 +249,41 @@ class ComposerViewModel @AssistedInject constructor(
     private suspend fun openSession(autoSave: Boolean): Boolean {
         closeGate.awaitClosed(id.value) // a previous session of this note is still saving: wait for its final pack
         val doc = try {
-            notes.openContent(id)
+            EditorTrace.section("open:content") { notes.openContent(id) }
         } catch (e: org.samesame.notes.core.document.NoteLockedException) {
             _lockedOut.value = true
             return false
         }
-        _session.value = EditorSession(
-            noteId = id.value,
-            initialDocument = doc,
-            // The FAB note opens in edit mode with the keyboard; any note opened again is read-only until Edit.
-            initialMode = if (notes.takeNewNote(id)) EditorMode.Text else EditorMode.Reading,
-            scope = viewModelScope,
-            io = Dispatchers.IO,
-            pageLoader = { pageId -> notes.loadPage(id, pageId) },
-            saveSink = { snapshot -> notes.saveContent(id, snapshot) },
-            packContainer = { close -> notes.flushToContainer(id, close) },
-            mediaLoader = { path -> notes.loadMedia(id, path) },
-            mediaSink = { bytes, extension -> notes.saveMedia(id, bytes, extension) },
-            prefs = prefs,
-            clipboard = clipboard,
-        ).also { it.autoSave = autoSave }
+        // The two things the editor needs before it can compose with final values, off the main thread while the blank
+        // page shows: the body text + the one layout that shapes the whole note (see prepareEditorText), and the tool
+        // prefs (so the first composition has the real pen setup instead of recomposing when it arrives).
+        val (toolPrefs, prepared) = withContext(Dispatchers.Default) {
+            val storedPrefs = EditorTrace.section("open:prefs") {
+                runCatching { prefs.preferences.first() }.getOrDefault(org.samesame.notes.core.data.repository.EditorPreferences())
+            }
+            storedPrefs to runCatching { prepareEditorText(doc, DocumentLayout(doc.pages, doc.layout)) }.getOrNull()
+        }
+        val session = EditorTrace.section("open:session") {
+            EditorSession(
+                noteId = id.value,
+                initialDocument = doc,
+                // The FAB note opens in edit mode with the keyboard; any note opened again is read-only until Edit.
+                initialMode = if (notes.takeNewNote(id)) EditorMode.Text else EditorMode.Reading,
+                scope = viewModelScope,
+                io = Dispatchers.IO,
+                pageLoader = { pageId -> notes.loadPage(id, pageId) },
+                saveSink = { snapshot -> notes.saveContent(id, snapshot) },
+                packContainer = { close -> notes.flushToContainer(id, close) },
+                mediaLoader = { path -> notes.loadMedia(id, path) },
+                mediaSink = { bytes, extension -> notes.saveMedia(id, bytes, extension) },
+                prefs = prefs,
+                initialPrefs = toolPrefs,
+                clipboard = clipboard,
+            )
+        }.also { it.autoSave = autoSave }
+        // Binds the prepared body before the session is published, so the editor adopts it instead of building one.
+        prepared?.let { session.bindBody(BodyTextBinding(it.body, session, it.layout)) }
+        _session.value = session
         return true
     }
 
@@ -343,7 +389,9 @@ class ComposerViewModel @AssistedInject constructor(
      * session's main-thread-only state (body text, page maps); only the disk writes hop to the IO dispatcher.
      */
     fun onStop() {
-        _session.value?.takeIf { it !== retired }?.let { s -> appScope.launch(Dispatchers.Main.immediate) { s.flush() } }
+        _session.value?.takeIf { it !== retired }?.let { s ->
+            appScope.launch(Dispatchers.Main.immediate) { EditorTrace.section("close:flush") { s.flush() } }
+        }
         scheduleRelock()
     }
 
@@ -366,7 +414,7 @@ class ComposerViewModel @AssistedInject constructor(
         // Started immediately on the main thread, so the final snapshot is taken before anything else can run.
         val job = appScope.launch(Dispatchers.Main.immediate) {
             recorder?.results?.value?.filter { it.noteId == id.value }?.forEach { claimRecording(s, it, notify = false) }
-            s.finish()
+            EditorTrace.section("close:finish") { s.finish() }
             // Closing a note the user never wrote into (or emptied later) leaves nothing behind: no blank entry
             // in the list or the Recycle bin. Runs after the final save/pack, on the same scope, so no autosave
             // or flush can recreate the note (the repository treats the missing catalog row as the tombstone).

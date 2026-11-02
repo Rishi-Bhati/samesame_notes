@@ -3,6 +3,7 @@ package org.samesame.notes.feature.composer.text
 import org.samesame.notes.core.model.richtext.ParagraphStyle
 import org.samesame.notes.core.model.richtext.RichText
 import org.samesame.notes.core.richtext.BodyText
+import org.samesame.notes.core.richtext.PreparedTextLayout
 import org.samesame.notes.core.richtext.edit.TextEditEvent
 import org.samesame.notes.core.richtext.edit.TextSelection
 import org.samesame.notes.feature.composer.history.BodyTextTarget
@@ -14,9 +15,16 @@ import org.samesame.notes.feature.composer.session.EditorSession
  * (`onTextEdit`, `onCharStyleChange`, `onParagraphStyleChange`), and history applies undo/redo back through the
  * [BodyTextTarget] methods, which use `BodyText.redo(event)` so nothing is re-emitted.
  *
- * Lives as long as the [body]; bind with `session.bindBody(BodyTextBinding(body, session))`.
+ * Lives as long as the [body]; bind with `session.bindBody(BodyTextBinding(body, session))`. The session binds a body
+ * that was already prepared off the main thread (see `prepareEditorText`) before the editor composes, so [prepared]
+ * carries the shaped layout for the text engine to adopt.
  */
-class BodyTextBinding(val body: BodyText, private val session: EditorSession) : BodyTextTarget {
+class BodyTextBinding(
+    val body: BodyText,
+    private val session: EditorSession,
+    /** Body shaped before the editor composed; null = the engine shapes it on its first frame. */
+    val prepared: PreparedTextLayout? = null,
+) : BodyTextTarget {
 
     private var lastLength = body.length
     private var lastSelection = body.selection
