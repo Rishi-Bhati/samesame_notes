@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
@@ -730,6 +731,12 @@ private fun NotesGrid(
     val gridState = rememberLazyGridState()
     // Per-item heights differ per view mode, so the estimate restarts when the mode changes.
     val scrollEstimate = remember(mode) { ScrollEstimateHolder() }
+    // Full-span items above the notes (in DSL order): each is one row of the scroll bar's row model.
+    val headerItems =
+        (if (state.isTrash) 1 else 0) +
+            (if (state.trashFolders.isNotEmpty()) 1 else 0) +
+            (if (state.visibleFolders.isNotEmpty()) 1 else 0) +
+            (if (showSortRow) 1 else 0)
     // Item animation specs are built once, not per card and per recomposition.
     val placementSpec = remember { tween<androidx.compose.ui.unit.IntOffset>(SameSameMotion.ListReflowMs, easing = SameSameMotion.SineInOut90) }
     val fadeOutSpec = remember { tween<Float>(SameSameMotion.FabMs, easing = SameSameMotion.SineInOut80) }
@@ -820,7 +827,7 @@ private fun NotesGrid(
             }
         }
     }
-        GridScrollBar(gridState, scrollEstimate)
+        GridScrollBar(gridState, scrollEstimate, columns, headerItems)
     }
 }
 
@@ -834,16 +841,24 @@ private fun NotesGrid(
 internal fun GridScrollBar(
     gridState: androidx.compose.foundation.lazy.grid.LazyGridState,
     scrollEstimate: ScrollEstimateHolder,
+    columns: Int,
+    headerItems: Int,
 ) {
     val scope = rememberCoroutineScope()
-    val metrics = remember(gridState, scrollEstimate) { derivedStateOf { gridMetrics(gridState.layoutInfo, scrollEstimate) } }
+    val metrics = remember(gridState, scrollEstimate, columns, headerItems) {
+        derivedStateOf { gridMetrics(gridState.layoutInfo, columns, headerItems, scrollEstimate) }
+    }
     val scrubJob = remember { arrayOfNulls<Job>(1) }
     FastScrollBar(
         scrollFraction = { metrics.value.scrollFraction },
         onScrub = { f ->
             scrubJob[0]?.cancel()
             val (index, within) = lazyScrollTarget(metrics.value, f)
-            scrubJob[0] = scope.launch { gridState.scrollToItem(index.coerceAtLeast(0), within) }
+            // UNDISPATCHED: the snap lands before this frame's layout, so the thumb's hand-back at the end of the
+            // drag reads the position the drag asked for instead of a frame-old one.
+            scrubJob[0] = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                gridState.scrollToItem(index.coerceAtLeast(0), within)
+            }
         },
         needed = { metrics.value.thumbFraction < 0.999f },
         edgeStrip = true,
@@ -854,24 +869,26 @@ internal fun GridScrollBar(
 
 private fun gridMetrics(
     info: androidx.compose.foundation.lazy.grid.LazyGridLayoutInfo,
+    columns: Int,
+    headerItems: Int,
     scrollEstimate: ScrollEstimateHolder,
 ): LazyScrollMetrics {
     val visible = info.visibleItemsInfo
     if (visible.isEmpty() || info.totalItemsCount == 0) return LazyScrollMetrics()
-    val first = visible.first()
-    val last = visible.last()
-    val estimate = scrollEstimate.estimateFor(
-        info.totalItemsCount,
-        measuredItemExtent(first.index, first.offset.y, last.index, last.offset.y + last.size.height),
+    // Row geometry from the laid-out items: one row per distinct row index, advance = top of the next row.
+    val rows = gridRows(
+        visible.map { GridItemPosition(it.index, it.offset.y, it.size.height) },
+        columns,
+        headerItems,
     )
+    val estimate = scrollEstimate.estimateFor(info.totalItemsCount, columns, headerItems, measuredRowAdvance(rows, headerItems))
     return lazyScrollMetrics(
         itemCount = info.totalItemsCount,
-        firstIndex = first.index,
-        firstOffset = first.offset.y,
-        lastIndex = last.index,
-        lastEndOffset = last.offset.y + last.size.height,
+        columns = columns,
+        headerItems = headerItems,
+        rows = rows,
         viewportExtent = (info.viewportEndOffset - info.viewportStartOffset).toFloat(),
-        estimatedItemExtent = estimate,
+        estimatedRowAdvance = estimate,
     )
 }
 

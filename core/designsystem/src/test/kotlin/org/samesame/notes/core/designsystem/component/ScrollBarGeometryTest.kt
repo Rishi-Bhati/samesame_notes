@@ -58,6 +58,18 @@ class ScrollBarGeometryTest {
         assertThat(ScrollBarGeometry.scrollFraction(400f, 500f, 800f)).isEqualTo(0f)
     }
 
+    @Test fun `editor scrub round-trips through the bar fraction`() {
+        // ComposerScreen's onScrub sets scroll = f * (content - viewport); the thumb reads scrollFraction back.
+        val content = 5000f
+        val viewport = 1200f
+        val maxDoc = content - viewport
+        for (step in 0..100) {
+            val fraction = step / 100f
+            assertThat(ScrollBarGeometry.scrollFraction(fraction * maxDoc, content, viewport))
+                .isWithin(0.0001f).of(fraction)
+        }
+    }
+
     @Test fun `relative drag follows the finger without a jump`() {
         // Editor fast scroll bar: fixed 40 px thumb on a 1000 px track (960 px travel), thumb at 480 (fraction 0.5).
         assertThat(ScrollBarGeometry.dragFraction(960f, 0f, 480f, 0f)).isWithin(0.0001f).of(0.5f)
