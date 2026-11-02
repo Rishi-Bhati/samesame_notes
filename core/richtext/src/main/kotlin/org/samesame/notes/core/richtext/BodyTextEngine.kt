@@ -17,6 +17,7 @@ import org.samesame.notes.core.richtext.layout.LineMetrics
 import org.samesame.notes.core.richtext.layout.Pagination
 import org.samesame.notes.core.richtext.layout.Paginator
 import org.samesame.notes.core.richtext.layout.PuRect
+import org.samesame.notes.core.richtext.layout.TapPlacement
 import org.samesame.notes.core.richtext.layout.TextPageGeometry
 import org.samesame.notes.core.richtext.spans.ChecklistSpan
 import org.samesame.notes.core.richtext.spans.ParagraphSpan
@@ -259,11 +260,87 @@ class BodyTextEngine(val body: BodyText, geometry: TextPageGeometry) {
     }
 
     /**
+     * Offset for a text-mode tap. On text (or above the body's end) this is [hitTest]. Tapping below the body text, on
+     * the body-end page or on a later page (an imported PDF page), extends the body with empty lines down to the tapped
+     * line and returns the end of the body, like the reference (it does not create a text box there).
+     */
+    fun hitTestForTap(x: Float, y: Float): Int {
+        val page = pageIndexAt(x, y)
+        val end = caret(body.length)
+        val last = layout.lineCount - 1
+        val lineHeight = if (last >= 0) lineBottomForCaret(last) - layout.getLineTop(last) else paint.textSize
+        val plan = TapPlacement.plan(
+            geometry, pagination(), lineMetrics, layout.height.toFloat(), page, x, y,
+            end.pageIndex, end.bottom, lineHeight,
+        ) ?: return hitTest(x, y)
+        if (plan.lineFeeds <= 0) return hitTest(x, y)
+        val baseLength = body.length
+        body.batch {
+            appendEmptyLines(plan.lineFeeds)
+            settleTapExtension(plan.targetPage, plan.targetY, baseLength)
+        }
+        return body.length
+    }
+
+    /** Corrects the simulated blank-line count against the real layout (usually a no-op). */
+    private fun settleTapExtension(targetPage: Int, targetY: Float, baseLength: Int) {
+        var guard = 0
+        while (guard++ < MAX_TAP_STEPS) {
+            val end = caret(body.length)
+            if (end.pageIndex > targetPage) {
+                if (!removeAppendedLine(baseLength)) return
+                continue
+            }
+            if (end.pageIndex < targetPage) {
+                val last = layout.lineCount - 1
+                val lineHeight = if (last >= 0) lineBottomForCaret(last) - layout.getLineTop(last) else paint.textSize
+                val more = TapPlacement.lineFeeds(
+                    geometry, pagination(), lineMetrics, layout.height.toFloat(), targetPage, targetY, lineHeight,
+                ).coerceAtLeast(1)
+                appendEmptyLines(more)
+                continue
+            }
+            if (end.bottom <= targetY) {
+                // The tap is below this page's last line: add one more if it still fits on the page.
+                appendEmptyLines(1)
+                if (caret(body.length).pageIndex > targetPage) {
+                    removeAppendedLine(baseLength)
+                    return
+                }
+                continue
+            }
+            if (end.top > targetY && body.length > baseLength) {
+                // Overshot by a line: step back, unless that returns to the previous page.
+                removeAppendedLine(baseLength)
+                if (caret(body.length).pageIndex < targetPage) {
+                    appendEmptyLines(1)
+                    return
+                }
+                continue
+            }
+            return
+        }
+    }
+
+    private fun appendEmptyLines(count: Int) {
+        if (count <= 0) return
+        body.replace(body.length, body.length, "\n".repeat(count))
+    }
+
+    private fun removeAppendedLine(baseLength: Int): Boolean {
+        if (body.length <= baseLength) return false
+        body.replace(body.length - 1, body.length, "")
+        return true
+    }
+
+    /**
      * Index of the checklist paragraph whose checkbox is at a document point, or null. The hit area is the box plus about a
      * fifth of its size on the left and a quarter on the right, over the full height of the item's first line.
      */
     fun checkboxAt(x: Float, y: Float): Int? {
-        val (_, lx, ly) = docToLayout(x, y)
+        val (page, lx, ly) = docToLayout(x, y)
+        // A page after the body text has no checklist; tapping a PDF page must not toggle the last item.
+        if (pagination().slices[page].isEmpty) return null
         val offset = layout.getOffsetForHorizontal(layout.getLineForVertical(ly.toInt()), lx)
         val p = body.paragraphIndexAt(offset)
         val style = body.paragraphStyleOrNull(p) ?: return null
@@ -756,3 +833,6 @@ class BodyTextEngine(val body: BodyText, geometry: TextPageGeometry) {
 
 private val DEFAULT_PARAGRAPH = ParagraphStyle()
 private val KEEP_COLOUR: (Int) -> Int = { it }
+
+/** Guard for the tap-extension correction loop (each step makes progress or returns). */
+private const val MAX_TAP_STEPS = 512

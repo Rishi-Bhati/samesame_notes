@@ -21,6 +21,7 @@ import android.text.style.StrikethroughSpan
 import android.text.style.StyleSpan
 import android.text.style.UnderlineSpan
 import android.graphics.Typeface
+import android.os.Build
 import org.samesame.notes.core.export.text.toParagraphs
 import org.samesame.notes.core.model.Limits
 import org.samesame.notes.core.model.PageMode
@@ -36,9 +37,15 @@ import kotlin.math.min
 
 internal const val MARGIN_X = 47f
 internal const val MARGIN_Y = 32f
+internal const val MARGIN_BOTTOM = 96f
 internal const val A4_RATIO = 1.4142857f
-private const val INDENT_PU = 60
-private const val LIST_GAP = 72
+
+/** Same glyph metrics as the composer's body text (core/richtext `BodyTextMetrics`). */
+private const val GLYPH_SCALE = 1.14f
+private const val LINE_SPACING_MULT = 1.16f
+private val BODY_TEXT_SIZE_PU = Limits.DEFAULT_FONT_SIZE * Limits.FONT_PU_PER_POINT * GLYPH_SCALE
+private const val INDENT_PU = 48
+private const val LIST_GAP = 80
 
 /** Builds the Android spannable for rich text; sizes are in page units (1 sp of the reference = 2.625 pu). */
 internal fun buildSpannable(
@@ -66,7 +73,7 @@ internal fun buildSpannable(
             if (face != Typeface.NORMAL) out.setSpan(StyleSpan(face), pos, end, f)
             if (s.underline) out.setSpan(UnderlineSpan(), pos, end, f)
             if (s.strikethrough) out.setSpan(StrikethroughSpan(), pos, end, f)
-            s.fontSize?.let { out.setSpan(AbsoluteSizeSpan((it * Limits.FONT_PU_PER_POINT).toInt().coerceAtLeast(1), false), pos, end, f) }
+            s.fontSize?.let { out.setSpan(AbsoluteSizeSpan((it * Limits.FONT_PU_PER_POINT * GLYPH_SCALE).toInt().coerceAtLeast(1), false), pos, end, f) }
             if (s.objectId != null && end - pos == 1 && rt.text[pos] == OBJECT_CHAR) {
                 val img = objects[s.objectId]
                 val bmp = img?.let { media(it.media) }
@@ -201,14 +208,18 @@ internal fun layoutText(
     colorTransform: (Int) -> Int = { it },
 ): StaticLayout {
     val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-        textSize = Limits.DEFAULT_FONT_SIZE * Limits.FONT_PU_PER_POINT
+        textSize = BODY_TEXT_SIZE_PU
+        isSubpixelText = true
+        @Suppress("DEPRECATION")
+        isLinearText = true // same glyph advances as the composer's body layout
         color = colorTransform(Color.BLACK)
     }
     val sp = buildSpannable(rt, media, objects, widthPu.toFloat(), colorTransform)
-    return StaticLayout.Builder.obtain(sp, 0, sp.length, paint, widthPu)
-        .setLineSpacing(0f, 1.1f)
+    val builder = StaticLayout.Builder.obtain(sp, 0, sp.length, paint, widthPu)
+        .setLineSpacing(0f, LINE_SPACING_MULT)
         .setIncludePad(false)
-        .build()
+    if (Build.VERSION.SDK_INT >= 28) builder.setUseLineSpacingFromFallbacks(true)
+    return builder.build()
 }
 
 /** One page's share of the body text. */
@@ -251,7 +262,7 @@ internal class NoteLayout(
             var startLine = 0
             for (line in 0 until l.lineCount) {
                 val used = l.getLineBottom(line) - l.getLineTop(startLine)
-                val contentH = pageHeight(result.size) - 2 * MARGIN_Y
+                val contentH = pageHeight(result.size) - MARGIN_Y - MARGIN_BOTTOM
                 if (used > contentH && line > startLine) {
                     result += TextSlice(startLine, line, l.getLineTop(startLine).toFloat(), l.getLineTop(line).toFloat())
                     startLine = line
