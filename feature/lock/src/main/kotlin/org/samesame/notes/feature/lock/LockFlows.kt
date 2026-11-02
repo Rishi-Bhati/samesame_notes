@@ -20,7 +20,9 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.samesame.notes.core.designsystem.component.AppDialog
 import org.samesame.notes.core.designsystem.theme.SameSameText
 import org.samesame.notes.core.designsystem.theme.SameSameTheme
@@ -67,6 +69,8 @@ fun LockAuthFlow(
     var lockedOut by remember { mutableStateOf(false) }
     var fingerprintsChanged by remember { mutableStateOf(false) }
     var throttledMs by remember { mutableStateOf(0L) }
+    // A password is being checked (key derivation takes a moment by design): progress instead of the primary action.
+    var busy by remember { mutableStateOf(false) }
     val incorrect = stringResource(R.string.feature_lock_incorrect)
     val throttled = if (throttledMs > 0) lockoutMessage(throttledMs) else null
     val mismatch = stringResource(R.string.feature_lock_do_not_match)
@@ -75,14 +79,15 @@ fun LockAuthFlow(
     val bioSubtitle = stringResource(R.string.feature_lock_biometric_subtitle)
     val bioNegative = stringResource(R.string.feature_lock_use_password)
 
-    fun failed(message: String) { error = message; attempt++ }
+    fun failed(message: String) { error = message; attempt++; busy = false }
 
     LaunchedEffect(hasPassword) {
         val has = hasPassword ?: return@LaunchedEffect
         if (step != Step.Decide) return@LaunchedEffect
         step = when {
             has -> {
-                if (allowBiometrics && viewModel.biometricUnlockCipher()?.let { true } == true) Step.Biometric
+                // Keystore calls (and a config read) are binder / disk work: off the main thread.
+                if (allowBiometrics && withContext(Dispatchers.Default) { viewModel.biometricUnlockCipher() } != null) Step.Biometric
                 else {
                     if (viewModel.consumeBiometricReset()) {
                         Toast.makeText(context, resetToast, Toast.LENGTH_LONG).show()
@@ -100,7 +105,7 @@ fun LockAuthFlow(
     LaunchedEffect(step) {
         if (step != Step.Biometric) return@LaunchedEffect
         val activity = context.findFragmentActivity()
-        val cipher = viewModel.biometricUnlockCipher()
+        val cipher = withContext(Dispatchers.Default) { viewModel.biometricUnlockCipher() }
         if (activity == null || cipher == null) {
             if (viewModel.consumeBiometricReset()) {
                 Toast.makeText(context, resetToast, Toast.LENGTH_LONG).show()
@@ -148,7 +153,7 @@ fun LockAuthFlow(
             onSubmit = { firstPassword = it; error = null; attempt++; step = Step.Create2 },
             minLength = LOCK_PASSWORD_MIN_LENGTH,
             attempt = attempt,
-            checkboxLabel = if (viewModel.biometricsAvailable()) stringResource(R.string.feature_lock_use_fingerprints) else null,
+            checkboxLabel = if (remember { viewModel.biometricsAvailable() }) stringResource(R.string.feature_lock_use_fingerprints) else null,
             checked = wantBiometrics,
             onCheckedChange = { wantBiometrics = it },
         )
@@ -162,6 +167,7 @@ fun LockAuthFlow(
                 if (again != firstPassword) {
                     failed(mismatch)
                 } else scope.launch {
+                    busy = true
                     val token = runCatching { viewModel.createPassword(again) }.getOrNull()
                     firstPassword = ""
                     if (token == null) { failed(mismatch); return@launch }
@@ -176,6 +182,7 @@ fun LockAuthFlow(
             attempt = attempt,
             error = error,
             minLength = LOCK_PASSWORD_MIN_LENGTH,
+            busy = busy,
         )
 
         Step.Password -> LockPasswordPage(
@@ -184,6 +191,7 @@ fun LockAuthFlow(
             primaryLabel = stringResource(R.string.feature_lock_continue),
             onCancel = onCancel,
             onSubmit = { pw ->
+                busy = true
                 scope.launch {
                     when (val r = viewModel.verify(pw)) {
                         is VerifyResult.Ok -> { throttledMs = 0; onToken(r.token) }
@@ -199,6 +207,7 @@ fun LockAuthFlow(
             attempt = attempt,
             error = throttled ?: error,
             extraGuide = lockoutText ?: if (fingerprintsChanged) stringResource(R.string.feature_lock_fingerprints_changed_guide) else null,
+            busy = busy,
         )
     }
 }

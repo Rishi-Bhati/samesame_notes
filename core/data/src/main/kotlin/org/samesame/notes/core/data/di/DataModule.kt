@@ -81,6 +81,9 @@ internal abstract class DataModule {
         @Provides @Singleton fun previewFailures(@ApplicationContext context: Context): org.samesame.notes.core.data.repository.PreviewFailureStore =
             org.samesame.notes.core.data.repository.PreviewFailureStore(java.io.File(context.noBackupFilesDir, "preview-failures"))
 
+        @Provides @Singleton fun previewDiskCache(@ApplicationContext context: Context): org.samesame.notes.core.data.repository.PreviewDiskCache =
+            org.samesame.notes.core.data.repository.PreviewDiskCache(context.cacheDir)
+
         @Provides fun clock(): Clock = Clock.System
 
         @Provides

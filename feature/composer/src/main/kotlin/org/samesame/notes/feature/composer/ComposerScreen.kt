@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.exclude
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.CircularProgressIndicator
@@ -1645,7 +1647,12 @@ internal fun ComposerEditor(
     }
 
     Box(
-        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).windowInsetsPadding(WindowInsets.safeDrawing),
+        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).windowInsetsPadding(
+            // Under a lock page (opaque) the editor keeps its size while that page's keyboard moves: re-measuring the
+            // whole editor every frame of the keyboard animation made the page stutter on big notes. The lock page
+            // pads for the keyboard itself.
+            if (lockFlow || unlockFlow) WindowInsets.safeDrawing.exclude(WindowInsets.ime) else WindowInsets.safeDrawing,
+        ),
     ) {
         Column(Modifier.fillMaxSize()) {
             if (!tb.fullScreen && searchOpen) {
@@ -2327,7 +2334,7 @@ internal fun ComposerEditor(
                 onDismiss = { unlockConfirm = false },
             )
         }
-        if (lockFlow) {
+        org.samesame.notes.feature.lock.LockFlowTransition(lockFlow) {
             // the reference: Lock from the editor asks for the password (created on first use), then the note is locked.
             org.samesame.notes.feature.lock.LockAuthFlow(
                 mode = org.samesame.notes.feature.lock.LockAuthMode.VerifyOrCreate,
@@ -2349,7 +2356,7 @@ internal fun ComposerEditor(
                 )
             }
         }
-        if (unlockFlow) {
+        org.samesame.notes.feature.lock.LockFlowTransition(unlockFlow) {
             org.samesame.notes.feature.lock.LockAuthFlow(
                 mode = org.samesame.notes.feature.lock.LockAuthMode.VerifyOnly,
                 onCancel = { unlockFlow = false },

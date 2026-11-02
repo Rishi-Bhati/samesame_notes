@@ -15,6 +15,8 @@ import org.samesame.notes.core.database.entity.NoteSearchEntity
 import org.samesame.notes.core.database.entity.asExternalModel
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.launch
 import org.samesame.notes.core.document.NoteDocument as NoteDocumentV1View
 import org.samesame.notes.core.document.NoteDocumentStore
 import org.samesame.notes.core.document.NoteSnapshot
@@ -52,6 +54,8 @@ internal class DefaultNoteRepository @Inject constructor(
     private val previewFailures: PreviewFailureStore,
     private val maintenance: org.samesame.notes.core.database.DatabaseMaintenance,
     private val shareCache: org.samesame.notes.core.data.transfer.ShareCache,
+    /** Rendered first pages on disk; null in tests that don't need one. */
+    private val previewCache: PreviewDiskCache? = null,
 ) : NoteRepository {
 
     override fun observeNotes(filter: NoteFilter, sort: SortOrder): Flow<List<Note>> {
@@ -82,21 +86,33 @@ internal class DefaultNoteRepository @Inject constructor(
             if (row.isLocked || documents.isLocked(id.value)) return@withLock null
             // Same rule as the composer: app theme + app setting + the note's own adjustForDarkMode.
             val adjust = darkTheme && appSettings.settings.first().adjustColourInDarkMode
-            val source = object : org.samesame.notes.core.export.ExportSource {
-                override suspend fun document(): NoteDocument {
-                    val doc = documents.readDocument(id.value, titleFromDb = row.title)
-                    return if (doc.title != row.title) doc.copy(title = row.title) else doc
-                }
-                override suspend fun page(pageId: String): PageContent = documents.readPage(id.value, pageId)
-                override suspend fun media(path: String): ByteArray? = documents.readMedia(id.value, path)
-            }
+            // The render only depends on the revision, the width and whether dark colours may be adjusted.
+            val variant = if (adjust) "adjusted" else "plain"
+            previewCache?.get(id.value, row.modifiedAt, targetWidthPx, variant)?.let { return@withLock it }
             if (previewFailures.isBlocked(id.value, row.modifiedAt)) return@withLock null
             previewFailures.begin(id.value, row.modifiedAt)
-            try {
-                org.samesame.notes.core.export.render.renderFirstPagePreview(source, targetWidthPx, adjust)
+            val png = try {
+                // Read straight from the container: nothing is unpacked to disk just to draw a card.
+                documents.read(id.value, titleFromDb = row.title) { reader ->
+                    val source = object : org.samesame.notes.core.export.ExportSource {
+                        override suspend fun document(): NoteDocument {
+                            val doc = reader.document()
+                            return if (doc.title != row.title) doc.copy(title = row.title) else doc
+                        }
+                        override suspend fun page(pageId: String): PageContent = reader.page(pageId)
+                        override suspend fun media(path: String): ByteArray? = reader.media(path)
+                    }
+                    org.samesame.notes.core.export.render.renderFirstPagePreview(source, targetWidthPx, adjust)
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null // unreadable note: the card keeps its text preview (never throws, like the render itself)
             } finally {
                 previewFailures.end(id.value) // only a process death mid-render leaves the marker behind
             }
+            if (png != null) previewCache?.put(id.value, row.modifiedAt, targetWidthPx, variant, png)
+            png
         }
 
     override fun search(query: String): Flow<List<Note>> {
@@ -501,6 +517,7 @@ internal class DefaultNoteRepository @Inject constructor(
             searchDao.deleteForNote(id)
             documents.delete(id)
             previewFailures.forget(id)
+            previewCache?.forget(id)
         }
     }
 
@@ -535,16 +552,17 @@ internal class DefaultNoteRepository @Inject constructor(
         val master = token.masterKey()
         runCatching { maintenance.secureDelete() } // the blanked title/preview and search row are zeroed on disk
         try {
-            for (id in ids) lockFor(id.value).withLock {
-                val row = noteDao.get(id.value) ?: return@withLock
-                if (row.isLocked) return@withLock
-                // The encrypted document carries the body; the catalog keeps the visible title (owner decision).
-                val doc = documents.readDocument(id.value, row.title)
-                documents.writeDocument(doc.copy(title = row.title))
-                documents.lockNote(id.value, master)
-                noteDao.setLocked(id.value, true, title = row.title, preview = "")
-                // Only the title stays searchable, never the body.
-                searchDao.replace(NoteSearchEntity(noteId = id.value, title = row.title, body = "", inkText = ""))
+            forEachConcurrently(ids) { id ->
+                lockFor(id.value).withLock {
+                    val row = noteDao.get(id.value) ?: return@withLock
+                    if (row.isLocked) return@withLock
+                    // The encrypted document carries the body; the catalog keeps the visible title (owner decision 2026-11-02).
+                    org.samesame.notes.core.data.traced("lock:lockNote") { documents.lockNote(id.value, master, title = row.title) }
+                    previewCache?.forget(id.value) // no rendered page of a locked note stays on disk
+                    noteDao.setLocked(id.value, true, title = row.title, preview = "")
+                    // Only the title stays searchable, never the body.
+                    searchDao.replace(NoteSearchEntity(noteId = id.value, title = row.title, body = "", inkText = ""))
+                }
             }
         } finally {
             master.fill(0)
@@ -558,20 +576,33 @@ internal class DefaultNoteRepository @Inject constructor(
     override suspend fun unlockNotes(ids: List<NoteId>, token: org.samesame.notes.core.security.LockToken) {
         val master = token.masterKey()
         try {
-            for (id in ids) lockFor(id.value).withLock {
+            forEachConcurrently(ids) { id -> lockFor(id.value).withLock {
                 val row = noteDao.get(id.value) ?: return@withLock
                 if (!row.isLocked) return@withLock
-                documents.openLocked(id.value, master)
-                val doc = documents.readDocument(id.value)
-                documents.unlockNote(id.value, master)
+                val doc = org.samesame.notes.core.data.traced("lock:unlockNote") { documents.unlockNote(id.value, master) }
                 val plain = doc.body.plainText()
                 noteDao.setLocked(id.value, false, title = doc.title, preview = plain.take(PREVIEW_LENGTH))
                 // A marker left by a render that died while the note was unlocked must not block the fresh preview.
                 previewFailures.forget(id.value)
                 searchDao.replace(NoteSearchEntity(noteId = id.value, title = doc.title, body = plain, inkText = ""))
-            }
+            } }
         } finally {
             master.fill(0)
+        }
+    }
+
+    /**
+     * Runs [block] for every id, up to [LOCK_PARALLELISM] at a time (the reference locks several notes in parallel too);
+     * the first failure cancels the rest and is rethrown, like the sequential loop did.
+     */
+    private suspend fun forEachConcurrently(ids: List<NoteId>, block: suspend (NoteId) -> Unit) {
+        if (ids.size <= 1) {
+            ids.forEach { block(it) }
+            return
+        }
+        val slots = kotlinx.coroutines.sync.Semaphore(LOCK_PARALLELISM)
+        kotlinx.coroutines.coroutineScope {
+            ids.distinct().forEach { id -> launch { slots.withPermit { block(id) } } }
         }
     }
 
@@ -579,7 +610,7 @@ internal class DefaultNoteRepository @Inject constructor(
         lockFor(id.value).withLock {
             val master = token.masterKey()
             try {
-                documents.openLocked(id.value, master)
+                org.samesame.notes.core.data.traced("lock:openLocked") { documents.openLocked(id.value, master) }
                 // Notes locked before titles stayed in the catalog have an empty title there: restore it now that the
                 // document is decrypted, so the home page can show it without bumping the modified time.
                 val row = noteDao.get(id.value)
@@ -611,6 +642,7 @@ internal class DefaultNoteRepository @Inject constructor(
 
     private companion object {
         const val PREVIEW_LENGTH = 300
+        const val LOCK_PARALLELISM = 3
     }
 }
 

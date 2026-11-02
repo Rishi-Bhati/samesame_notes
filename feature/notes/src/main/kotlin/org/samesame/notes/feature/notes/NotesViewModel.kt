@@ -208,9 +208,7 @@ class NotesViewModel @Inject constructor(
                     previewRequests.started(request)
                     val png = notes.renderPreview(note.id, previewWidthPx, darkTheme)
                     val image = png?.let {
-                        withContext(Dispatchers.IO) {
-                            BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap()
-                        }
+                        withContext(Dispatchers.IO) { decodePreview(it)?.asImageBitmap() }
                     }
                     if (image != null) previews.put(key, image) else previewInvalidation.markFailed(key)
                 }
@@ -423,6 +421,17 @@ private const val PREVIEW_WIDTH_PX = 384
 internal fun previewWidthFor(screenWidthPx: Int): Int =
     if (screenWidthPx <= 0) PREVIEW_WIDTH_PX else minOf(PREVIEW_WIDTH_PX, (screenWidthPx + 1) / 2)
 private const val PREVIEW_CACHE_ENTRIES = 24
+
+/**
+ * Decodes a card preview straight into GPU memory (a hardware bitmap): the first frame that shows the card has no
+ * texture upload to do on the render thread, and the cached previews don't sit on the Java heap. Falls back to a
+ * normal bitmap where a hardware one can't be made.
+ */
+private fun decodePreview(png: ByteArray): android.graphics.Bitmap? {
+    val hardware = BitmapFactory.Options().apply { inPreferredConfig = android.graphics.Bitmap.Config.HARDWARE }
+    return runCatching { BitmapFactory.decodeByteArray(png, 0, png.size, hardware) }.getOrNull()
+        ?: BitmapFactory.decodeByteArray(png, 0, png.size)
+}
 
 /** A PDF copied to the cache, with the title its note gets (the file name without ".pdf"). */
 data class PdfSource(val file: java.io.File, val title: String)

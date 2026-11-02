@@ -186,6 +186,15 @@ class LockVault(
         val weak = c.iterations < iterations
         val unbound = !c.deviceBound && deviceSealer != null
         if (!weak && !unbound) return
+        if (!weak) {
+            // Only the device binding is missing: seal the existing password wrap as it is. Re-deriving the key (another
+            // full PBKDF2 run on every verify while the device key is unavailable) gains nothing.
+            runCatching {
+                val sealed = deviceSealer!!.seal(c.passwordWrapped)
+                save(Config(c.iterations, c.salt, sealed, c.biometricWrapped, deviceBound = true))
+            }
+            return
+        }
         runCatching {
             val next = newPasswordConfig(password, master, c.biometricWrapped)
             if (next.iterations > c.iterations || next.deviceBound) save(next)

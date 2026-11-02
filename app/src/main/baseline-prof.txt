@@ -1,0 +1,29 @@
+# Baseline profile of the app (ART compiles these ahead of time when the app is installed, through
+# androidx.profileinstaller; without it the app's own code runs interpreted / JIT for many launches and stutters).
+# Compose, Activity, Lifecycle and Material ship their own profiles inside their AARs; this file covers what does not:
+# all of the app's code and the libraries it calls on every frame or every note open/save.
+#
+# Hand-maintained with wildcards (`**` = any characters across packages). To replace it with a generated profile,
+# run the generator described in docs/checkpoints/rel011-perf.md (NEEDS-DEVICE) and paste its output here.
+
+# --- the app: home list, editor, lock flow, settings, data and document layers --------------------------------------
+HSPLorg/samesame/notes/**;->**(**)**
+Lorg/samesame/notes/**;
+
+# --- libraries without a shipped profile ---------------------------------------------------------------------------
+HSPLkotlinx/coroutines/**;->**(**)**
+Lkotlinx/coroutines/**;
+HSPLkotlinx/serialization/**;->**(**)**
+Lkotlinx/serialization/**;
+HSPLkotlin/collections/**;->**(**)**
+HSPLkotlin/text/**;->**(**)**
+HSPLkotlin/jvm/internal/**;->**(**)**
+HSPLdagger/**;->**(**)**
+HSPLandroidx/ink/**;->**(**)**
+Landroidx/ink/**;
+HSPLandroidx/room/**;->**(**)**
+HSPLandroidx/sqlite/**;->**(**)**
+HSPLandroidx/navigation3/**;->**(**)**
+HSPLandroidx/core/**;->**(**)**
+HSPLandroidx/datastore/**;->**(**)**
+HSPLandroidx/biometric/**;->**(**)**

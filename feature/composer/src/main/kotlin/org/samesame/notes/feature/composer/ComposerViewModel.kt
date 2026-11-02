@@ -113,8 +113,10 @@ class ComposerViewModel @AssistedInject constructor(
      */
     fun lockNote(token: org.samesame.notes.core.security.LockToken, onDone: () -> Unit) {
         val closing = _session.value
-        _session.value = null
-        appScope.launch {
+        // The session stays on screen while the editor closes (dropping it first flashed the empty loading page through
+        // the close animation); it is retired instead: ON_STOP, re-lock and onCleared leave it to this job.
+        retired = closing
+        appScope.launch(Dispatchers.Main.immediate) {
             try {
                 closing?.finish()
                 runCatching { notes.lockNotes(listOf(id), token) }
@@ -124,6 +126,9 @@ class ComposerViewModel @AssistedInject constructor(
         }
         onDone()
     }
+
+    /** A session [lockNote] is finishing: still shown until the editor is gone, but no longer saved by anyone else. */
+    private var retired: EditorSession? = null
 
     private val _lockedOut = MutableStateFlow(false)
 
@@ -259,7 +264,7 @@ class ComposerViewModel @AssistedInject constructor(
     }
 
     private fun scheduleRelock() {
-        if (!isLocked.value || _session.value == null) return
+        if (!isLocked.value || _session.value == null || _session.value === retired) return
         stoppedAt = SystemClock.elapsedRealtime()
         val screenOff = appContext.getSystemService(PowerManager::class.java)?.isInteractive == false
         relockJob?.cancel()
@@ -275,7 +280,7 @@ class ComposerViewModel @AssistedInject constructor(
     }
 
     private fun relockNow() {
-        val s = _session.value ?: return
+        val s = _session.value?.takeIf { it !== retired } ?: return
         _session.value = null
         _relocked.value = true
         // A recording of this note keeps going in its service; it is added when the note is opened again.
@@ -338,13 +343,13 @@ class ComposerViewModel @AssistedInject constructor(
      * session's main-thread-only state (body text, page maps); only the disk writes hop to the IO dispatcher.
      */
     fun onStop() {
-        _session.value?.let { s -> appScope.launch(Dispatchers.Main.immediate) { s.flush() } }
+        _session.value?.takeIf { it !== retired }?.let { s -> appScope.launch(Dispatchers.Main.immediate) { s.flush() } }
         scheduleRelock()
     }
 
     override fun onCleared() {
         relockJob?.cancel()
-        val s = _session.value
+        val s = _session.value?.takeIf { it !== retired }
         if (s != null) closeSession(s, endRecording = true) else VoicePlaybackHub.peek()?.close()
     }
 
