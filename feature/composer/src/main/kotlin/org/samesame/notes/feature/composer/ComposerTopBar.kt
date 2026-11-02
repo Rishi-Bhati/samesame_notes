@@ -110,15 +110,18 @@ internal fun ComposerTopBar(
     val colors = SameSameTheme.colors
     var expanded by rememberSaveable { mutableStateOf(false) }
     var editingTitle by rememberSaveable { mutableStateOf(false) }
-    // A tap on the bar's title text types into it; the rest of the bar opens the header (tap title = edit, empty space =
-    // metadata, as in the reference).
+    // A tap on the bar's title text types into it (in the view/reading state it first switches to editing, like a body
+    // tap); the rest of the bar opens the header (tap title = edit, empty space = metadata, as in the reference).
     var editingBarTitle by rememberSaveable { mutableStateOf(false) }
     var hadBarFocus by remember { mutableStateOf(false) }
     val barFocus = remember { FocusRequester() }
     val motion = rememberTitleHeaderMotion(expanded)
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
-    LaunchedEffect(editingBarTitle) { if (editingBarTitle) { barFocus.requestFocus(); keyboard?.show() } }
+    // `reading` clears a frame or more after the tap, so the field can only take focus once it is editable: re-run then.
+    LaunchedEffect(editingBarTitle, reading) {
+        if (editingBarTitle && !reading) { barFocus.requestFocus(); keyboard?.show() }
+    }
     val expandHeader: () -> Unit = {
         editingBarTitle = false
         focusManager.clearFocus()
@@ -241,11 +244,15 @@ internal fun ComposerTopBar(
                             enabled = !expanded, indication = null, interactionSource = remember { MutableInteractionSource() },
                         ) { expandHeader() },
                     )
-                    // The title text itself starts editing it (in reading mode it keeps opening the header).
+                    // The title text itself starts editing it; in the view/reading state the tap first switches the note
+                    // to editing (the same intent as a body tap / the pencil button), then the title gets the caret.
                     Box(
                         Modifier.align(Alignment.CenterStart).height(titleTapHeight).width(titleTapWidth + 4.dp).clickable(
                             enabled = !expanded, indication = null, interactionSource = remember { MutableInteractionSource() },
-                        ) { if (reading) expandHeader() else editingBarTitle = true },
+                        ) {
+                            if (reading) onEdit()
+                            editingBarTitle = true
+                        },
                     )
                 } else if (!expanded) {
                     // While typing, the space after the text still opens the header; the text keeps caret placement.
@@ -318,6 +325,8 @@ internal fun ComposerTopBar(
                 motion = motion,
                 editing = editingTitle,
                 onEditingChange = { editingTitle = it },
+                // A tap on the header title edits it; from the view/reading state it first switches the note to editing.
+                onTitleTap = { if (reading) onEdit(); editingTitle = true },
                 onTitleChange = onTitleChange,
                 onTitleDone = onTitleDone,
                 onToggleFavorite = onToggleFavorite,
@@ -434,6 +443,8 @@ private fun ExpandedHeader(
     motion: TitleHeaderMotion,
     editing: Boolean,
     onEditingChange: (Boolean) -> Unit,
+    /** Starts editing the title (a tap on the title text); the caller leaves the view/reading state first if needed. */
+    onTitleTap: () -> Unit,
     onTitleChange: (String) -> Unit,
     onTitleDone: () -> Unit,
     onToggleFavorite: () -> Unit,
@@ -442,7 +453,7 @@ private fun ExpandedHeader(
     val colors = SameSameTheme.colors
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
-    LaunchedEffect(editing) { if (editing) { focus.requestFocus(); keyboard?.show() } }
+    LaunchedEffect(editing, reading) { if (editing && !reading) { focus.requestFocus(); keyboard?.show() } }
     // Leave editing only when the field loses the focus it had (not on the first unfocused callback after composing,
     // which would undo a restored editing state).
     var hadFocus by remember { mutableStateOf(false) }
@@ -495,7 +506,7 @@ private fun ExpandedHeader(
                         cursorBrush = SolidColor(colors.accent),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                         keyboardActions = KeyboardActions(onNext = { onTitleDone() }),
-                        modifier = Modifier.fillMaxWidth().focusRequester(focus).focusProperties { canFocus = editing }
+                        modifier = Modifier.fillMaxWidth().focusRequester(focus).focusProperties { canFocus = editing && !reading }
                             .onFocusChanged {
                                 if (it.isFocused) hadFocus = true
                                 else if (hadFocus) { hadFocus = false; onEditingChange(false) }
@@ -505,7 +516,7 @@ private fun ExpandedHeader(
                     Text(title, style = titleStyle, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth())
                 }
             }
-            if (!editing && !reading) Box(Modifier.matchParentSize().clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onEditingChange(true) })
+            if (!editing) Box(Modifier.matchParentSize().clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onTitleTap() })
         }
         // Folder and info rows: in once the header is open, out as soon as it starts to close.
         Box(Modifier.fillMaxWidth().height(HeaderHeight).graphicsLayer { alpha = motion.infoAlpha.value }) {
