@@ -21,6 +21,8 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -39,8 +41,8 @@ import kotlin.math.abs
 
 /** State of [AppPushDrawer]: [fraction] is 0 (closed) to 1 (open). */
 @Stable
-class PushDrawerState {
-    internal val fraction = Animatable(0f)
+class PushDrawerState(initialFraction: Float = 0f) {
+    internal val fraction = Animatable(initialFraction)
 
     /** True when closed or closing. */
     val isClosed: Boolean get() = fraction.targetValue == 0f
@@ -55,8 +57,15 @@ class PushDrawerState {
     }
 }
 
+/** Only the open/closed state is saved (not a drag in flight): a recreated activity reopens the drawer as it was. */
+private val PushDrawerStateSaver: Saver<PushDrawerState, Boolean> = Saver(
+    save = { !it.isClosed },
+    restore = { open -> PushDrawerState(if (open) 1f else 0f) },
+)
+
 @Composable
-fun rememberPushDrawerState(): PushDrawerState = remember { PushDrawerState() }
+fun rememberPushDrawerState(): PushDrawerState =
+    rememberSaveable(saver = PushDrawerStateSaver) { PushDrawerState() }
 
 /** Settle rule shared by the edge drag and the whole-content swipe: a fling wins, otherwise the halfway point. */
 internal object DrawerSwipe {

@@ -72,6 +72,9 @@ sealed interface ToolbarIntent {
 
     /** System back; [hasSelection] is owned by the selection controller. */
     data class Back(val hasSelection: Boolean) : ToolbarIntent
+
+    /** Reopens the editor in a state saved by [ToolbarStateSaver] (activity recreation / process death). */
+    data class Restore(val state: ToolbarState) : ToolbarIntent
 }
 
 /** What a back press does; order: panel, menu, selection, full screen, reading, back to the view state, leave. */
@@ -134,6 +137,7 @@ object ToolbarReducer {
 
         ToolbarIntent.CloseMenu -> state.copy(menu = null)
         is ToolbarIntent.SetFullScreen -> state.copy(fullScreen = intent.on, panel = null, menu = null)
+        is ToolbarIntent.Restore -> intent.state
 
         is ToolbarIntent.Back -> when (backAction(state, intent.hasSelection)) {
             BackAction.ClosePanel -> {

@@ -368,4 +368,32 @@ class PlaybackControllerTest {
         c.close()
         assertThat(c.state.value.durationMs).isEqualTo(10_000)
     }
+
+    // ---- process death
+    @Test fun restoreReopensThePlaylistPausedAtTheSavedPosition() {
+        val c = playlist()
+        c.restore(PlaybackState(objectId = "b", playing = true, positionMs = 12_000, durationMs = 0, speed = 1.5f))
+        assertThat(c.state.value.objectId).isEqualTo("b")
+        assertThat(c.state.value.playing).isFalse()
+        assertThat(c.pos).isEqualTo(12_000)
+        assertThat(c.state.value.durationMs).isEqualTo(35_000)
+        assertThat(c.state.value.speed).isEqualTo(1.5f)
+        assertThat(engines).isEmpty()
+    }
+
+    @Test fun playAfterRestoreContinuesFromTheSavedPosition() {
+        val c = playlist()
+        c.restore(PlaybackState(objectId = "b", positionMs = 12_000))
+        assertThat(c.togglePlay()).isTrue()
+        // 12 s on the cumulative timeline = 2 s into the 20 s second recording.
+        assertThat(last.position).isEqualTo(2_000)
+        assertThat(c.pos).isEqualTo(12_000)
+        assertThat(c.state.value.playing).isTrue()
+    }
+
+    @Test fun restoreClampsAPositionPastTheEnd() {
+        val c = playlist()
+        c.restore(PlaybackState(objectId = "c", positionMs = 90_000))
+        assertThat(c.pos).isEqualTo(35_000)
+    }
 }

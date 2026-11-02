@@ -200,6 +200,23 @@ class PlaybackController(
         _state.value = _state.value.copy(objectId = null, playing = false, positionMs = 0, durationMs = plan.totalMs.ms())
     }
 
+    /**
+     * Process death: reopens the playlist paused at the saved [playback] position (no player is created and nothing
+     * plays by itself; the next Play starts from there). A page voice object is not restored: its file is not known
+     * until it is tapped.
+     */
+    fun restore(playback: PlaybackState) {
+        releaseEngine()
+        single = null
+        current = -1
+        rebuild()
+        _state.value = playback.copy(
+            playing = false,
+            positionMs = plan.clamp(playback.positionMs.toLong()).ms(),
+            durationMs = if (plan.totalMs > 0L) plan.totalMs.ms() else playback.durationMs,
+        )
+    }
+
     private fun enginePosition(e: PlayerEngine): Long = plan.positionOf(current, e.positionMs.toLong())
 
     private fun releaseEngine() {

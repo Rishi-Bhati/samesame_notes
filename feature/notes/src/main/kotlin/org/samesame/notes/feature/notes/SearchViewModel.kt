@@ -1,5 +1,6 @@
 package org.samesame.notes.feature.notes
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -23,8 +24,14 @@ import javax.inject.Inject
 class SearchViewModel @Inject constructor(
     notes: NoteRepository,
     private val history: SearchHistoryRepository,
+    private val savedState: SavedStateHandle,
 ) : ViewModel() {
-    val query = MutableStateFlow("")
+    val query = MutableStateFlow(savedState.get<String>(KEY_QUERY).orEmpty())
+
+    init {
+        // The typed query survives activity recreation and process death (the results follow from it).
+        viewModelScope.launch { query.collect { savedState[KEY_QUERY] = it } }
+    }
 
     val results: StateFlow<List<Note>> = query
         .flatMapLatest { if (it.isBlank()) flowOf(emptyList()) else notes.search(it) }
@@ -42,3 +49,5 @@ class SearchViewModel @Inject constructor(
     fun clearHistory() { viewModelScope.launch { history.clear() } }
     fun setHistoryEnabled(enabled: Boolean) { viewModelScope.launch { history.setEnabled(enabled) } }
 }
+
+private const val KEY_QUERY = "search.query"

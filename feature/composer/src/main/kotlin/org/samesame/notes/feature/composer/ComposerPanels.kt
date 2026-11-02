@@ -16,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -96,7 +97,7 @@ internal fun ComposerPanelLayer(
     modifier: Modifier = Modifier,
 ) {
     val prefs = tools.prefs
-    var setsOpen by remember { mutableStateOf(false) }
+    var setsOpen by rememberSaveable { mutableStateOf(false) }
     var spuit by remember { mutableStateOf<SpuitRequest?>(null) }
     var favouriteMode by remember { mutableStateOf(false) }
     // Set while a favourite of the other tool kind is applied: the tool switch passes through "no panel" and must not leave favourite mode.

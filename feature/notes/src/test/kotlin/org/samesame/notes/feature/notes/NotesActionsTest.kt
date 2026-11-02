@@ -93,7 +93,8 @@ class NotesActionsTest {
         override suspend fun setShowFolderCards(show: Boolean) = Unit
     }
 
-    private fun viewModel(calls: Calls, notes: List<Note>) = NotesViewModel(fakeNotes(notes, calls), fakeFolders(calls), fakePrefs)
+    private fun viewModel(calls: Calls, notes: List<Note>) =
+        NotesViewModel(fakeNotes(notes, calls), fakeFolders(calls), fakePrefs, androidx.lifecycle.SavedStateHandle())
 
     @Test
     fun moveSendsTheSelectionToTheChosenFolderAndLeavesSelectionMode() = runTest(dispatcher) {
@@ -256,5 +257,46 @@ class NotesActionsTest {
             .isEqualTo(R.string.feature_notes_delete_msg_n_folder_n_note)
         assertThat(permanentDeleteDialogText(0, 1, false).message)
             .isEqualTo(R.string.feature_notes_delete_msg_one_note)
+    }
+
+    // ---- saved instance state
+
+    @Test
+    fun folderAndSelectionAreWrittenToTheSavedState() = runTest(dispatcher) {
+        val calls = Calls()
+        val saved = androidx.lifecycle.SavedStateHandle()
+        val vm = NotesViewModel(fakeNotes(listOf(note("a"), note("b")), calls), fakeFolders(calls), fakePrefs, saved)
+        val job = backgroundScope.launch(dispatcher) { vm.uiState.collect {} }
+        advanceUntilIdle()
+
+        vm.selectFilter(org.samesame.notes.core.model.NoteFilter.InFolder(FolderId("work")))
+        vm.startSelecting(note("a"))
+        advanceUntilIdle()
+
+        assertThat(saved.get<String>("notes.filter")).isEqualTo("folder:work:true")
+        assertThat(saved.get<Boolean>("notes.selecting")).isTrue()
+        assertThat(saved.get<ArrayList<String>>("notes.selection")).containsExactly("a")
+        job.cancel()
+    }
+
+    @Test
+    fun aRestoredSavedStateReopensTheFolderAndSelection() = runTest(dispatcher) {
+        val calls = Calls()
+        val saved = androidx.lifecycle.SavedStateHandle(
+            mapOf(
+                "notes.filter" to "folder:work:true",
+                "notes.selecting" to true,
+                "notes.selection" to arrayListOf("a"),
+                "notes.folderSelection" to arrayListOf<String>(),
+            ),
+        )
+        val vm = NotesViewModel(fakeNotes(listOf(note("a"), note("b")), calls), fakeFolders(calls), fakePrefs, saved)
+        val job = backgroundScope.launch(dispatcher) { vm.uiState.collect {} }
+        advanceUntilIdle()
+
+        assertThat(vm.uiState.value.filter).isEqualTo(org.samesame.notes.core.model.NoteFilter.InFolder(FolderId("work")))
+        assertThat(vm.uiState.value.selecting).isTrue()
+        assertThat(vm.uiState.value.selection).containsExactly(NoteId("a"))
+        job.cancel()
     }
 }

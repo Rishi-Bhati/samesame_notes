@@ -39,6 +39,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -167,6 +168,26 @@ private sealed interface LockAction {
     data class Open(val id: NoteId) : LockAction
 }
 
+/** Keeps the open lock flow (and the note it acts on) across activity recreation. */
+private val LockActionSaver = listSaver<LockAction?, String>(
+    save = { action ->
+        when (action) {
+            null -> emptyList()
+            LockAction.Lock -> listOf("lock")
+            LockAction.Unlock -> listOf("unlock")
+            is LockAction.Open -> listOf("open", action.id.value)
+        }
+    },
+    restore = { parts ->
+        when (parts.firstOrNull()) {
+            "lock" -> LockAction.Lock
+            "unlock" -> LockAction.Unlock
+            "open" -> parts.getOrNull(1)?.let { LockAction.Open(NoteId(it)) }
+            else -> null
+        }
+    },
+)
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun NotesScreen(
@@ -187,20 +208,20 @@ internal fun NotesScreen(
 
     // Whether the notes list can scroll; when it cannot, the collapsing title stays/returns expanded.
     var contentScrollable by remember { mutableStateOf(true) }
-    var menu by remember { mutableStateOf(MenuState.None) }
-    var sortMenu by remember { mutableStateOf(false) }
-    var moreMenu by remember { mutableStateOf(false) }
-    var confirmTrash by remember { mutableStateOf(false) }
-    var confirmDeleteForever by remember { mutableStateOf(false) }
-    var confirmEmpty by remember { mutableStateOf(false) }
+    var menu by rememberSaveable { mutableStateOf(MenuState.None) }
+    var sortMenu by rememberSaveable { mutableStateOf(false) }
+    var moreMenu by rememberSaveable { mutableStateOf(false) }
+    var confirmTrash by rememberSaveable { mutableStateOf(false) }
+    var confirmDeleteForever by rememberSaveable { mutableStateOf(false) }
+    var confirmEmpty by rememberSaveable { mutableStateOf(false) }
     // Lock flows: Lock / Unlock act on the selection; Open acts on the tapped locked note.
-    var lockAction by remember { mutableStateOf<LockAction?>(null) }
-    var confirmUnlock by remember { mutableStateOf(false) }
+    var lockAction by rememberSaveable(stateSaver = LockActionSaver) { mutableStateOf<LockAction?>(null) }
+    var confirmUnlock by rememberSaveable { mutableStateOf(false) }
     // Share / Save as file: the format popup, the save dialog, the running request and the "unlock first" notice.
-    var shareMenu by remember { mutableStateOf(false) }
-    var saveDialog by remember { mutableStateOf(false) }
+    var shareMenu by rememberSaveable { mutableStateOf(false) }
+    var saveDialog by rememberSaveable { mutableStateOf(false) }
     var transfer by remember { mutableStateOf<TransferRequest?>(null) }
-    var lockedNotice by remember { mutableStateOf<TransferKind?>(null) }
+    var lockedNotice by rememberSaveable { mutableStateOf<TransferKind?>(null) }
     // PDF+: the PDFs the user picked, waiting for "one note or separate notes", and the import in progress.
     var pickedPdfs by remember { mutableStateOf<List<android.net.Uri>>(emptyList()) }
     var importingPdf by remember { mutableStateOf(false) }
