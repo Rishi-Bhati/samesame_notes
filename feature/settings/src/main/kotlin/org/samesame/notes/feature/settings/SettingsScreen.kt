@@ -202,7 +202,7 @@ private fun MainPage(
     onImport: () -> Unit,
 ) {
     val hasLockPassword by hiltViewModel<LockViewModel>().hasPassword.collectAsStateWithLifecycle(initialValue = false)
-    var themeMenu by remember { mutableStateOf(false) }
+    var themeMenu by rememberSaveable { mutableStateOf(false) }
     SettingsScaffold(stringResource(R.string.feature_settings_title), onBack) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding()) {
             SectionHeader(stringResource(R.string.feature_settings_general))

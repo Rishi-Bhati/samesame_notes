@@ -3,6 +3,7 @@ package org.samesame.notes.feature.notes
 import android.graphics.BitmapFactory
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -121,12 +122,19 @@ class NotesViewModel @Inject constructor(
     private val notes: NoteRepository,
     private val folders: FolderRepository,
     private val preferences: UserPreferencesRepository,
+    private val savedState: SavedStateHandle,
 ) : ViewModel() {
 
-    private val filter = MutableStateFlow<NoteFilter>(NoteFilter.All)
-    private val selecting = MutableStateFlow(false)
-    private val selection = MutableStateFlow<Set<NoteId>>(emptySet())
-    private val folderSelection = MutableStateFlow<Set<FolderId>>(emptySet())
+    // The current folder and the selection survive process death (the list scroll already survives through
+    // rememberLazyGridState): a restored activity reopens where the user left it.
+    private val filter = MutableStateFlow(decodeFilter(savedState.get<String>(KEY_FILTER)))
+    private val selecting = MutableStateFlow(savedState.get<Boolean>(KEY_SELECTING) ?: false)
+    private val selection = MutableStateFlow<Set<NoteId>>(
+        savedState.get<ArrayList<String>>(KEY_SELECTION).orEmpty().mapTo(LinkedHashSet()) { NoteId(it) },
+    )
+    private val folderSelection = MutableStateFlow<Set<FolderId>>(
+        savedState.get<ArrayList<String>>(KEY_FOLDER_SELECTION).orEmpty().mapTo(LinkedHashSet()) { FolderId(it) },
+    )
 
     private val visibleNotes = combine(filter, preferences.preferences.map { it.sortOrder }) { f, s -> f to s }
         .flatMapLatest { (filter, sort) -> notes.observeNotes(filter, sort) }
@@ -163,6 +171,10 @@ class NotesViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), NotesUiState())
 
     init {
+        viewModelScope.launch { filter.collect { savedState[KEY_FILTER] = encodeFilter(it) } }
+        viewModelScope.launch { selecting.collect { savedState[KEY_SELECTING] = it } }
+        viewModelScope.launch { selection.collect { set -> savedState[KEY_SELECTION] = ArrayList(set.map { it.value }) } }
+        viewModelScope.launch { folderSelection.collect { set -> savedState[KEY_FOLDER_SELECTION] = ArrayList(set.map { it.value }) } }
         viewModelScope.launch {
             notes.purgeExpiredTrash()
             folders.purgeExpiredTrash()
@@ -449,6 +461,41 @@ internal fun parentFilterOf(folders: List<Folder>, filter: NoteFilter): NoteFilt
     if (filter !is NoteFilter.InFolder) return filter
     val parentId = folders.firstOrNull { it.id == filter.folderId }?.parentId
     return if (parentId != null) NoteFilter.InFolder(parentId) else NoteFilter.All
+}
+
+// ---- saved instance state (activity recreation / process death) ------------------------------------------------
+
+private const val KEY_FILTER = "notes.filter"
+private const val KEY_SELECTING = "notes.selecting"
+private const val KEY_SELECTION = "notes.selection"
+private const val KEY_FOLDER_SELECTION = "notes.folderSelection"
+
+/** A [NoteFilter] as one saved-state string; the folder id is a UUID, so the ':' separators are unambiguous. */
+internal fun encodeFilter(filter: NoteFilter): String = when (filter) {
+    NoteFilter.All -> "all"
+    NoteFilter.Uncategorized -> "folders"
+    NoteFilter.Favorites -> "favorites"
+    NoteFilter.Locked -> "locked"
+    NoteFilter.Trash -> "trash"
+    is NoteFilter.InFolder -> "folder:${filter.folderId.value}:${filter.includeSubfolders}"
+    is NoteFilter.WithTag -> "tag:${filter.tag}"
+}
+
+/** The inverse of [encodeFilter]; anything unknown falls back to All notes. */
+internal fun decodeFilter(code: String?): NoteFilter = when {
+    code == null || code == "all" -> NoteFilter.All
+    code == "folders" -> NoteFilter.Uncategorized
+    code == "favorites" -> NoteFilter.Favorites
+    code == "locked" -> NoteFilter.Locked
+    code == "trash" -> NoteFilter.Trash
+    code.startsWith("folder:") -> {
+        val rest = code.removePrefix("folder:")
+        val sep = rest.lastIndexOf(':')
+        if (sep <= 0) NoteFilter.All
+        else NoteFilter.InFolder(FolderId(rest.substring(0, sep)), rest.substring(sep + 1).toBoolean())
+    }
+    code.startsWith("tag:") -> NoteFilter.WithTag(code.removePrefix("tag:"))
+    else -> NoteFilter.All
 }
 
 /** "Add them all to one note" (one job) or "Create separate notes" (one job per PDF). */

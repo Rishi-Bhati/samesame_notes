@@ -120,6 +120,7 @@ import org.samesame.notes.feature.composer.toolbar.TextToolbarModel
 import org.samesame.notes.feature.composer.toolbar.ToolbarIntent
 import org.samesame.notes.feature.composer.toolbar.ToolbarReducer
 import org.samesame.notes.feature.composer.toolbar.ToolbarState
+import org.samesame.notes.feature.composer.toolbar.ToolbarStateSaver
 import org.samesame.notes.feature.composer.toolbar.ToolbarHeight
 import org.samesame.notes.feature.composer.drawing.DrawingRequest
 import org.samesame.notes.feature.composer.drawing.DrawingResult
@@ -180,6 +181,7 @@ import org.samesame.notes.feature.composer.voice.VoiceDockedMenu
 import org.samesame.notes.feature.composer.voice.VoiceRecordPill
 import org.samesame.notes.feature.composer.voice.VoiceListState
 import org.samesame.notes.feature.composer.voice.VoicePlaybackHub
+import org.samesame.notes.feature.composer.voice.PlaybackStateSaver
 import org.samesame.notes.feature.composer.voice.isChangingConfigurations
 import org.samesame.notes.feature.composer.voice.onEditorDisposed
 import org.samesame.notes.feature.composer.voice.onEditorStopped
@@ -352,11 +354,11 @@ internal fun ComposerEditor(
     /** Builds the in-memory session of the drawing sheet; null leaves Insert > Drawing disabled. */
     newDrawingSession: ((kotlinx.coroutines.CoroutineScope, List<org.samesame.notes.core.ink.page.PageElement>) -> EditorSession)? = null,
 ) {
-    var lockedSaveNotice by remember { mutableStateOf(false) }
-    var unlockFlow by remember { mutableStateOf(false) }
-    var unlockConfirm by remember { mutableStateOf(false) }
-    var lockFlow by remember { mutableStateOf(false) }
-    var trashConfirm by remember { mutableStateOf(false) }
+    var lockedSaveNotice by rememberSaveable { mutableStateOf(false) }
+    var unlockFlow by rememberSaveable { mutableStateOf(false) }
+    var unlockConfirm by rememberSaveable { mutableStateOf(false) }
+    var lockFlow by rememberSaveable { mutableStateOf(false) }
+    var trashConfirm by rememberSaveable { mutableStateOf(false) }
     val chrome by session.chrome.collectAsStateWithLifecycle()
     val tools by session.tools.collectAsStateWithLifecycle()
     val doc by session.document.collectAsStateWithLifecycle()
@@ -368,6 +370,15 @@ internal fun ComposerEditor(
     val prefs = tools.prefs
     val dark = SameSameTheme.colors.isDark
     val darkAdjust = dark && settings.adjustColourInDarkMode && doc.style.adjustForDarkMode
+
+    // Mode, tool and the open panel/menu survive activity recreation (theme, font scale, locale, display size) and
+    // process death: the snapshot is captured into the saved instance state and applied once the session exists.
+    val savedToolbar = rememberSaveable(stateSaver = ToolbarStateSaver) { mutableStateOf(tb) }
+    val toolbarOnOpen = remember { savedToolbar.value }
+    LaunchedEffect(session) {
+        if (toolbarOnOpen != session.chrome.value.toolbar) session.dispatch(ToolbarIntent.Restore(toolbarOnOpen))
+    }
+    SideEffect { savedToolbar.value = tb }
 
     // ---- document, viewport, canvas source
     // Keyed on the page sizes too (v6): a page of its own size moves every page after it. The templates take part
@@ -430,7 +441,10 @@ internal fun ComposerEditor(
         val f = (session.content(pageId)?.elements?.firstOrNull { it.id == id } as? ObjectElement)?.floating() ?: return
         val box = f.obj as? TextBoxObject ?: return
         session.clearSelection()
-        editor = TextBoxEditor(pageId, id, fresh, box.text, f.rect, editorContext, darkAdjust).also { it.state.sensitive = locked }
+        val pageSpec = session.holder.current.pages.firstOrNull { it.id == pageId }
+        // A text box on a picture page (imported PDF) keeps the stored text colours, like the canvas draws that page.
+        val pageDark = pageSpec != null && adjustsForDark(pageSpec, darkAdjust)
+        editor = TextBoxEditor(pageId, id, fresh, box.text, f.rect, editorContext, pageDark).also { it.state.sensitive = locked }
         textState.hideKeyboard()
         if (session.chrome.value.toolbar.mode == EditorMode.Pen) session.dispatch(ToolbarIntent.ToggleHandwriting)
         session.dispatch(ToolbarIntent.ClosePanel)
@@ -461,7 +475,11 @@ internal fun ComposerEditor(
         androidx.compose.runtime.withFrameNanos { }
         runCatching { e.state.requestInput() }
     }
-    LaunchedEffect(darkAdjust, editor) { editor?.setDark(darkAdjust) }
+    LaunchedEffect(darkAdjust, editor) {
+        val e = editor ?: return@LaunchedEffect
+        val pageSpec = session.holder.current.pages.firstOrNull { it.id == e.pageId }
+        e.setDark(pageSpec != null && adjustsForDark(pageSpec, darkAdjust))
+    }
     DisposableEffect(session) { onDispose { endTextBoxEdit() } }
     // Settings: "Show links in notes" underlines links and opens them on tap. Web previews (`settings.showWebPreviews`)
     // has no consumer yet: web cards are not built.
@@ -778,7 +796,7 @@ internal fun ComposerEditor(
     // ---- back chain: panel -> menu -> selection -> full screen -> reading -> leave
     // Settings: with "Auto save notes" off, leaving a note with unsaved edits asks Save / Discard; with
     // "Block Back button while editing" on, the Back key does nothing once nothing is left to close.
-    var leaveDialog by remember { mutableStateOf(false) }
+    var leaveDialog by rememberSaveable { mutableStateOf(false) }
     fun leaveOrAsk(outcome: BackOutcome) {
         if (outcome == BackOutcome.AskSaveOrDiscard) leaveDialog = true else onBack()
     }
@@ -839,7 +857,7 @@ internal fun ComposerEditor(
     var title by remember(session) { mutableStateOf(chrome.title) }
 
     // ---- easy writing pad (#79)
-    var easyPadOpen by remember { mutableStateOf(false) }
+    var easyPadOpen by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(tb.mode, settings.toolbarEasyWritingPad) { if (tb.mode != EditorMode.Pen || !settings.toolbarEasyWritingPad) easyPadOpen = false }
     val padCaret = textState.body.selection.min
     val padKey = padCaret to textState.body.length
@@ -866,7 +884,7 @@ internal fun ComposerEditor(
     }
 
     // ---- erase all
-    var eraseAllOpen by remember { mutableStateOf(false) }
+    var eraseAllOpen by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(tb.panel) { if (tb.panel != Panel.Eraser) eraseAllOpen = false }
     val currentPage by remember(viewport) {
         derivedStateOf {
@@ -900,12 +918,12 @@ internal fun ComposerEditor(
     }
 
     // ---- WP-J2: insert sources, menus, full-screen pages and dialogs
-    var pageScreen by remember { mutableStateOf<ComposerPage?>(null) }
-    var saveAsOpen by remember { mutableStateOf(false) }
-    var shareMenuOpen by remember { mutableStateOf(false) }
-    var tagsOpen by remember { mutableStateOf(false) }
-    var searchOpen by remember { mutableStateOf(false) }
-    var searchQuery by remember { mutableStateOf("") }
+    var pageScreen by rememberSaveable { mutableStateOf<ComposerPage?>(null) }
+    var saveAsOpen by rememberSaveable { mutableStateOf(false) }
+    var shareMenuOpen by rememberSaveable { mutableStateOf(false) }
+    var tagsOpen by rememberSaveable { mutableStateOf(false) }
+    var searchOpen by rememberSaveable { mutableStateOf(false) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
     // ---- in-note search (R1): a debounced search over the body text; hits painted by the text layer
     val searchNav = remember(session) { SearchNavigator() }
     var searchTick by remember { mutableIntStateOf(0) } // bumps when the cursor / hit list changed
@@ -1274,7 +1292,17 @@ internal fun ComposerEditor(
     suspend fun registerTracks() {
         player.setTracks(recordingRows.map { Track(it.id, voiceFile(it.media), it.durationMs) })
     }
-    LaunchedEffect(recordingRows) { registerTracks() }
+    // Playback position survives process death (paused, never resumed by itself). The player is process-wide, so a
+    // recreated activity finds it already playing and the snapshot is only applied to a fresh, idle player.
+    val savedPlayback = rememberSaveable(stateSaver = PlaybackStateSaver) { mutableStateOf(player.state.value) }
+    val playbackOnOpen = remember { savedPlayback.value }
+    // Collects every position tick (no recomposition: the holder is not read in composition).
+    LaunchedEffect(player) { player.state.collect { savedPlayback.value = it } }
+    LaunchedEffect(recordingRows) {
+        registerTracks()
+        val r = playbackOnOpen
+        if (r.objectId != null && player.state.value.objectId == null && recordingRows.any { it.id == r.objectId }) player.restore(r)
+    }
     DisposableEffect(session) { onDispose { player.onEditorDisposed(context.isChangingConfigurations()) } }
     fun startRecording() {
         val pageIndex = currentPage
