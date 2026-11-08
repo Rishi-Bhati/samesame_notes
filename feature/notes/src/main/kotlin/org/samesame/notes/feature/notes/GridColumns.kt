@@ -22,6 +22,18 @@ internal fun notesGridColumns(mode: ViewMode, screenWidthDp: Int, smallestWidthD
     }
 }
 
+/**
+ * Number of folder cards per row, like the reference's folder span table: 4 on narrow (phone portrait) windows,
+ * 5 on a tablet-sized mid window, 7 otherwise and 8 above [WIDE_DP]. The card width then comes from the available
+ * width, so a phone keeps 4 cards where the fixed 85 dp card only fitted 3.
+ */
+internal fun folderColumns(screenWidthDp: Int, smallestWidthDp: Int): Int = when {
+    screenWidthDp <= NARROW_DP -> 4
+    screenWidthDp <= NORMAL_DP -> if (smallestWidthDp >= TABLET_SMALLEST_WIDTH_DP) 5 else 7
+    screenWidthDp <= WIDE_DP -> 7
+    else -> 8
+}
+
 private const val NARROW_DP = 450
 private const val NORMAL_DP = 850
 private const val WIDE_DP = 925
