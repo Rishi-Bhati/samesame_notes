@@ -52,6 +52,8 @@ data class NotesUiState(
     val trashedFolders: List<Folder> = emptyList(),
     val allNotesCount: Int = 0,
     val rootNotesCount: Int = 0,
+    val favoritesCount: Int = 0,
+    val lockedCount: Int = 0,
     val loaded: Boolean = false,
 ) {
     val isTrash get() = filter == NoteFilter.Trash
@@ -116,6 +118,47 @@ internal fun listSubtitle(state: NotesUiState): ListSubtitle {
     }
 }
 
+/** The drawer's rows in order: All, then Favourites/Locked when they have notes, Trash and Folders. */
+internal enum class DrawerEntry { All, Favorites, Locked, Trash, Folders }
+
+/** Drawer rows with the parity rule: a Favourites/Locked row shows only when its count is above zero. */
+internal fun drawerEntries(favoritesCount: Int, lockedCount: Int): List<DrawerEntry> = buildList {
+    add(DrawerEntry.All)
+    if (favoritesCount > 0) add(DrawerEntry.Favorites)
+    if (lockedCount > 0) add(DrawerEntry.Locked)
+    add(DrawerEntry.Trash)
+    add(DrawerEntry.Folders)
+}
+
+/**
+ * Header title for a predefined filter; null for [NoteFilter.InFolder], whose title is the folder name.
+ * [NoteFilter.WithTag] keeps the old fallback ("All notes").
+ */
+internal fun headerTitleRes(filter: NoteFilter): Int? = when (filter) {
+    NoteFilter.All -> R.string.feature_notes_all
+    NoteFilter.Uncategorized -> R.string.feature_notes_folders
+    NoteFilter.Trash -> R.string.feature_notes_trash
+    NoteFilter.Favorites -> R.string.feature_notes_favorites
+    NoteFilter.Locked -> R.string.feature_notes_locked
+    is NoteFilter.InFolder -> null
+    is NoteFilter.WithTag -> R.string.feature_notes_all
+}
+
+/** Empty-list title for [filter]; Favorites and Locked get their own text. */
+internal fun emptyTitleRes(filter: NoteFilter): Int = when (filter) {
+    NoteFilter.Favorites -> R.string.feature_notes_empty_favorites_title
+    NoteFilter.Locked -> R.string.feature_notes_empty_locked_title
+    else -> R.string.feature_notes_empty_title
+}
+
+/** Empty-list hint for [filter]; null in the Recycle bin (no hint). */
+internal fun emptyHintRes(filter: NoteFilter): Int? = when (filter) {
+    NoteFilter.Trash -> null
+    NoteFilter.Favorites -> R.string.feature_notes_empty_favorites_hint
+    NoteFilter.Locked -> R.string.feature_notes_empty_locked_hint
+    else -> R.string.feature_notes_empty_hint
+}
+
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class NotesViewModel @Inject constructor(
@@ -167,7 +210,14 @@ class NotesViewModel @Inject constructor(
             trashedFolders = trashedFolders,
             loaded = true,
         )
-    }.combine(counts) { state, (all, root) -> state.copy(allNotesCount = all, rootNotesCount = root) }
+    }.combine(counts) { state, counts ->
+        state.copy(
+            allNotesCount = counts.allCount,
+            rootNotesCount = counts.rootCount,
+            favoritesCount = counts.favoritesCount,
+            lockedCount = counts.lockedCount,
+        )
+    }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), NotesUiState())
 
     init {

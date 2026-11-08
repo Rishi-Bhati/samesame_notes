@@ -2,6 +2,8 @@
 <resources>
     <string name="feature_notes_app_name">SameSame notes</string>
     <string name="feature_notes_all">All notes</string>
+    <string name="feature_notes_favorites">Favourites</string>
+    <string name="feature_notes_locked">Locked notes</string>
     <string name="feature_notes_folders">Folders</string>
     <string name="feature_notes_trash">Recycle bin</string>
     <string name="feature_notes_settings">Settings</string>
@@ -24,6 +26,10 @@
 
     <string name="feature_notes_empty_title">No notes</string>
     <string name="feature_notes_empty_hint">Tap the Add button to create a note.</string>
+    <string name="feature_notes_empty_favorites_title">No favourites</string>
+    <string name="feature_notes_empty_favorites_hint">Mark a note as a favourite to see it here.</string>
+    <string name="feature_notes_empty_locked_title">No locked notes</string>
+    <string name="feature_notes_empty_locked_hint">Lock a note to keep it here.</string>
     <string name="feature_notes_default_title">Text note %1$s</string>
 
     <!-- Overflow, sort and view menus -->

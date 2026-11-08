@@ -29,9 +29,16 @@ interface NoteRepository {
     suspend fun renderPreview(id: NoteId, targetWidthPx: Int = 384, darkTheme: Boolean = false): ByteArray?
 
 
-    /** Drawer badges (all notes, folder-root notes) without loading the catalog. */
-    fun observeNoteCounts(): Flow<Pair<Int, Int>> =
-        observeNotes(NoteFilter.All, SortOrder()).map { all -> all.size to all.count { it.folderId == null } }
+    /** Drawer badges (all notes, folder-root notes, favourites, locked notes) without loading the catalog. */
+    fun observeNoteCounts(): Flow<org.samesame.notes.core.model.NoteCounts> =
+        observeNotes(NoteFilter.All, SortOrder()).map { all ->
+            org.samesame.notes.core.model.NoteCounts(
+                allCount = all.size,
+                rootCount = all.count { it.folderId == null },
+                favoritesCount = all.count { it.isFavorite },
+                lockedCount = all.count { it.isLocked },
+            )
+        }
     fun search(query: String): Flow<List<Note>>
 
     /**
