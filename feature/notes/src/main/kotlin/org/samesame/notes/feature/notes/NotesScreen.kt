@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -957,21 +958,31 @@ private fun FolderCardRow(
     onLongClickFolder: (Folder) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    FlowRow(
-        modifier,
-        horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        folders.forEach { folder ->
-            FolderCard(
-                folder = folder,
-                selecting = state.selecting,
-                selected = folder.id in state.folderSelection,
-                onClick = { if (state.selecting) onToggleFolder(folder) else onOpenFolder(folder.id) },
-                onLongClick = { if (state.selecting) onToggleFolder(folder) else onLongClickFolder(folder) },
-            )
+    val config = androidx.compose.ui.platform.LocalConfiguration.current
+    val columns = folderColumns(config.screenWidthDp, config.smallestScreenWidthDp)
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        // The cards share the row exactly: n cards and the n-1 gaps fill the available width (card width from H3).
+        val cardWidth = ((maxWidth - FolderCardGap * (columns - 1)) / columns).coerceAtLeast(1.dp)
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(FolderCardGap), verticalArrangement = Arrangement.spacedBy(FolderCardGap),
+            // Pin the count so sub-pixel rounding of the computed width can never wrap a card onto the next row.
+            maxItemsInEachRow = columns,
+        ) {
+            folders.forEach { folder ->
+                FolderCard(
+                    folder = folder,
+                    onClick = { if (state.selecting) onToggleFolder(folder) else onOpenFolder(folder.id) },
+                    width = cardWidth,
+                    selecting = state.selecting,
+                    selected = folder.id in state.folderSelection,
+                    onLongClick = { if (state.selecting) onToggleFolder(folder) else onLongClickFolder(folder) },
+                )
+            }
         }
     }
 }
+
+private val FolderCardGap = 14.dp
 
 /** "Sort glyph + field | direction arrow", right-aligned above the notes. */
 @Composable

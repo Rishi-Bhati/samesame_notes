@@ -36,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.samesame.notes.core.designsystem.component.SelectionCircle
@@ -277,6 +278,12 @@ internal fun NoteSimpleItem(
     }
 }
 
+/** Reference folder tile: 85 x 66 dp, tab 40 x 12 dp. The width is supplied by the row's column count. */
+private val DefaultFolderCardWidth = 85.dp
+private const val FolderCardAspect = 85f / 66f
+private const val FolderTabWidthShare = 40f / 85f
+private const val FolderTabHeightShare = 12f / 85f
+
 /** A folder tile: count top-left, bold name below, with a darker tab like a folder. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -284,6 +291,7 @@ internal fun FolderCard(
     folder: Folder,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    width: Dp = DefaultFolderCardWidth,
     selecting: Boolean = false,
     selected: Boolean = false,
     onLongClick: () -> Unit = {},
@@ -291,10 +299,16 @@ internal fun FolderCard(
     val colors = SameSameTheme.colors
     val tab = folder.color?.let { Color(it.toInt()) } ?: FolderColors[0]
     Box(
-        modifier.size(width = 85.dp, height = 66.dp)
+        modifier.width(width).aspectRatio(FolderCardAspect)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
-        Box(Modifier.align(Alignment.TopEnd).size(width = 40.dp, height = 12.dp).background(tab, RoundedCornerShape(topStart = 8.dp, topEnd = 6.dp)))
+        // The tab keeps its share of the tile so a wider card on a big window still looks like the reference folder.
+        Box(
+            Modifier.align(Alignment.TopEnd)
+                .size(width = width * FolderTabWidthShare, height = width * FolderTabHeightShare)
+                .background(tab, RoundedCornerShape(topStart = 8.dp, topEnd = 6.dp)),
+        )
+
         Column(
             Modifier.fillMaxSize().padding(top = 5.dp).background(colors.card, RoundedCornerShape(12.dp)).padding(horizontal = 9.dp, vertical = 6.dp),
         ) {

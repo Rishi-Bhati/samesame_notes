@@ -53,7 +53,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameMillis
 import org.samesame.notes.feature.composer.panels.GlideScrollPad
-import org.samesame.notes.feature.composer.panels.GlideScrollPadTracker
 import org.samesame.notes.core.designsystem.theme.SameSameTheme
 import org.samesame.notes.feature.composer.R
 import org.samesame.notes.feature.composer.panels.ComposerPreviews
@@ -184,40 +183,29 @@ fun TextToolbar(
                         .onGloballyPositioned { fontSizeCoords.value = it }
                         .pointerInput(fontSizeHold) {
                             val longPressMs = viewConfiguration.longPressTimeoutMillis
-                            val pad = GlideScrollPadTracker(
-                                GlideScrollPad.SLOW_DP_PER_S.dp.toPx(), GlideScrollPad.FAST_DP_PER_S.dp.toPx(),
-                            )
+                            // Fastest edge-zone auto-scroll of the size list, in root px/s.
+                            val edgeScrollPxPerS = GlideScrollPad.MAX_EDGE_SCROLL_DP_PER_S.dp.toPx()
                             // Finger in root coordinates while held; the scroll-pad loop runs only while [holding].
                             val holding = mutableStateOf(false)
                             var finger = Offset.Zero
                             coroutineScope {
                                 launch {
                                     snapshotFlow { holding.value }.collectLatest { held ->
-                                        pad.reset()
                                         var last = -1L
-                                        var target = Float.NaN
                                         while (held) {
                                             val now = withFrameMillis { it }
                                             val dt = if (last < 0) 16f else (now - last).toFloat()
                                             last = now
                                             val list = fontSizeHold.scrollState ?: continue
-                                            // The whole popup is the pad once the finger glides into it (it starts on the
-                                            // button); outside it horizontally the list stays where it is.
-                                            if (fontSizeHold.insidePopup(finger.x) &&
-                                                (!target.isNaN() || fontSizeHold.insidePopup(finger.x, finger.y))
-                                            ) {
-                                                target = pad.target(
-                                                    finger.y, now, fontSizeHold.popupTop, fontSizeHold.popupBottom,
-                                                    list.maxValue.toFloat(), list.value.toFloat(),
+                                            // Deterministic pad: the list moves only while the finger is in its top/bottom
+                                            // edge zone (speed by depth, capped); the highlight is always the row under
+                                            // the finger in the list as it is scrolled now.
+                                            if (fontSizeHold.insidePopup(finger.x)) {
+                                                val step = GlideScrollPad.edgeScrollStep(
+                                                    finger.y, fontSizeHold.listTop, fontSizeHold.listBottom, dt, edgeScrollPxPerS,
                                                 )
-                                            } else if (!fontSizeHold.insidePopup(finger.x)) {
-                                                pad.reset()
-                                                target = Float.NaN
+                                                if (step != 0f) list.scrollBy(step)
                                             }
-                                            if (target.isNaN()) continue
-                                            val current = list.value.toFloat()
-                                            val next = GlideScrollPad.smoothStep(current, target, dt)
-                                            if (next != current) list.scrollBy(next - current)
                                             if (fontSizeHold.moveTo(finger.x, finger.y)) {
                                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                             }

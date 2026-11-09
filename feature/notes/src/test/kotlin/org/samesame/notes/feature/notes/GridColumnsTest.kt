@@ -27,4 +27,19 @@ class GridColumnsTest {
         assertEquals(7, notesGridColumns(ViewMode.GridSmall, 1280, 800, landscape = true))
         assertEquals(6, notesGridColumns(ViewMode.GridLarge, 1280, 800, landscape = true))
     }
+
+    @Test fun folderRowKeepsFourCardsOnAPhoneInPortrait() {
+        // H3: the reference folder span is 4 for windows up to 450 dp wide, so 4 cards fit the 374.4 dp row.
+        assertEquals(4, folderColumns(411, 411))
+        assertEquals(4, folderColumns(450, 450))
+        assertEquals(4, folderColumns(320, 320))
+    }
+
+    @Test fun folderRowAddsCardsOnWiderWindows() {
+        assertEquals(7, folderColumns(891, 411)) // phone landscape (not a tablet-sized smallest width)
+        assertEquals(5, folderColumns(800, 600)) // tablet in a mid-size window
+        assertEquals(7, folderColumns(925, 800))
+        assertEquals(8, folderColumns(926, 800))
+        assertEquals(8, folderColumns(1280, 800))
+    }
 }
