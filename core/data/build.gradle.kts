@@ -13,6 +13,7 @@ dependencies {
     api(projects.core.export)
     implementation(projects.core.sdocx)
     implementation(projects.core.database)
+    implementation(projects.core.files)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.biometric)

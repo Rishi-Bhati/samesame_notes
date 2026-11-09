@@ -18,6 +18,7 @@ import javax.inject.Singleton
  * - creating the [NoteDocumentStore] deletes decrypted working copies of locked notes left by a killed process;
  * - `cache/share` exports from earlier runs are deleted;
  * - once per install, the database is vacuumed, so text of notes locked before secure_delete existed is gone;
+ * - Files: temp copies of interrupted imports and unreferenced blobs are removed, expired Recycle bin items purged;
  * - [extra] runs before the vacuum (the app passes its own leftovers, e.g. orphaned voice recordings).
  */
 @Singleton
@@ -26,6 +27,7 @@ class StartupMaintenance @Inject constructor(
     private val database: DatabaseMaintenance,
     private val shareCache: ShareCache,
     private val documents: dagger.Lazy<NoteDocumentStore>,
+    private val files: dagger.Lazy<org.samesame.notes.core.data.repository.DefaultFilesRepository>,
     @param:ApplicationScope private val scope: CoroutineScope,
 ) {
     fun run(extra: () -> Unit = {}) {
@@ -33,6 +35,7 @@ class StartupMaintenance @Inject constructor(
             runCatching { documents.get() }
             runCatching { shareCache.sweep() }
             runCatching(extra)
+            runCatching { files.get().runMaintenance() }
             runCatching { vacuumOnce(File(File(context.noBackupFilesDir, "maintenance"), VACUUM_MARKER)) }
         }
     }
