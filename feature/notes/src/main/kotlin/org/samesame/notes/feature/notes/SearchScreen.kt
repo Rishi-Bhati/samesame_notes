@@ -77,7 +77,7 @@ internal fun SearchScreen(
             },
             title = {
                 BasicTextField(
-                    value = query, onValueChange = { viewModel.query.value = it }, singleLine = true,
+                    value = query, onValueChange = { viewModel.query.value = singleLineQuery(it) }, singleLine = true,
                     textStyle = SameSameText.SearchTitle.copy(fontSize = 22.sp, lineHeight = 28.sp, color = colors.textPrimary),
                     cursorBrush = SolidColor(colors.accent),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),

@@ -6,7 +6,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -57,6 +56,7 @@ import org.samesame.notes.core.designsystem.theme.SameSameTheme
 import org.samesame.notes.feature.composer.R
 import org.samesame.notes.feature.composer.panels.ComposerPreviews
 import org.samesame.notes.feature.composer.panels.DarkToolbarColors
+import org.samesame.notes.feature.composer.panels.FontSizeHoldGesture
 import org.samesame.notes.feature.composer.panels.FontSizeHoldState
 import org.samesame.notes.feature.composer.panels.FontSizePick
 import org.samesame.notes.feature.composer.panels.FontSizeRows
@@ -214,22 +214,43 @@ fun TextToolbar(
                                 }
                                 awaitEachGesture {
                                     val down = awaitFirstDown(requireUnconsumed = false)
-                                    val started = System.nanoTime()
-                                    val up = withTimeoutOrNull(longPressMs) { waitForUpOrCancellation() }
-                                    val elapsedMs = (System.nanoTime() - started) / 1_000_000
-                                    if (up != null) {
-                                        tapFontSize.value()
-                                        return@awaitEachGesture
+                                    down.consume()
+                                    // Start phase, with our own loop: waitForUpOrCancellation() gives up as soon as the
+                                    // finger leaves the 32 dp button, so a glide that starts moving at once never got here.
+                                    // Lift = tap; long-press timeout or a move past the touch slop = glide.
+                                    val slop = viewConfiguration.touchSlop
+                                    val pressedAt = android.os.SystemClock.uptimeMillis()
+                                    var start: FontSizeHoldGesture.Start? = null
+                                    while (start == null) {
+                                        // The timeout runs from the press, not from the last move event.
+                                        val left = longPressMs - (android.os.SystemClock.uptimeMillis() - pressedAt)
+                                        val event = if (left > 0) withTimeoutOrNull(left) { awaitPointerEvent() } else null
+                                        if (event == null) {
+                                            start = FontSizeHoldGesture.start(pressed = true, distance = 0f, touchSlop = slop, timedOut = true)
+                                            break
+                                        }
+                                        val change = event.changes.firstOrNull { it.id == down.id }
+                                        if (change == null) { start = FontSizeHoldGesture.Start.Cancelled; break }
+                                        start = FontSizeHoldGesture.start(
+                                            change.pressed, (change.position - down.position).getDistance(), slop,
+                                            timedOut = android.os.SystemClock.uptimeMillis() - pressedAt >= longPressMs,
+                                        )
+                                        change.consume()
                                     }
-                                    // A gesture cancelled by someone else ends well before the timeout: leave it alone.
-                                    if (elapsedMs < longPressMs - 20) return@awaitEachGesture
-                                    // Held: the popup is (or becomes) open; slide over its rows until the finger lifts. The
-                                    // whole popup scrolls the list (scroll-pad loop above); outside the popup nothing is
-                                    // highlighted and a release there cancels.
+                                    when (start) {
+                                        FontSizeHoldGesture.Start.Tap -> { tapFontSize.value(); return@awaitEachGesture }
+                                        FontSizeHoldGesture.Start.Cancelled, null -> return@awaitEachGesture
+                                        FontSizeHoldGesture.Start.Glide -> Unit
+                                    }
+                                    // Glide: the popup is (or becomes) open and this same pointer drives it until it lifts
+                                    // (Compose keeps sending it to this node outside its bounds). The scroll-pad loop above
+                                    // follows [finger]; release applies the row under it, see FontSizeHoldGesture.release.
                                     val sizes = TextSizeCatalog.menuSizes(currentFontSize.value.toFloat())
                                     fontSizeHold.highlighted = -1
                                     holdOpen.value()
+                                    var release = FontSizeHoldGesture.Release.Cancel
                                     var picked: FontSizePick? = null
+                                    var enteredPopup = false
                                     finger = fontSizeCoords.value?.localToRoot(down.position) ?: down.position
                                     holding.value = true
                                     try {
@@ -237,8 +258,13 @@ fun TextToolbar(
                                             val event = awaitPointerEvent()
                                             val change = event.changes.firstOrNull { it.id == down.id } ?: break
                                             finger = fontSizeCoords.value?.localToRoot(change.position) ?: change.position
+                                            val inPopup = fontSizeHold.popupShown && fontSizeHold.insidePopup(finger.x, finger.y)
+                                            if (inPopup) enteredPopup = true
                                             if (!change.pressed) {
                                                 fontSizeHold.moveTo(finger.x, finger.y)
+                                                val p = change.position
+                                                val overButton = p.x >= 0f && p.y >= 0f && p.x < size.width && p.y < size.height
+                                                release = FontSizeHoldGesture.release(fontSizeHold.highlighted, inPopup, enteredPopup, overButton)
                                                 picked = FontSizeRows.pick(fontSizeHold.highlighted, sizes)
                                                 break
                                             }
@@ -251,7 +277,11 @@ fun TextToolbar(
                                         holding.value = false
                                     }
                                     fontSizeHold.highlighted = -1
-                                    if (picked != null) pickFontSize.value(picked) else cancelFontSize.value()
+                                    when (release) {
+                                        FontSizeHoldGesture.Release.Apply -> picked?.let { pickFontSize.value(it) } ?: cancelFontSize.value()
+                                        FontSizeHoldGesture.Release.KeepOpen -> Unit
+                                        FontSizeHoldGesture.Release.Cancel -> cancelFontSize.value()
+                                    }
                                 }
                             }
                         }
