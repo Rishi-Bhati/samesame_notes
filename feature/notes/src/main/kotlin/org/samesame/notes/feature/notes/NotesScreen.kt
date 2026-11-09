@@ -130,7 +130,7 @@ fun NotesRoute(
             val scope = rememberCoroutineScope()
             MoveFolderScreen(
                 folders = state.folders,
-                rootNoteCount = state.rootNotesCount,
+                rootFolderCount = state.rootFolderCount,
                 onBack = { page = Page.Notes },
                 onPick = { folder -> viewModel.moveSelectionTo(folder); page = Page.Notes },
                 // A folder made here is top level; the user then taps it to move the notes in.
@@ -144,7 +144,7 @@ fun NotesRoute(
             Box(Modifier.fillMaxSize()) {
                 ManageFoldersScreen(
                     folders = state.folders,
-                    rootNoteCount = state.rootNotesCount,
+                    rootFolderCount = state.rootFolderCount,
                     onBack = { page = Page.Notes },
                     onOpenFolder = { viewModel.selectFilter(NoteFilter.InFolder(it)); page = Page.Notes },
                     onOpenRoot = { viewModel.selectFilter(NoteFilter.Uncategorized); page = Page.Notes },

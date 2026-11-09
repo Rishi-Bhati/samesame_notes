@@ -37,7 +37,8 @@ import org.samesame.notes.core.model.FolderId
 @Composable
 internal fun MoveFolderScreen(
     folders: List<Folder>,
-    rootNoteCount: Int,
+    /** Top-level folders: the Folders row counts folders, not the notes without one; null when there are none. */
+    rootFolderCount: Int?,
     onBack: () -> Unit,
     onPick: (FolderId?) -> Unit,
     onCreateFolder: (name: String, color: Long?) -> Unit,
@@ -56,7 +57,7 @@ internal fun MoveFolderScreen(
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).background(colors.card, RoundedCornerShape(26.dp))) {
             ManageRow(
                 icon = { Icon(AppIcons.Folder, null, tint = colors.iconMuted, modifier = Modifier.size(24.dp)) },
-                label = stringResource(R.string.feature_notes_folders), count = rootNoteCount, onClick = { onPick(null) },
+                label = stringResource(R.string.feature_notes_folders), count = rootFolderCount, onClick = { onPick(null) },
             )
             RowDivider()
             folders.forEach { folder ->

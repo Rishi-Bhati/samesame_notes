@@ -156,4 +156,31 @@ class NotesUiStateTest {
         assertThat(NotesUiState().rootFolderCount).isNull()
         assertThat(NotesUiState(folders = listOf(folder("child", parentId = "top-a"))).rootFolderCount).isNull()
     }
+
+    /** Device report: Manage folders showed the 13 unfiled notes as the Folders row count. */
+    @Test
+    fun manageFoldersFoldersRowCountsTopLevelFoldersNotUnfiledNotes() {
+        val state = NotesUiState(folders = folders, rootNotesCount = 13)
+
+        assertThat(state.rootFolderCount).isEqualTo(2)
+    }
+
+    @Test
+    fun manageFoldersFoldersRowShowsNoNumberWithoutFoldersEvenWithUnfiledNotes() {
+        val state = NotesUiState(folders = emptyList(), rootNotesCount = 13)
+
+        assertThat(state.rootFolderCount).isNull()
+    }
+
+    /** Manage folders and Select folder rows show the same per-folder count as the folder cards. */
+    @Test
+    fun folderRowsShowTheFolderSubtreeNoteCount() {
+        val counted = listOf(
+            folder("top-a", noteCount = 5),
+            folder("child-a", parentId = "top-a", noteCount = 3),
+        )
+        val state = NotesUiState(folders = counted)
+
+        assertThat(state.folders.map { it.noteCount }).containsExactly(5, 3).inOrder()
+    }
 }

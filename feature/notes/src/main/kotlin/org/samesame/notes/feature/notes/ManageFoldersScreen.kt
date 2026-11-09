@@ -60,7 +60,8 @@ import org.samesame.notes.core.model.FolderId
 @Composable
 internal fun ManageFoldersScreen(
     folders: List<Folder>,
-    rootNoteCount: Int,
+    /** Top-level folders: the Folders row counts folders, not the notes without one; null when there are none. */
+    rootFolderCount: Int?,
     onBack: () -> Unit,
     onOpenFolder: (FolderId) -> Unit,
     onOpenRoot: () -> Unit,
@@ -105,7 +106,7 @@ internal fun ManageFoldersScreen(
                 icon = {
                     Icon(AppIcons.Folder, null, tint = colors.iconMuted, modifier = Modifier.size(24.dp))
                 },
-                label = stringResource(R.string.feature_notes_folders), count = rootNoteCount, onClick = onOpenRoot,
+                label = stringResource(R.string.feature_notes_folders), count = rootFolderCount, onClick = onOpenRoot,
             )
             RowDivider()
             folders.forEach { folder ->
