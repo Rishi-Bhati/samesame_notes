@@ -3,6 +3,8 @@
   Android 12+. Only the catalog and the note containers are backed up. Locked notes travel encrypted, but their key
   (noBackupFilesDir/lock) deliberately does not, so they cannot be opened after a restore or on a new device.
   Cloud backup only runs when it is end-to-end encrypted (the device has a screen lock).
+  Files library (files/library/): left out of cloud backup on purpose (Auto Backup's 25 MB quota stops the whole app's
+  backup once exceeded); its stored copies (library/blobs/) go with device-to-device transfer. tmp/ is never copied.
 -->
 <data-extraction-rules>
     <cloud-backup disableIfNoEncryptionCapabilities="true">
@@ -12,5 +14,6 @@
     <device-transfer>
         <include domain="database" path="." />
         <include domain="file" path="notes/" />
+        <include domain="file" path="library/blobs/" />
     </device-transfer>
 </data-extraction-rules>

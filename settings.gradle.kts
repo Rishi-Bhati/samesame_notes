@@ -59,6 +59,7 @@ include(":core:richtext")
 include(":core:export")
 include(":core:sdocx")
 include(":core:security")
+include(":core:files")
 
 include(":feature:notes")
 include(":feature:composer")

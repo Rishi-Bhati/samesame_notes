@@ -66,4 +66,14 @@ object Limits {
 
     /** Nesting depth of grouped objects in a .sdocx page. */
     const val MAX_SDOCX_OBJECT_DEPTH = 32
+
+    // Files library (0.2.0, docs/architecture/files-feature.md 1.2). Files in the Recycle bin reuse TRASH_RETENTION_DAYS.
+    /** Size of one file imported into Files. */
+    const val MAX_LIBRARY_FILE_BYTES = 2L * 1024 * 1024 * 1024
+    /** An import stops when the free space on the data partition would drop below this. */
+    const val LIBRARY_FREE_SPACE_RESERVE_BYTES = 200L * 1024 * 1024
+    /** UTF-8 bytes of a file's display name (the usual file-system limit). */
+    const val MAX_FILE_NAME_BYTES = 255
+    /** Characters (code points) of a Files folder name. */
+    const val MAX_FILE_FOLDER_NAME_LENGTH = 50
 }

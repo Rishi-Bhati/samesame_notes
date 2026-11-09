@@ -2,7 +2,7 @@
 <!--
   Android 8-11 (Auto Backup ignores data_extraction_rules there): the same set as data_extraction_rules.xml, and only
   into an end-to-end encrypted backup (requireFlags, honoured from Android 9). Settings, search history and every
-  other file stay out.
+  other file stay out, the Files library (files/library/) included: it would exceed the 25 MB Auto Backup quota.
 -->
 <full-backup-content>
     <include domain="database" path="." requireFlags="clientSideEncryption" />
