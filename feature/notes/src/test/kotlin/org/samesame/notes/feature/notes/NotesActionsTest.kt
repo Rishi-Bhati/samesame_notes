@@ -60,7 +60,14 @@ class NotesActionsTest {
             try {
                 when (method.name.substringBefore('-')) { // inline-class parameters mangle the name
                     "observeNotes" -> flowOf(all)
-                    "observeNoteCounts" -> flowOf(all.size to all.count { it.folderId == null })
+                    "observeNoteCounts" -> flowOf(
+                        org.samesame.notes.core.model.NoteCounts(
+                            allCount = all.size,
+                            rootCount = all.count { it.folderId == null },
+                            favoritesCount = all.count { it.isFavorite },
+                            lockedCount = all.count { it.isLocked },
+                        ),
+                    )
                     "purgeExpiredTrash" -> Unit
                     "moveToFolder" -> { calls.moves += (args[0] as List<NoteId>) to (args[1]?.let { FolderId(it.toString()) }); Unit }
                     "moveToTrash" -> { calls.tokens += args[1] as org.samesame.notes.core.security.LockToken?; calls.noteTrash += args[0] as List<NoteId>; Unit }

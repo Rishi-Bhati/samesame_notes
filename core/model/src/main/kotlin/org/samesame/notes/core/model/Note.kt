@@ -43,3 +43,14 @@ data class Note(
 /** Infinite scrolling page vs individual fixed-ratio pages. */
 @Serializable
 enum class PageMode { Infinite, Pages }
+
+/**
+ * Drawer badges, without loading the catalog: every note outside the trash, the ones at the folder
+ * root, the favourites and the locked notes.
+ */
+data class NoteCounts(
+    val allCount: Int,
+    val rootCount: Int,
+    val favoritesCount: Int,
+    val lockedCount: Int,
+)

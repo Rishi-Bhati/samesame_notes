@@ -47,9 +47,13 @@ internal fun NotesDrawer(
     selected: NoteFilter,
     allCount: Int,
     foldersCount: Int,
+    favoritesCount: Int = 0,
+    lockedCount: Int = 0,
     onSelectAll: () -> Unit,
     onSelectTrash: () -> Unit,
     onSelectFolders: () -> Unit,
+    onSelectFavorites: () -> Unit = {},
+    onSelectLocked: () -> Unit = {},
     showFolderCards: Boolean,
     onShowFolderCards: (Boolean) -> Unit,
     onManageFolders: () -> Unit,
@@ -76,6 +80,12 @@ internal fun NotesDrawer(
                 }
             }
             DrawerRow(AppIcons.Notes, stringResource(R.string.feature_notes_all), allCount, selected == NoteFilter.All, onSelectAll)
+            if (favoritesCount > 0) {
+                DrawerRow(AppIcons.Star, stringResource(R.string.feature_notes_favorites), favoritesCount, selected == NoteFilter.Favorites, onSelectFavorites)
+            }
+            if (lockedCount > 0) {
+                DrawerRow(AppIcons.Lock, stringResource(R.string.feature_notes_locked), lockedCount, selected == NoteFilter.Locked, onSelectLocked)
+            }
             DrawerRow(AppIcons.Trash, stringResource(R.string.feature_notes_trash), null, selected == NoteFilter.Trash, onSelectTrash)
             // Ref #11: divider centre 17.1dp below the Recycle bin row, Folders row starts 1.9dp below it.
             DottedDivider(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.1.dp, bottom = 0.9.dp))

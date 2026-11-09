@@ -6,8 +6,13 @@ import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 import org.samesame.notes.core.database.entity.NoteEntity
 
-/** Drawer badges: every note outside the trash, and the ones at the folder root. */
-data class NoteCounts(val allCount: Int, val rootCount: Int)
+/** Drawer badges: every note outside the trash, the ones at the folder root, favourites and locked notes. */
+data class NoteCounts(
+    val allCount: Int,
+    val rootCount: Int,
+    val favoritesCount: Int,
+    val lockedCount: Int,
+)
 
 @Dao
 interface NoteDao {
@@ -18,7 +23,9 @@ interface NoteDao {
     @Query(
         """
         SELECT (SELECT COUNT(*) FROM notes WHERE trashed_at IS NULL) AS allCount,
-               (SELECT COUNT(*) FROM notes WHERE trashed_at IS NULL AND folder_id IS NULL) AS rootCount
+               (SELECT COUNT(*) FROM notes WHERE trashed_at IS NULL AND folder_id IS NULL) AS rootCount,
+               (SELECT COUNT(*) FROM notes WHERE trashed_at IS NULL AND is_favorite = 1) AS favoritesCount,
+               (SELECT COUNT(*) FROM notes WHERE trashed_at IS NULL AND is_locked = 1) AS lockedCount
         """,
     )
     fun observeCounts(): Flow<NoteCounts>

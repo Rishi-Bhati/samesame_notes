@@ -335,11 +335,8 @@ internal fun NotesScreen(
         state.selecting && state.selectedCount == 0 -> stringResource(R.string.feature_notes_select_notes)
         state.selecting -> stringResource(R.string.feature_notes_selected_count, state.selectedCount)
         else -> when (val f = state.filter) {
-            NoteFilter.All -> stringResource(R.string.feature_notes_all)
-            NoteFilter.Uncategorized -> stringResource(R.string.feature_notes_folders)
-            NoteFilter.Trash -> stringResource(R.string.feature_notes_trash)
             is NoteFilter.InFolder -> state.folders.firstOrNull { it.id == f.folderId }?.name.orEmpty()
-            else -> stringResource(R.string.feature_notes_all)
+            else -> headerTitleRes(f)?.let { stringResource(it) } ?: stringResource(R.string.feature_notes_all)
         }
     }
     val isEmpty = state.notes.isEmpty() && state.visibleFolders.isEmpty() && state.trashFolders.isEmpty()
@@ -357,9 +354,13 @@ internal fun NotesScreen(
                     selected = state.filter,
                     allCount = state.allNotesCount,
                     foldersCount = state.rootNotesCount,
+                    favoritesCount = state.favoritesCount,
+                    lockedCount = state.lockedCount,
                     onSelectAll = { close { viewModel.selectFilter(NoteFilter.All) } },
                     onSelectTrash = { close { viewModel.selectFilter(NoteFilter.Trash) } },
                     onSelectFolders = { close { viewModel.selectFilter(NoteFilter.Uncategorized) } },
+                    onSelectFavorites = { close { viewModel.selectFilter(NoteFilter.Favorites) } },
+                    onSelectLocked = { close { viewModel.selectFilter(NoteFilter.Locked) } },
                     showFolderCards = state.preferences.showFolderCards,
                     onShowFolderCards = viewModel::setShowFolderCards,
                     onManageFolders = onManageFolders,
@@ -427,8 +428,8 @@ internal fun NotesScreen(
                 when {
                     !state.loaded -> Unit
                     isEmpty -> EmptyState(
-                        message = stringResource(R.string.feature_notes_empty_title),
-                        hint = if (isTrash) null else stringResource(R.string.feature_notes_empty_hint),
+                        message = stringResource(emptyTitleRes(state.filter)),
+                        hint = emptyHintRes(state.filter)?.let { stringResource(it) },
                     )
                     else -> NotesGrid(
                         state = state,

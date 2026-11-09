@@ -81,8 +81,15 @@ internal class DefaultNoteRepository @Inject constructor(
             .flowOn(Dispatchers.Default)
     }
 
-    override fun observeNoteCounts(): Flow<Pair<Int, Int>> =
-        noteDao.observeCounts().map { it.allCount to it.rootCount }.flowOn(Dispatchers.Default)
+    override fun observeNoteCounts(): Flow<org.samesame.notes.core.model.NoteCounts> =
+        noteDao.observeCounts().map {
+            org.samesame.notes.core.model.NoteCounts(
+                allCount = it.allCount,
+                rootCount = it.rootCount,
+                favoritesCount = it.favoritesCount,
+                lockedCount = it.lockedCount,
+            )
+        }.flowOn(Dispatchers.Default)
 
     override fun observeNote(id: NoteId): Flow<Note?> = noteDao.observe(id.value).map { it?.asExternalModel() }
 
