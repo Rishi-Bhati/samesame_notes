@@ -491,6 +491,7 @@ internal fun ComposerEditor(
     // Picking a heading is a plain character style (size + bold), so the note format does not change.
     fun applyFontSizePick(pick: FontSizePick) {
         session.breakTypingBurst()
+        fontSizeHold.notePick(pick)
         val (size, bold) = when (pick) {
             is FontSizePick.Heading -> pick.heading.size.toFloat() to true
             FontSizePick.Body -> Limits.DEFAULT_FONT_SIZE to false

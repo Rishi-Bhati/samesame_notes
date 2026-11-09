@@ -47,6 +47,10 @@ class FontSizeCatalogTest {
         assertThat(FontSizeRows.anchorRow(null, 17, sizes)).isEqualTo(FontSizeRows.SIZE_START + sizes.indexOf(17))
         assertThat(FontSizeRows.anchorRow(null, 6, sizes)).isEqualTo(FontSizeRows.SIZE_START)
         assertThat(FontSizeRows.anchorRow(null, 13, sizes)).isEqualTo(FontSizeRows.BODY_INDEX)
+        // Body was the last pick: the glide starts on Body (one step down is 6, not 18); a later size pick wins.
+        assertThat(FontSizeRows.anchorRow(null, 17, sizes, bodyPicked = true)).isEqualTo(FontSizeRows.BODY_INDEX)
+        assertThat(FontSizeRows.anchorRow(null, 18, sizes, bodyPicked = true)).isEqualTo(FontSizeRows.SIZE_START + sizes.indexOf(18))
+        assertThat(FontSizeRows.anchorRow(TextSizeCatalog.Heading.H3, 20, sizes, bodyPicked = true)).isEqualTo(2)
         val custom = TextSizeCatalog.menuSizes(13f)
         assertThat(FontSizeRows.anchorRow(null, 13, custom)).isEqualTo(FontSizeRows.SIZE_START + custom.indexOf(13))
     }

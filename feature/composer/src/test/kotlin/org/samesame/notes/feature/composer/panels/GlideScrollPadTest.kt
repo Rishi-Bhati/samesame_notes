@@ -99,4 +99,54 @@ class GlideScrollPadTest {
         assertThat(GlideScrollPad.centredScroll(0, row, viewport, maxScroll)).isEqualTo(0f)
         assertThat(GlideScrollPad.centredScroll(sizes.size - 1, row, viewport, maxScroll)).isEqualTo(maxScroll)
     }
+
+    /** The popup's visible order, top to bottom, for the real catalog. */
+    private val visibleOrder: List<FontSizePick> =
+        TextSizeCatalog.Heading.entries.map { FontSizePick.Heading(it) } + FontSizePick.Body + sizes.map { FontSizePick.Size(it) }
+
+    @Test fun oneGlideWalksEveryVisibleRowInOrderDownAndBack() {
+        val h1 = FontSizeRows.anchorRow(TextSizeCatalog.Heading.H1, 32, sizes)
+        val down = (0 until count).map { FontSizeRows.pick(GlideScrollPad.glideIndex(h1, anchorY, anchorY + it * step, step, count), sizes) }
+        assertThat(down).containsExactlyElementsIn(visibleOrder).inOrder()
+        val last = count - 1
+        val up = (0 until count).map { FontSizeRows.pick(GlideScrollPad.glideIndex(last, anchorY, anchorY - it * step, step, count), sizes) }
+        assertThat(up).containsExactlyElementsIn(visibleOrder.reversed()).inOrder()
+    }
+
+    /**
+     * RC4 finding: one-step glides down from H3 gave Body, then 18 (Body and "17" apply the same style and the next
+     * glide started on the "17" row). Walking the real catalog with one-step glides, each applying its pick, must
+     * visit every visible row in order, from H1 to the last size and back.
+     */
+    @Test fun oneStepGlidesWalkEveryVisibleRowFromH1ToTheLastSizeAndBack() {
+        val hold = FontSizeHoldState()
+        // The applied style, as the composer stores it: size + bold (a heading is its size in bold).
+        var size = 32f
+        var bold = true
+        fun glide(dir: Int): FontSizePick {
+            val menuSizes = TextSizeCatalog.menuSizes(size)
+            hold.listCount = menuSizes.size
+            hold.selectedRow = FontSizeRows.anchorRow(
+                TextSizeCatalog.headingFor(size, bold), TextSizeCatalog.selectedSize(size), menuSizes, hold.lastPickBody,
+            )
+            hold.startGlide(anchorY, step)
+            hold.glideTo(anchorY + dir * step)
+            val pick = FontSizeRows.pick(hold.highlighted, menuSizes)!!
+            hold.endGlide()
+            hold.notePick(pick)
+            when (pick) {
+                is FontSizePick.Heading -> { size = pick.heading.size.toFloat(); bold = true }
+                FontSizePick.Body -> { size = TextSizeCatalog.BODY_SIZE.toFloat(); bold = false }
+                is FontSizePick.Size -> { size = pick.pt.toFloat(); bold = false }
+            }
+            return pick
+        }
+        val down = (1 until count).map { glide(+1) }
+        assertThat(down).containsExactlyElementsIn(visibleOrder.drop(1)).inOrder()
+        val up = (1 until count).map { glide(-1) }
+        assertThat(up).containsExactlyElementsIn(visibleOrder.reversed().drop(1)).inOrder()
+        // Default body text (17 never picked as Body) starts on the "17" row: one step up is 16, down is 18.
+        val fresh = FontSizeHoldState()
+        assertThat(FontSizeRows.anchorRow(null, 17, sizes, fresh.lastPickBody)).isEqualTo(FontSizeRows.SIZE_START + sizes.indexOf(17))
+    }
 }
