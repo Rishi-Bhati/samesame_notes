@@ -13,6 +13,7 @@ dependencies {
     implementation(projects.feature.share)
     implementation(projects.feature.camera)
     implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.media3.session)
     implementation(libs.kotlinx.coroutines.core)
 
     // Compose UI tests need a newer Espresso than ui-test pulls in (the old one calls InputManager.getInstance, gone on API 37).

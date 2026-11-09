@@ -15,9 +15,13 @@ internal tailrec fun Context.isChangingConfigurations(): Boolean = when (this) {
     else -> false
 }
 
-/** The editor went to the background (`ON_STOP`): playback pauses, except during a configuration change (it keeps playing). */
-fun PlaybackController.onEditorStopped(changingConfigurations: Boolean) {
-    if (!changingConfigurations) pause()
+/**
+ * The editor went to the background (`ON_STOP`). Playback keeps going (VoicePlaybackService holds the process), except in a
+ * [locked] note: relock wipes its plaintext audio a few seconds after the app is backgrounded, so it pauses. A configuration
+ * change never pauses.
+ */
+fun PlaybackController.onEditorStopped(changingConfigurations: Boolean, locked: Boolean) {
+    if (!changingConfigurations && locked) pause()
 }
 
 /** The editor composition left: the recordings are unregistered and playback closed, except during a configuration change. */

@@ -6,6 +6,7 @@
     <!-- A recording keeps running (with its notification) when the editor is left. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Object menu "Edit image": find the installed image editors (package visibility, API 30+). -->
@@ -21,5 +22,14 @@
             android:name=".voice.VoiceRecordService"
             android:exported="false"
             android:foregroundServiceType="microphone" />
+        <!-- Voice playback keeps going (screen off, another app) with media controls in the notification. -->
+        <service
+            android:name=".voice.VoicePlaybackService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>

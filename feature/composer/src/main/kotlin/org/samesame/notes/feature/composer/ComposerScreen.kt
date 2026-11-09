@@ -835,8 +835,9 @@ internal fun ComposerEditor(
         snapshotFlow { viewport.scroll to viewport.zoom }.debounce(600).collect { saveViewState() }
     }
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
-        // a recording keeps going in its service; playback pauses, but not across a rotation (the player is process-wide)
-        VoicePlaybackHub.peek()?.onEditorStopped(appContext.isChangingConfigurations())
+        // a recording keeps going in its service, and so does a playback (VoicePlaybackService) unless the note is locked
+        // (relock wipes its plaintext audio); a rotation never pauses (the player is process-wide)
+        VoicePlaybackHub.peek()?.onEditorStopped(appContext.isChangingConfigurations(), locked)
         endTextBoxEdit()
         saveViewState()
         onStop()
@@ -1326,6 +1327,12 @@ internal fun ComposerEditor(
     val recorder = remember { VoiceRecordingHub.get(context) }
     val player = remember { org.samesame.notes.feature.composer.voice.VoiceLog.init(context); VoicePlaybackHub.get() }
     val recState by recorder.state.collectAsStateWithLifecycle()
+    // Playing in an unlocked note starts the background playback service (media session + notification).
+    LaunchedEffect(player, locked) {
+        if (!locked) player.state.map { it.playing }.distinctUntilChanged().collect {
+            if (it) org.samesame.notes.feature.composer.voice.VoicePlaybackService.start(context)
+        }
+    }
     // Only whether a recording is open is read here; the position ticks are collected inside the voice composables.
     val playOpenFlow = remember(player) { player.state.map { it.objectId != null }.distinctUntilChanged() }
     @Suppress("StateFlowValueCalledInComposition") // seed only; later values come from the flow

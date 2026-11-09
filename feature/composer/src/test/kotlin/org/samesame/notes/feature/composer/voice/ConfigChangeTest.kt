@@ -18,14 +18,21 @@ class ConfigChangeTest {
 
     @Test fun stopDuringRotationKeepsPlaying() {
         val c = playing()
-        c.onEditorStopped(changingConfigurations = true)
+        c.onEditorStopped(changingConfigurations = true, locked = true)
         assertThat(c.state.value.playing).isTrue()
         assertThat(engines.last().playing).isTrue()
     }
 
-    @Test fun stopForRealPauses() {
+    @Test fun stopOfAnUnlockedNoteKeepsPlayingInTheBackground() {
         val c = playing()
-        c.onEditorStopped(changingConfigurations = false)
+        c.onEditorStopped(changingConfigurations = false, locked = false)
+        assertThat(c.state.value.playing).isTrue()
+        assertThat(engines.last().playing).isTrue()
+    }
+
+    @Test fun stopOfALockedNotePauses() {
+        val c = playing()
+        c.onEditorStopped(changingConfigurations = false, locked = true)
         assertThat(c.state.value.playing).isFalse()
         assertThat(engines.last().playing).isFalse()
         assertThat(c.state.value.positionMs).isEqualTo(17_000)
