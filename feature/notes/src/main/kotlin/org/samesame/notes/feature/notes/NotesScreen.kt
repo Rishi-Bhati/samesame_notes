@@ -797,7 +797,9 @@ private fun NotesGrid(
     val latestClick by rememberUpdatedState(onClickNote)
     val latestLongClick by rememberUpdatedState(onLongClickNote)
     val latestRequest by rememberUpdatedState(requestPreview)
-    Box(Modifier.fillMaxSize()) {
+    // topMargin keeps the thumb (and its 48 dp touch zone) below the sort row at the top of the list. The bar's edge strip
+    // is watched from the bar's root, which wraps the grid, so it never covers the sort arrow or a card for hit testing.
+    GridScrollBar(gridState, scrollEstimate, columns, headerItems, topMargin = 36.dp) {
     LazyVerticalGrid(
         state = gridState,
         columns = GridCells.Fixed(columns),
@@ -877,9 +879,6 @@ private fun NotesGrid(
             }
         }
     }
-        // topMargin keeps the thumb (and its 48 dp touch zone) below the sort row at the top of the list, so the sort
-        // arrow is never under the bar's touch target.
-        GridScrollBar(gridState, scrollEstimate, columns, headerItems, topMargin = 36.dp)
     }
 }
 
@@ -896,6 +895,7 @@ internal fun GridScrollBar(
     columns: Int,
     headerItems: Int,
     topMargin: androidx.compose.ui.unit.Dp = 0.dp,
+    content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val metrics = remember(gridState, scrollEstimate, columns, headerItems) {
@@ -918,6 +918,7 @@ internal fun GridScrollBar(
         showOnStart = false,
         topMargin = topMargin,
         accentColor = SameSameTheme.colors.accent,
+        content = content,
     )
 }
 

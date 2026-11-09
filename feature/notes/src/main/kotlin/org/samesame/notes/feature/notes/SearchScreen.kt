@@ -122,9 +122,11 @@ internal fun SearchScreen(
                 onClearAll = viewModel::clearHistory,
             )
             results.isEmpty() -> EmptyState(stringResource(R.string.feature_notes_search_no_results))
-            else -> Box(Modifier.fillMaxSize()) {
+            else -> {
                 val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
                 val scrollEstimate = remember { ScrollEstimateHolder() }
+                // The same draggable scroll bar as the home lists (two note columns, no full-span rows).
+                GridScrollBar(gridState, scrollEstimate, columns = 2, headerItems = 0) {
                 LazyVerticalGrid(
                     state = gridState,
                     columns = GridCells.Fixed(2),
@@ -140,8 +142,7 @@ internal fun SearchScreen(
                         )
                     }
                 }
-                // The same draggable scroll bar as the home lists (two note columns, no full-span rows).
-                GridScrollBar(gridState, scrollEstimate, columns = 2, headerItems = 0)
+                }
             }
         }
     }
