@@ -2,90 +2,101 @@ package org.samesame.notes.feature.composer.panels
 
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
+import kotlin.random.Random
 
+/** E3 (rel 0.1.2 owner feedback): the glide mapping is positional and relative, with no time-based scrolling. */
 class GlideScrollPadTest {
-    // Size list viewport 1160..1400 px (240 px tall), rows 44 px, 60 rows; content 2640 px -> max scroll 2400.
-    private val listTop = 1160f
-    private val listBottom = 1400f
-    private val rowHeight = 44f
-    private val count = 60
-    private val maxScroll = 2400f
+    // Pixel 6 Pro: 28 dp = 73.5 px. Popup: 3 headings + Body + 26 sizes = 30 rows; anchor on "17" (flat row 13).
+    private val step = 73.5f
+    private val sizes = TextSizeCatalog.SIZES
+    private val count = FontSizeRows.count(sizes)
+    private val anchor = FontSizeRows.anchorRow(null, 17, sizes)
+    private val anchorY = 1650f
 
-    @Test fun highlightedRowFollowsTheScroll() {
-        assertThat(GlideScrollPad.listIndexAt(1160f, listTop, listBottom, 0f, rowHeight, count)).isEqualTo(0)
-        assertThat(GlideScrollPad.listIndexAt(1204f, listTop, listBottom, 0f, rowHeight, count)).isEqualTo(1)
-        assertThat(GlideScrollPad.listIndexAt(1160f, listTop, listBottom, 440f, rowHeight, count)).isEqualTo(10)
-        assertThat(GlideScrollPad.listIndexAt(1399f, listTop, listBottom, maxScroll, rowHeight, count)).isEqualTo(59)
-        // Outside the viewport or past the last row.
-        assertThat(GlideScrollPad.listIndexAt(1150f, listTop, listBottom, 0f, rowHeight, count)).isEqualTo(-1)
-        assertThat(GlideScrollPad.listIndexAt(1400f, listTop, listBottom, 0f, rowHeight, count)).isEqualTo(-1)
-        assertThat(GlideScrollPad.listIndexAt(1399f, listTop, listBottom, maxScroll, rowHeight, 50)).isEqualTo(-1)
+    private fun index(y: Float) = GlideScrollPad.glideIndex(anchor, anchorY, y, step, count)
+
+    @Test fun theGlideStartsOnTheAppliedRow() {
+        assertThat(anchor).isEqualTo(FontSizeRows.SIZE_START + sizes.indexOf(17))
+        assertThat(index(anchorY)).isEqualTo(anchor)
+        // Less than half a step either way: still on the applied row.
+        assertThat(index(anchorY - step * 0.49f)).isEqualTo(anchor)
+        assertThat(index(anchorY + step * 0.49f)).isEqualTo(anchor)
+    }
+
+    @Test fun oneRowPerStepFingerUpIsUpTheList() {
+        assertThat(index(anchorY - step)).isEqualTo(anchor - 1)
+        assertThat(index(anchorY - 3 * step)).isEqualTo(anchor - 3)
+        assertThat(index(anchorY + step)).isEqualTo(anchor + 1)
+        assertThat(FontSizeRows.pick(index(anchorY - step), sizes)).isEqualTo(FontSizePick.Size(16))
+        assertThat(FontSizeRows.pick(index(anchorY + 2 * step), sizes)).isEqualTo(FontSizePick.Size(20))
     }
 
     /**
-     * E3: the mapping is a pure function of the finger position and the scroll value. There is no velocity or history
-     * input any more, so the same finger height always gives the same row (and therefore the same size).
+     * The owner's complaint: the result depended on timing. The highlight is a function of the end position only, so
+     * any path (fast with 2 events, slow with hundreds, overshooting and coming back) ends on the same row.
      */
-    @Test fun sameFingerPositionAndScrollAlwaysGiveTheSameRow() {
-        val cases = listOf(1160f to 0f, 1204f to 0f, 1250f to 440f, 1399f to maxScroll, 1160f to 88f)
-        for ((y, scroll) in cases) {
-            val first = GlideScrollPad.listIndexAt(y, listTop, listBottom, scroll, rowHeight, count)
-            repeat(5) {
-                assertThat(GlideScrollPad.listIndexAt(y, listTop, listBottom, scroll, rowHeight, count)).isEqualTo(first)
+    @Test fun sameDisplacementGivesTheSameRowWhateverThePath() {
+        val end = anchorY - 4.2f * step
+        val direct = index(end)
+        val rnd = Random(7)
+        repeat(50) {
+            val events = 1 + rnd.nextInt(300)
+            var last = -1
+            for (i in 1..events) {
+                val wobble = if (i < events) (rnd.nextFloat() - 0.5f) * 6 * step else 0f
+                last = index(anchorY + (end - anchorY) * i / events + wobble)
+            }
+            assertThat(last).isEqualTo(direct)
+        }
+        assertThat(direct).isEqualTo(anchor - 4)
+    }
+
+    @Test fun theMappingIsIndependentOfWhereTheGlideStarted() {
+        // A popup or button elsewhere on screen: the same displacement from the press gives the same row.
+        for (start in listOf(300f, 1100f, 2100f)) {
+            assertThat(GlideScrollPad.glideIndex(anchor, start, start - 2 * step, step, count)).isEqualTo(anchor - 2)
+        }
+    }
+
+    @Test fun theHighlightIsClampedToTheList() {
+        assertThat(index(anchorY - 100 * step)).isEqualTo(0)
+        assertThat(index(anchorY + 100 * step)).isEqualTo(count - 1)
+        assertThat(GlideScrollPad.glideIndex(-1, anchorY, anchorY, step, count)).isEqualTo(-1)
+        assertThat(GlideScrollPad.glideIndex(0, anchorY, anchorY, step, 0)).isEqualTo(-1)
+    }
+
+    @Test fun everyRowIsReachableFromEveryAnchorOneStepAtATime() {
+        for (a in 0 until count) {
+            val seen = (-count..count).map { GlideScrollPad.glideIndex(a, anchorY, anchorY + it * step, step, count) }.toSet()
+            assertThat(seen).containsExactlyElementsIn((0 until count).toSet())
+            // Neighbouring steps never skip a row.
+            for (s in -count until count) {
+                val d = GlideScrollPad.glideIndex(a, anchorY, anchorY + (s + 1) * step, step, count) -
+                    GlideScrollPad.glideIndex(a, anchorY, anchorY + s * step, step, count)
+                assertThat(d).isAtMost(1)
+                assertThat(d).isAtLeast(0)
             }
         }
+        // The whole list fits a phone's height at the step size: 29 steps of 28 dp = 812 dp < 891 dp (Pixel 6 Pro).
+        assertThat((count - 1) * GlideScrollPad.STEP_DP).isLessThan(891f)
     }
 
-    @Test fun onlyTheTopAndBottomEdgeZonesScroll() {
-        // Edge zone = 15 % of 240 px = 36 px.
-        assertThat(GlideScrollPad.edgeBias(listTop, listTop, listBottom)).isEqualTo(-1f)
-        assertThat(GlideScrollPad.edgeBias(listTop + 18f, listTop, listBottom)).isEqualTo(-0.5f)
-        assertThat(GlideScrollPad.edgeBias(1280f, listTop, listBottom)).isEqualTo(0f)
-        assertThat(GlideScrollPad.edgeBias(listBottom - 18f, listTop, listBottom)).isEqualTo(0.5f)
-        assertThat(GlideScrollPad.edgeBias(listBottom, listTop, listBottom)).isEqualTo(1f)
-        // Outside the list viewport (over the headings, or a finger that has not glided in yet) nothing scrolls.
-        assertThat(GlideScrollPad.edgeBias(1100f, listTop, listBottom)).isEqualTo(0f)
-        assertThat(GlideScrollPad.edgeBias(1450f, listTop, listBottom)).isEqualTo(0f)
-        assertThat(GlideScrollPad.edgeScrollStep(1280f, listTop, listBottom, 16f, 900f)).isEqualTo(0f)
-    }
-
-    @Test fun edgeScrollIsProportionalToDepthAndCappedByTheFrameTime() {
-        // At the very edge: the cap. Half the zone: half the cap. The step scales with the frame time.
-        assertThat(GlideScrollPad.edgeScrollStep(listTop, listTop, listBottom, 1000f, 900f)).isEqualTo(-900f)
-        assertThat(GlideScrollPad.edgeScrollStep(listTop + 18f, listTop, listBottom, 1000f, 900f)).isEqualTo(-450f)
-        assertThat(GlideScrollPad.edgeScrollStep(listTop, listTop, listBottom, 16f, 900f)).isWithin(0.001f).of(-14.4f)
-        assertThat(GlideScrollPad.edgeScrollStep(listBottom, listTop, listBottom, 16f, 900f)).isWithin(0.001f).of(14.4f)
-    }
-
-    @Test fun oneGlideFromTopToBottomReachesEverySize() {
-        // A single glide: the finger starts on the first visible row and slides down to the bottom edge, where it is
-        // held; the highlight is collected on every frame and must cover every row of the list exactly once over.
-        var scroll = 0f
-        val seen = mutableSetOf<Int>()
-        val steps = 30
-        for (i in 0..steps) {
-            val y = listTop + (listBottom - 1f - listTop) * i / steps
-            val index = GlideScrollPad.listIndexAt(y, listTop, listBottom, scroll, rowHeight, count)
-            if (index >= 0) seen += index
-            scroll = (scroll + GlideScrollPad.edgeScrollStep(y, listTop, listBottom, 16f, 900f))
-                .coerceIn(0f, maxScroll)
+    @Test fun scrollTargetCentresAndKeepsTheHighlightVisible() {
+        val row = 115.5f // 44 dp
+        val viewport = 585f
+        val maxScroll = sizes.size * row - viewport
+        for (i in sizes.indices) {
+            val scroll = GlideScrollPad.centredScroll(i, row, viewport, maxScroll)
+            assertThat(scroll).isAtLeast(0f)
+            assertThat(scroll).isAtMost(maxScroll)
+            val top = i * row - scroll
+            assertThat(top).isAtLeast(0f)
+            assertThat(top + row).isAtMost(viewport + 0.01f)
         }
-        var frames = 0
-        while (scroll < maxScroll && frames < 1000) {
-            val index = GlideScrollPad.listIndexAt(listBottom - 1f, listTop, listBottom, scroll, rowHeight, count)
-            if (index >= 0) seen += index
-            scroll = (scroll + GlideScrollPad.edgeScrollStep(listBottom, listTop, listBottom, 16f, 900f))
-                .coerceIn(0f, maxScroll)
-            frames++
-        }
-        assertThat(scroll).isEqualTo(maxScroll)
-        assertThat(seen).containsExactlyElementsIn((0 until count).toSet())
-        assertThat(frames).isLessThan(1000)
-        // Back up with the finger at the top edge.
-        while (scroll > 0f) {
-            scroll = (scroll + GlideScrollPad.edgeScrollStep(listTop, listTop, listBottom, 16f, 900f))
-                .coerceIn(0f, maxScroll)
-        }
-        assertThat(scroll).isEqualTo(0f)
+        // Mid list: exactly centred.
+        assertThat(GlideScrollPad.centredScroll(10, row, viewport, maxScroll)).isEqualTo(10 * row + row / 2 - viewport / 2)
+        // Ends clamp.
+        assertThat(GlideScrollPad.centredScroll(0, row, viewport, maxScroll)).isEqualTo(0f)
+        assertThat(GlideScrollPad.centredScroll(sizes.size - 1, row, viewport, maxScroll)).isEqualTo(maxScroll)
     }
 }

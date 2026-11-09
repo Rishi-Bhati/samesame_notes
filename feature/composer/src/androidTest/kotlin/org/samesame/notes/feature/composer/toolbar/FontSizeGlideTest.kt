@@ -12,7 +12,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
@@ -22,15 +21,17 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.samesame.notes.core.designsystem.theme.SameSameTheme
 import org.samesame.notes.feature.composer.R
+import androidx.compose.ui.unit.dp
 import org.samesame.notes.feature.composer.panels.FontSizeHoldState
+import org.samesame.notes.feature.composer.panels.GlideScrollPad
 import org.samesame.notes.feature.composer.panels.FontSizeMenu
 import org.samesame.notes.feature.composer.panels.FontSizePick
 import org.samesame.notes.feature.composer.panels.TextSizeCatalog
 
 /**
- * E3 (rc1 round 5): press-and-hold on the font-size button opens the size popup, the same pointer keeps driving it,
- * and the release applies the row under the finger. A stationary hold leaves the popup open; a glide that starts
- * moving at once (no pause on the button) still works.
+ * E3: press-and-hold on the font-size button opens the size popup and the same pointer keeps driving it. The highlight
+ * starts on the applied size and moves one row per [GlideScrollPad.STEP_DP] of vertical travel; the release applies it.
+ * A stationary hold leaves the popup open; a glide that starts moving at once (no pause on the button) still works.
  */
 @RunWith(AndroidJUnit4::class)
 class FontSizeGlideTest {
@@ -74,16 +75,13 @@ class FontSizeGlideTest {
 
     private val fontSize get() = rule.activity.getString(R.string.feature_composer_font_size)
 
-    /** Root position of the centre of the node showing [text]. */
-    private fun centreOf(text: String): Offset {
-        val b = rule.onNodeWithText(text).fetchSemanticsNode().boundsInRoot
-        return Offset((b.left + b.right) / 2f, (b.top + b.bottom) / 2f)
-    }
-
     private fun holdPastTheLongPressTimeout() {
         rule.mainClock.advanceTimeBy(1_000)
         rule.waitForIdle()
     }
+
+    /** Vertical travel for [rows] glide steps (finger up = negative), in px. */
+    private fun travel(rows: Float): Float = with(rule.density) { (rows * GlideScrollPad.STEP_DP).dp.toPx() }
 
     @Test fun tapStillTogglesThePopup() {
         setUp()
@@ -106,19 +104,15 @@ class FontSizeGlideTest {
         assertTrue(picks.isEmpty())
     }
 
-    @Test fun holdThenGlideToAHeadingAppliesIt() {
+    /** The applied size is 17 (flat row 13); 13 steps up reach Heading 1, and further travel stays clamped on it. */
+    @Test fun holdThenGlideUpToTheTopAppliesHeading1() {
         setUp()
         val button = rule.onNodeWithContentDescription(fontSize)
         button.performTouchInput { down(center) }
         holdPastTheLongPressTimeout()
-        val heading = rule.activity.getString(R.string.feature_composer_heading_1)
-        val target = centreOf(heading)
-        val origin = button.fetchSemanticsNode().boundsInRoot.topLeft
+        val dy = travel(-13.3f)
         button.performTouchInput {
-            // Glide in steps (the pointer stays down) from the button to the Heading 1 row, then lift.
-            val from = center
-            val to = target - origin
-            for (i in 1..20) moveTo(from + (to - from) * (i / 20f))
+            for (i in 1..20) moveTo(center + Offset(0f, dy * i / 20f))
             up()
         }
         rule.waitForIdle()
@@ -128,39 +122,55 @@ class FontSizeGlideTest {
     @Test fun glideThatStartsMovingAtOnceStillOpensAndApplies() {
         setUp()
         val button = rule.onNodeWithContentDescription(fontSize)
-        val origin = button.fetchSemanticsNode().boundsInRoot.topLeft
         // Move straight up past the touch slop without pausing: the popup opens.
         button.performTouchInput {
             down(center)
-            moveBy(Offset(0f, -viewConfiguration.touchSlop * 3))
+            moveBy(Offset(0f, -viewConfiguration.touchSlop * 1.5f))
         }
         rule.waitForIdle()
         assertTrue("a glide off the button must open the popup", open)
-        val target = centreOf(rule.activity.getString(R.string.feature_composer_body))
+        // 10 steps up from "17" is Body.
+        val dy = travel(-10f)
         button.performTouchInput {
-            moveTo(target - origin)
+            moveTo(center + Offset(0f, dy))
             up()
         }
         rule.waitForIdle()
         assertEquals(listOf<FontSizePick>(FontSizePick.Body), picks)
     }
 
-    @Test fun releaseAwayFromThePopupCancels() {
+    /** The owner's complaint: the same travel must give the same size, fast (one move) or slow (many moves). */
+    @Test fun sameTravelGivesTheSameSizeFastOrSlow() {
+        setUp()
+        val button = rule.onNodeWithContentDescription(fontSize)
+        val dy = travel(-3f) // "17" -> 16 -> 14 -> 12
+        for (moves in listOf(1, 40)) {
+            button.performTouchInput { down(center) }
+            holdPastTheLongPressTimeout()
+            button.performTouchInput {
+                for (i in 1..moves) moveTo(center + Offset(0f, dy * i / moves))
+                up()
+            }
+            rule.waitForIdle()
+        }
+        assertEquals(listOf<FontSizePick>(FontSizePick.Size(12), FontSizePick.Size(12)), picks)
+    }
+
+    @Test fun glideBackOntoTheToolbarCancels() {
         setUp()
         val button = rule.onNodeWithContentDescription(fontSize)
         button.performTouchInput { down(center) }
         holdPastTheLongPressTimeout()
         assertTrue(open)
-        val popupRow = centreOf(rule.activity.getString(R.string.feature_composer_body))
-        val origin = button.fetchSemanticsNode().boundsInRoot.topLeft
+        val dy = travel(-3f)
         button.performTouchInput {
-            moveTo(popupRow - origin)
-            // Back out of the popup, onto the toolbar: having been in the popup, this is a change of mind.
+            moveTo(center + Offset(0f, dy))
+            // Back onto the toolbar: having left the button, this is a change of mind.
             moveTo(center)
             up()
         }
         rule.waitForIdle()
-        assertTrue("release outside must close the popup", !open)
+        assertTrue("release back on the toolbar must close the popup", !open)
         assertTrue(picks.isEmpty())
     }
 }
