@@ -814,6 +814,31 @@ internal fun ComposerEditor(
     }
     SideEffect { textState.onReadOnlyTap = ::viewTap }
 
+    /**
+     * E1 (owner decision): the view state's menu offers Cut too. It enters edit mode at the selection, cuts and leaves the
+     * caret (and keyboard) where the text was; BodyTextBinding records the usual one undo step. The mode change lands on
+     * the next composition, so the keyboard request waits for Text mode (and `enabled`) to be composed.
+     */
+    var pendingCutInput by remember { mutableStateOf(false) }
+    fun cutFromView() {
+        if (body.selection.collapsed) return
+        textState.cut()
+        session.dispatch(ToolbarIntent.ExitReading)
+        pendingCutInput = true
+    }
+    SideEffect { textState.onReadOnlyCut = ::cutFromView }
+    LaunchedEffect(textMode, pendingCutInput) {
+        if (!pendingCutInput) return@LaunchedEffect
+        if (!textMode) {
+            // The view state can be entered from pen mode (the book icon): the cut still lands in text editing.
+            if (tb.mode == EditorMode.Pen) session.dispatch(ToolbarIntent.ToggleHandwriting)
+            return@LaunchedEffect
+        }
+        androidx.compose.runtime.withFrameNanos { }
+        pendingCutInput = false
+        runCatching { textState.requestInput() }
+    }
+
     // ---- view state restore / save
     fun saveViewState() {
         val l = latestLayout

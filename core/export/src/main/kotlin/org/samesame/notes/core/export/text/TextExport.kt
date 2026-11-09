@@ -2,8 +2,8 @@ package org.samesame.notes.core.export.text
 
 import org.samesame.notes.core.export.ExportAssets
 import org.samesame.notes.core.model.document.NoteDocument
-import org.samesame.notes.core.model.richtext.ListKind
 import org.samesame.notes.core.model.richtext.RichText
+import org.samesame.notes.core.model.richtext.listMarkerPrefix
 
 /** Plain-text export: title first, checklists `[ ] `/`[x] `, bullets `• `, numbering `1. `. */
 object TextExport {
@@ -25,12 +25,6 @@ object TextExport {
     }
 
     fun renderBody(body: RichText): String = body.toParagraphs().joinToString("\n") { p ->
-        val prefix = when (p.style.list) {
-            ListKind.None -> ""
-            ListKind.Bullet -> "• "
-            ListKind.Numbered -> "${p.number ?: 1}. "
-            ListKind.Checklist -> if (p.style.checked) "[x] " else "[ ] "
-        }
-        INDENT.repeat(p.style.indent) + prefix + p.plain
+        listMarkerPrefix(p.style, p.number) + p.plain
     }
 }

@@ -565,12 +565,44 @@ class BodyTextEngine(
         if (start != selPathStart || end != selPathEnd || body.layoutVersion != selPathLayoutVersion || layout !== selPathLayout) {
             path.reset()
             layout.getSelectionPath(start, end, path)
+            extendOverListMarkers(start, end)
             selPathStart = start
             selPathEnd = end
             selPathLayoutVersion = body.layoutVersion
             selPathLayout = layout
         }
         return path
+    }
+
+    /**
+     * E4: list markers are not characters; the paragraph span draws them in the leading margin, so Android's selection
+     * path starts at the text and never covers them. When the selection covers a paragraph's start, add that paragraph's
+     * first-line gutter to the path (reference: select-all over a bullet/number list highlights the marker box).
+     */
+    private fun extendOverListMarkers(start: Int, end: Int) {
+        if (start >= end || layout.lineCount == 0) return
+        var p = body.paragraphIndexAt(start)
+        var paragraphStart = body.paragraphRange(p).first
+        // Walk the paragraph starts once; a paragraph is marked only when the selection covers its start.
+        while (paragraphStart < end) {
+            if (paragraphStart >= start) {
+                val style = body.paragraphStyleOrNull(p) ?: break
+                if (style.list != ListKind.None) {
+                    val right = ParagraphSpan.leadingMargin(style)
+                    if (right > 0f) {
+                        val line = layout.getLineForOffset(paragraphStart)
+                        path.addRect(
+                            0f, layout.getLineTop(line).toFloat(), right, layout.getLineBottom(line).toFloat(),
+                            Path.Direction.CW,
+                        )
+                    }
+                }
+            }
+            val nl = body.editable.indexOf('\n', paragraphStart)
+            if (nl < 0) break
+            paragraphStart = nl + 1
+            p++
+        }
     }
 
     private val matchPath = Path()

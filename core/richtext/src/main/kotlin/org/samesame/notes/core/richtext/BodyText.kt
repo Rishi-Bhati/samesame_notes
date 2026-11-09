@@ -17,6 +17,7 @@ import org.samesame.notes.core.model.richtext.RichText
 import org.samesame.notes.core.model.richtext.RichTextOps
 import org.samesame.notes.core.model.richtext.TextAlign
 import org.samesame.notes.core.model.richtext.TextRun
+import org.samesame.notes.core.model.richtext.listMarkerPrefix
 import org.samesame.notes.core.richtext.edit.EditAccumulator
 import org.samesame.notes.core.richtext.edit.ParagraphRules
 import org.samesame.notes.core.richtext.edit.TextEditEvent
@@ -136,6 +137,32 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
         return RichTextOps.normalise(
             RichText(editable.subSequence(s, e).toString(), RichTextBridge.readRuns(editable, s, e), paragraphs.subList(p0, p1 + 1).toList()),
         )
+    }
+
+    /**
+     * Plain text of `[start, end)` for the system clipboard: list markers are not characters in the body (the editor
+     * draws them in the paragraph's leading margin), so a paragraph whose start is inside the range gets its marker
+     * prefix, with the body's own item number and the [listMarkerPrefix] rules the .txt export uses. Inline-object
+     * placeholders are dropped, like [RichText.plainText].
+     */
+    fun plainTextWithListMarkers(start: Int, end: Int): String {
+        val s = start.coerceIn(0, length)
+        val e = end.coerceIn(s, length)
+        if (s == e) return ""
+        val out = StringBuilder(e - s + 16)
+        var paragraph = paragraphIndexAt(s)
+        var i = s
+        while (i < e) {
+            if (i == 0 || editable[i - 1] == '\n') {
+                val number = numbers.getOrNull(paragraph)?.takeIf { it > 0 }
+                out.append(listMarkerPrefix(paragraphs.getOrElse(paragraph) { ParagraphStyle() }, number))
+            }
+            val c = editable[i]
+            if (c == '\n') paragraph++
+            if (c != OBJECT_CHAR) out.append(c)
+            i++
+        }
+        return out.toString()
     }
 
     fun paragraphIndexAt(offset: Int): Int = countNewlines(0, offset.coerceIn(0, length))

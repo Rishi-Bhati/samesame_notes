@@ -87,6 +87,13 @@ class RichTextEditorState(
     /** Taps while [readOnlySelect] and not [enabled] (view px). */
     var onReadOnlyTap: ((Offset) -> Unit)? = null
 
+    /**
+     * Cut from the view state's floating menu (owner decision: the view state offers Cut too). The host switches to edit
+     * mode at the selection and cuts there; the body's edit listener records the usual single undo step. Null hides Cut
+     * while [readOnlySelect] is on, because the library must not edit a note the host shows read-only.
+     */
+    var onReadOnlyCut: (() -> Unit)? = null
+
     /** Gestures run: editable, or the read-only selection of the view state. */
     val acceptsGestures: Boolean get() = enabled || readOnlySelect
 
@@ -442,8 +449,12 @@ class RichTextEditorState(
         val sel = body.selection
         if (sel.collapsed) return
         val rich = body.slice(sel.min, sel.max)
-        RichClipboard.put(rich)
-        val clip = ClipData.newPlainText("note", rich.plainText())
+        // Bug 14: the markers are drawn in the leading margin, not stored as characters, so the slice's plain text has
+        // no "1. "/"• "; the system clipboard gets them (shared with the .txt export) while [RichClipboard] keeps the
+        // styled slice for in-app paste.
+        val plain = body.plainTextWithListMarkers(sel.min, sel.max)
+        RichClipboard.put(rich, plain)
+        val clip = ClipData.newPlainText("note", plain)
         if (sensitive) {
             // ClipDescription.EXTRA_IS_SENSITIVE (API 33); the same key is honoured by keyboards on older releases.
             clip.description.extras = android.os.PersistableBundle().apply { putBoolean(EXTRA_IS_SENSITIVE, true) }
@@ -499,10 +510,15 @@ private const val EXTRA_IS_SENSITIVE = "android.content.extra.IS_SENSITIVE"
 /** Keeps rich styling for in-app copy/paste; the system clipboard gets plain text. */
 internal object RichClipboard {
     private var rich: RichText? = null
+    private var plain: String? = null
 
-    fun put(rt: RichText) { rich = rt }
+    /** [plainText] is exactly what went to the system clipboard (list markers included). */
+    fun put(rt: RichText, plainText: String) {
+        rich = rt
+        plain = plainText
+    }
 
-    fun richFor(plain: String): RichText? = rich?.takeIf { it.plainText() == plain }
+    fun richFor(text: String): RichText? = rich?.takeIf { plain == text || it.plainText() == text }
 }
 
 /** Remembers a [RichTextEditorState] for [body]; disposes it when it leaves composition. */
