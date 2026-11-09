@@ -21,6 +21,8 @@ hiltAndroidx = "1.4.0"
 # 1.1 alpha: custom BrushTip/BrushPaint (calligraphy nibs, textured pencils) are public API only from 1.1.
 ink = "1.1.0-alpha09"
 lifecycle = "2.11.0"
+# Background voice playback: a media session over the process-wide player (no ExoPlayer).
+media3 = "1.9.0"
 material3Adaptive = "1.3.0"
 motionPrediction = "1.0.0"
 navigation3 = "1.2.0"
@@ -53,6 +55,7 @@ androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidx
 androidx-datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
 androidx-graphics-core = { module = "androidx.graphics:graphics-core", version.ref = "graphicsCore" }
 androidx-input-motionprediction = { module = "androidx.input:input-motionprediction", version.ref = "motionPrediction" }
+androidx-media3-session = { module = "androidx.media3:media3-session", version.ref = "media3" }
 androidx-profileinstaller = { module = "androidx.profileinstaller:profileinstaller", version.ref = "profileInstaller" }
 androidx-work-runtime = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
 
