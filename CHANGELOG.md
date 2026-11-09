@@ -5,6 +5,47 @@ All notable user-facing changes to SameSame notes are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses
 pre-release alpha versions.
 
+## 0.2.0-alpha (unreleased)
+
+A Files alpha on top of 0.1.1-alpha. It installs over the previous build and keeps your notes and settings.
+The 0.1.2 fixes ship inside this release; they are listed under Fixes.
+
+Upgrading keeps your notes: 0.2.0-alpha is signed with the same key as 0.1.1-alpha, so it installs over it in place
+and keeps notes, folders, favourites, locked notes and voice recordings.
+
+### Files
+
+- Files library: details to come.
+
+### Fixes
+
+- Drawer rows for Favourites and Locked notes after All notes, each with a count and shown only when the count is
+  above zero.
+- Cut in the view state, next to Copy, for text selected in a note you are reading.
+- Home in landscape shows a toolbar-only header so the note list gets the screen height; portrait restores the full
+  header.
+- The press-and-glide font size picker opens on hold and stays open while the finger is still. It moves one size per
+  step of finger travel from the current size, applies the size on release, and cancels when the finger slides back
+  onto the toolbar.
+- The sort-direction arrow did nothing while the scroll bar was showing; it now flips the order in grid and list
+  views.
+- The home scroll bar jumped while scrolling up; the thumb now moves smoothly.
+- The drawer Folders row, Manage folders and Select folder showed the number of unfiled notes instead of folders.
+- Folder cards showed 0 for folders whose notes sit in subfolders; they now count their subfolders' notes too.
+- Folder cards fit only three per row on a phone; they now fit four in portrait.
+- Pasting multi-line text into the home search box left only the first line; line breaks now become spaces.
+- The highlighter opacity slider did not move; dragging now changes the value and the next stroke uses it.
+- The size picker chose different sizes from the same finger travel at different speeds, and a hold without moving
+  closed the popup.
+- After choosing Body, the next one-step glide skipped to 18; it now goes to 16.
+- Select all did not cover list numbers and bullets, and copying dropped them; copied plain text keeps the markers
+  ("1. ", bullets and "[x]").
+- Voice playback stopped whenever the app went to the background; it now keeps going with the screen off or in another
+  app, and stops when the note is closed. Locked notes still pause in the background.
+- Duplicate was offered for locked notes and did nothing when tapped; it is now hidden when a locked note is selected.
+- Locked notes could be deleted (move to Recycle bin, delete forever, empty the Recycle bin, delete a folder holding
+  them) without a password or biometric check. Deleting now asks for identity first, and cancelling deletes nothing.
+
 ## [0.1.1-alpha] - 2026-11-02
 
 A bug-fix alpha on top of 0.1.0-alpha. It installs over the previous build and keeps your notes and settings.
@@ -81,5 +122,6 @@ First public alpha release.
 
 - Partial-word search now matches word prefixes.
 
+[0.2.0-alpha]: https://github.com/Rishi-Bhati/samesame_notes/compare/v0.1.1-alpha...v0.2.0-alpha
 [0.1.1-alpha]: https://github.com/Rishi-Bhati/samesame_notes/compare/v0.1.0-alpha...v0.1.1-alpha
 [0.1.0-alpha]: https://github.com/Rishi-Bhati/samesame_notes/releases/tag/v0.1.0-alpha
