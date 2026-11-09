@@ -332,12 +332,43 @@ class NotesViewModel @Inject constructor(
         runCatching { folders.rename(id, name) }
     }
 
-    /** Moves the selected folder subtrees and notes to the Trash in one go. */
-    fun moveSelectionToTrash() = viewModelScope.launch {
+    /**
+     * Locked notes the current selection would delete: the selected locked notes plus the locked notes inside the selected
+     * folder subtrees. More than zero means the delete must go through the identity check first (pass its token).
+     */
+    suspend fun lockedCountInSelection(): Int {
+        val direct = runCatching { notes.lockedNoteIds(selection.value.toList()) }.getOrDefault(emptyList())
+        val inFolders = lockedNotesInFolders(folderSelection.value.toList())
+        return (direct + inFolders).toSet().size
+    }
+
+    /** Locked notes inside the subtrees of [folderIds] (Manage folders delete). */
+    suspend fun lockedCountInFolders(folderIds: List<FolderId>): Int = lockedNotesInFolders(folderIds).toSet().size
+
+    /** Locked notes "Empty" would delete: every note in the Recycle bin and in the trashed folders. */
+    suspend fun lockedCountInTrash(): Int {
+        val trashed = notes.observeNotes(NoteFilter.Trash, SortOrder()).first().map { it.id }
+        val direct = runCatching { notes.lockedNoteIds(trashed) }.getOrDefault(emptyList())
+        val inFolders = lockedNotesInFolders(folders.observeTrashedFolders().first().map { it.id })
+        return (direct + inFolders).toSet().size
+    }
+
+    private suspend fun lockedNotesInFolders(folderIds: List<FolderId>): List<NoteId> =
+        if (folderIds.isEmpty()) emptyList() else runCatching { folders.lockedNoteIdsIn(folderIds) }.getOrDefault(emptyList())
+
+    /**
+     * Moves the selected folder subtrees and notes to the Trash in one go. Locked notes need the verified [token]
+     * (closed afterwards); the repository refuses them otherwise, and then nothing is moved.
+     */
+    fun moveSelectionToTrash(token: org.samesame.notes.core.security.LockToken? = null) = viewModelScope.launch {
         val folderIds = folderSelection.value.toList()
         val noteIds = selection.value.toList()
-        if (folderIds.isNotEmpty()) folders.trash(folderIds)
-        if (noteIds.isNotEmpty()) notes.moveToTrash(noteIds)
+        guarded(token) {
+            // Check everything first, so a refused locked note cannot leave half the selection moved.
+            requireVerified(noteIds, folderIds, token)
+            if (folderIds.isNotEmpty()) folders.trash(folderIds, token)
+            if (noteIds.isNotEmpty()) notes.moveToTrash(noteIds, token)
+        }
         clearSelection()
     }
 
@@ -350,28 +381,53 @@ class NotesViewModel @Inject constructor(
         clearSelection()
     }
 
-    /** Permanently removes the selected folders (with their subtrees) and notes. */
-    fun deleteSelectionForever() = viewModelScope.launch {
+    /** Permanently removes the selected folders (with their subtrees) and notes. Locked notes need [token], as above. */
+    fun deleteSelectionForever(token: org.samesame.notes.core.security.LockToken? = null) = viewModelScope.launch {
         val folderIds = folderSelection.value.toList()
         val noteIds = selection.value.toList()
-        if (folderIds.isNotEmpty()) folders.deletePermanently(folderIds)
-        if (noteIds.isNotEmpty()) notes.deleteForever(noteIds)
-        noteIds.forEach(previewInvalidation::forget)
+        guarded(token) {
+            requireVerified(noteIds, folderIds, token)
+            if (folderIds.isNotEmpty()) folders.deletePermanently(folderIds, token)
+            if (noteIds.isNotEmpty()) notes.deleteForever(noteIds, token)
+            noteIds.forEach(previewInvalidation::forget)
+        }
         clearSelection()
     }
 
-    fun emptyTrash() = viewModelScope.launch {
-        // Notes first: the folder path then finds no note rows left and only removes the folder tree.
-        notes.deleteForever(notes.observeNotes(NoteFilter.Trash, SortOrder()).first().map { it.id })
-        val trashedFolders = folders.observeTrashedFolders().first().map { it.id }
-        if (trashedFolders.isNotEmpty()) folders.deletePermanently(trashedFolders)
+    /** Empties the Recycle bin. Locked notes in it need [token], as above. */
+    fun emptyTrash(token: org.samesame.notes.core.security.LockToken? = null) = viewModelScope.launch {
+        guarded(token) {
+            val trashedNotes = notes.observeNotes(NoteFilter.Trash, SortOrder()).first().map { it.id }
+            val trashedFolders = folders.observeTrashedFolders().first().map { it.id }
+            requireVerified(trashedNotes, trashedFolders, token)
+            // Notes first: the folder path then finds no note rows left and only removes the folder tree.
+            notes.deleteForever(trashedNotes, token)
+            if (trashedFolders.isNotEmpty()) folders.deletePermanently(trashedFolders, token)
+        }
         clearSelection()
     }
 
-    /** Trashes folders picked in Manage folders and leaves selection mode. */
-    fun trashFolders(ids: List<FolderId>) = viewModelScope.launch {
-        if (ids.isNotEmpty()) folders.trash(ids)
+    /** Trashes folders picked in Manage folders and leaves selection mode. Locked notes inside need [token]. */
+    fun trashFolders(ids: List<FolderId>, token: org.samesame.notes.core.security.LockToken? = null) = viewModelScope.launch {
+        guarded(token) { if (ids.isNotEmpty()) folders.trash(ids, token) }
         clearSelection()
+    }
+
+    /** Throws unless [token] covers every locked note among [noteIds] and inside the [folderIds] subtrees. */
+    private suspend fun requireVerified(noteIds: List<NoteId>, folderIds: List<FolderId>, token: org.samesame.notes.core.security.LockToken?) {
+        val inFolders = if (folderIds.isEmpty()) emptyList() else folders.lockedNoteIdsIn(folderIds)
+        notes.requireLockVerified(noteIds + inFolders, token)
+    }
+
+    /** Runs a delete, closing [token] afterwards; a refused locked note (no valid token) deletes nothing and is swallowed. */
+    private suspend fun guarded(token: org.samesame.notes.core.security.LockToken?, block: suspend () -> Unit) {
+        try {
+            block()
+        } catch (e: org.samesame.notes.core.data.repository.LockVerificationRequiredException) {
+            // The selection changed under the dialog (a note got locked): nothing was deleted, the user can try again.
+        } finally {
+            token?.close()
+        }
     }
 
     fun duplicateSelection() = withSelection { ids -> ids.forEach { notes.duplicateNote(it) } }

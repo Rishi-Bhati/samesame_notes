@@ -49,6 +49,10 @@ class NotesActionsTest {
         val folderRestore = ArrayList<List<FolderId>>()
         val folderDelete = ArrayList<List<FolderId>>()
         var failPdf: Throwable? = null
+        /** Notes the fake repository treats as locked: deletes without a token are refused for them. */
+        val locked = HashSet<NoteId>()
+        val lockedInFolders = HashMap<FolderId, List<NoteId>>()
+        val tokens = ArrayList<org.samesame.notes.core.security.LockToken?>()
     }
 
     private fun fakeNotes(all: List<Note>, calls: Calls): NoteRepository =
@@ -59,9 +63,17 @@ class NotesActionsTest {
                     "observeNoteCounts" -> flowOf(all.size to all.count { it.folderId == null })
                     "purgeExpiredTrash" -> Unit
                     "moveToFolder" -> { calls.moves += (args[0] as List<NoteId>) to (args[1]?.let { FolderId(it.toString()) }); Unit }
-                    "moveToTrash" -> { calls.noteTrash += args[0] as List<NoteId>; Unit }
+                    "moveToTrash" -> { calls.tokens += args[1] as org.samesame.notes.core.security.LockToken?; calls.noteTrash += args[0] as List<NoteId>; Unit }
                     "restoreFromTrash" -> { calls.noteRestore += args[0] as List<NoteId>; Unit }
-                    "deleteForever" -> { calls.noteDelete += args[0] as List<NoteId>; Unit }
+                    "deleteForever" -> { calls.tokens += args[1] as org.samesame.notes.core.security.LockToken?; calls.noteDelete += args[0] as List<NoteId>; Unit }
+                    "lockedNoteIds" -> (args[0] as List<NoteId>).filter { it in calls.locked }
+                    "requireLockVerified" -> {
+                        val refused = (args[0] as List<NoteId>).filter { it in calls.locked }
+                        if (refused.isNotEmpty() && args[1] == null) {
+                            throw org.samesame.notes.core.data.repository.LockVerificationRequiredException(refused)
+                        }
+                        Unit
+                    }
                     "importPdf" -> {
                         calls.failPdf?.let { throw it }
                         calls.pdfImports += Triple(args[0] as List<File>, args[1] as String, args[2]?.let { FolderId(it.toString()) })
@@ -78,9 +90,10 @@ class NotesActionsTest {
         override suspend fun createFolder(name: String, parentId: FolderId?, color: Long?) = FolderId("new")
         override suspend fun rename(id: FolderId, name: String) = Unit
         override suspend fun setColor(id: FolderId, color: Long?) = Unit
-        override suspend fun trash(ids: List<FolderId>) { calls.folderTrash += ids }
+        override suspend fun trash(ids: List<FolderId>, token: org.samesame.notes.core.security.LockToken?) { calls.folderTrash += ids }
         override suspend fun restore(ids: List<FolderId>) { calls.folderRestore += ids }
-        override suspend fun deletePermanently(ids: List<FolderId>) { calls.folderDelete += ids }
+        override suspend fun deletePermanently(ids: List<FolderId>, token: org.samesame.notes.core.security.LockToken?) { calls.folderDelete += ids }
+        override suspend fun lockedNoteIdsIn(ids: List<FolderId>): List<NoteId> = ids.flatMap { calls.lockedInFolders[it].orEmpty() }
         override suspend fun purgeExpiredTrash() = Unit
     }
 
@@ -215,6 +228,65 @@ class NotesActionsTest {
         advanceUntilIdle()
 
         assertThat(calls.folderDelete.single().map { it.value }).containsExactly("f")
+        job.cancel()
+    }
+
+    private fun lockedNote(id: String) = note(id).copy(isLocked = true)
+
+    @Test
+    fun trashWithALockedNoteAndNoTokenMovesNothing() = runTest(dispatcher) {
+        val calls = Calls().apply { locked += NoteId("l") }
+        val vm = viewModel(calls, listOf(note("a"), lockedNote("l")))
+        val job = backgroundScope.launch(dispatcher) { vm.uiState.collect {} }
+        advanceUntilIdle()
+        vm.startSelecting(note("a"))
+        vm.toggleSelected(lockedNote("l"))
+        vm.toggleSelected(folder("f"))
+        advanceUntilIdle()
+        assertThat(vm.lockedCountInSelection()).isEqualTo(1)
+
+        vm.moveSelectionToTrash()
+        advanceUntilIdle()
+
+        assertThat(calls.noteTrash).isEmpty()
+        assertThat(calls.folderTrash).isEmpty()
+        job.cancel()
+    }
+
+    @Test
+    fun lockedNotesInsideSelectedFoldersAreCountedAndGuarded() = runTest(dispatcher) {
+        val calls = Calls().apply { locked += NoteId("deep"); lockedInFolders[FolderId("f")] = listOf(NoteId("deep")) }
+        val vm = viewModel(calls, emptyList())
+        val job = backgroundScope.launch(dispatcher) { vm.uiState.collect {} }
+        advanceUntilIdle()
+        vm.startSelecting(firstFolder = folder("f"))
+        advanceUntilIdle()
+        assertThat(vm.lockedCountInSelection()).isEqualTo(1)
+        assertThat(vm.lockedCountInFolders(listOf(FolderId("f")))).isEqualTo(1)
+
+        vm.deleteSelectionForever()
+        advanceUntilIdle()
+        assertThat(calls.folderDelete).isEmpty()
+        job.cancel()
+    }
+
+    @Test
+    fun aVerifiedTokenIsPassedOnAndClosed() = runTest(dispatcher) {
+        val calls = Calls().apply { locked += NoteId("l") }
+        val vm = viewModel(calls, listOf(lockedNote("l")))
+        val job = backgroundScope.launch(dispatcher) { vm.uiState.collect {} }
+        advanceUntilIdle()
+        vm.startSelecting(lockedNote("l"))
+        advanceUntilIdle()
+        val token = org.samesame.notes.core.security.LockToken(ByteArray(32))
+
+        vm.moveSelectionToTrash(token)
+        advanceUntilIdle()
+
+        assertThat(calls.noteTrash.single().map { it.value }).containsExactly("l")
+        assertThat(calls.tokens.single()).isSameInstanceAs(token)
+        assertThat(runCatching { token.masterKey() }.isFailure).isTrue() // closed
+        assertThat(vm.uiState.value.selecting).isFalse()
         job.cancel()
     }
 

@@ -541,11 +541,49 @@ internal class DefaultNoteRepository @Inject constructor(
     override suspend fun moveToFolder(ids: List<NoteId>, folderId: FolderId?) =
         noteDao.moveToFolder(ids.map(NoteId::value), folderId?.value)
 
-    override suspend fun moveToTrash(ids: List<NoteId>) = noteDao.setTrashed(ids.map(NoteId::value), clock.now())
+    override suspend fun moveToTrash(ids: List<NoteId>, token: org.samesame.notes.core.security.LockToken?) {
+        requireLockVerified(ids, token)
+        noteDao.setTrashed(ids.map(NoteId::value), clock.now())
+    }
 
     override suspend fun restoreFromTrash(ids: List<NoteId>) = noteDao.setTrashed(ids.map(NoteId::value), null)
 
-    override suspend fun deleteForever(ids: List<NoteId>) {
+    override suspend fun deleteForever(ids: List<NoteId>, token: org.samesame.notes.core.security.LockToken?) {
+        requireLockVerified(ids, token)
+        deleteForeverUnguarded(ids)
+    }
+
+    override suspend fun lockedNoteIds(ids: List<NoteId>): List<NoteId> {
+        if (ids.isEmpty()) return emptyList()
+        return ids.map(NoteId::value).distinct().chunked(SQL_IN_CHUNK).flatMap { noteDao.lockedAmong(it) }.map(::NoteId)
+    }
+
+    override suspend fun requireLockVerified(ids: List<NoteId>, token: org.samesame.notes.core.security.LockToken?) {
+        if (ids.isEmpty()) return
+        val locked = LinkedHashSet<String>()
+        lockedNoteIds(ids).mapTo(locked, NoteId::value)
+        // A container locked while its catalog row is not (a crash between the two writes) is still a locked note.
+        kotlinx.coroutines.withContext(Dispatchers.IO) {
+            ids.forEach { id -> if (id.value !in locked && documents.isLocked(id.value)) locked += id.value }
+        }
+        if (locked.isEmpty()) return
+        // A closed token has no key: it verifies nothing.
+        val master = token?.let { runCatching { it.masterKey() }.getOrNull() }
+        try {
+            val refused = locked.filter { id ->
+                !documents.isOpenUnlocked(id) && (master == null || !documents.opensWith(id, master))
+            }
+            if (refused.isNotEmpty()) throw LockVerificationRequiredException(refused.map(::NoteId))
+        } finally {
+            master?.fill(0)
+        }
+    }
+
+    /**
+     * Permanent delete without the lock check: only for the internal 30-day purge (not user-triggered, owner decision
+     * 2026-11-08) and for callers that already ran [requireLockVerified].
+     */
+    internal suspend fun deleteForeverUnguarded(ids: List<NoteId>) {
         val raw = ids.map(NoteId::value)
         noteDao.delete(raw)
         raw.forEach { id ->
@@ -607,7 +645,7 @@ internal class DefaultNoteRepository @Inject constructor(
 
     override suspend fun purgeExpiredTrash() {
         val cutoff = clock.now() - TimeUnit.DAYS.toMillis(Limits.TRASH_RETENTION_DAYS.toLong())
-        deleteForever(noteDao.trashedBefore(cutoff).map(::NoteId))
+        deleteForeverUnguarded(noteDao.trashedBefore(cutoff).map(::NoteId))
     }
 
     override suspend fun lockNotes(ids: List<NoteId>, token: org.samesame.notes.core.security.LockToken) {
@@ -705,6 +743,8 @@ internal class DefaultNoteRepository @Inject constructor(
     private companion object {
         const val PREVIEW_LENGTH = 300
         const val LOCK_PARALLELISM = 3
+        /** Stays under SQLite's default limit of 999 bound variables per statement. */
+        const val SQL_IN_CHUNK = 900
         val log: Logger = Logger.getLogger(DefaultNoteRepository::class.java.name)
     }
 }

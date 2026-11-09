@@ -29,14 +29,21 @@ interface FolderRepository {
     suspend fun rename(id: FolderId, name: String)
     suspend fun setColor(id: FolderId, color: Long?)
 
-    /** Moves the folders, their subfolders and all their notes to the Trash, stamped with one timestamp. */
-    suspend fun trash(ids: List<FolderId>)
+    /**
+     * Moves the folders, their subfolders and all their notes to the Trash, stamped with one timestamp. Locked notes in
+     * the subtrees need [token], as in [NoteRepository.moveToTrash]: otherwise [LockVerificationRequiredException] and
+     * nothing moves.
+     */
+    suspend fun trash(ids: List<FolderId>, token: org.samesame.notes.core.security.LockToken? = null)
 
     /** Brings the subtrees back from the Trash; folders whose parent is trashed or gone go to the top level. */
     suspend fun restore(ids: List<FolderId>)
 
-    /** Removes the folders, their subtrees and the notes' rows and bundle files for good. */
-    suspend fun deletePermanently(ids: List<FolderId>)
+    /** Removes the folders, their subtrees and the notes' rows and bundle files for good. Locked notes need [token], as in [trash]. */
+    suspend fun deletePermanently(ids: List<FolderId>, token: org.samesame.notes.core.security.LockToken? = null)
+
+    /** The locked notes inside the folders' subtrees (trashed or not), for the "verify your identity" step. */
+    suspend fun lockedNoteIdsIn(ids: List<FolderId>): List<NoteId>
 
     /** Permanently deletes folders that have been in Trash longer than the retention period. */
     suspend fun purgeExpiredTrash()
@@ -85,22 +92,41 @@ internal class DefaultFolderRepository @Inject constructor(
 
     override suspend fun setColor(id: FolderId, color: Long?) = folderDao.setColor(id.value, color, clock.now())
 
-    override suspend fun trash(ids: List<FolderId>) =
-        folderDao.trashSubtree(ids.map(FolderId::value), clock.now())
+    override suspend fun trash(ids: List<FolderId>, token: org.samesame.notes.core.security.LockToken?) {
+        val raw = ids.map(FolderId::value)
+        if (raw.isEmpty()) return
+        notes.requireLockVerified(notesIn(raw), token)
+        folderDao.trashSubtree(raw, clock.now())
+    }
+
+    override suspend fun lockedNoteIdsIn(ids: List<FolderId>): List<NoteId> {
+        val raw = ids.map(FolderId::value)
+        if (raw.isEmpty()) return emptyList()
+        return notes.lockedNoteIds(notesIn(raw))
+    }
+
+    /** Every note in the subtrees of [rootIds]. */
+    private suspend fun notesIn(rootIds: List<String>): List<NoteId> =
+        folderDao.noteIdsIn(folderDao.subtreeIds(rootIds)).map(::NoteId)
 
     override suspend fun restore(ids: List<FolderId>) = folderDao.restoreSubtree(ids.map(FolderId::value))
 
-    override suspend fun deletePermanently(ids: List<FolderId>) {
-        val raw = ids.map(FolderId::value)
-        if (raw.isEmpty()) return
-        val subtree = folderDao.subtreeIds(raw)
-        // The notes go through the note permanent-delete path (rows, search entries, bundle files).
-        notes.deleteForever(folderDao.noteIdsIn(subtree).map(::NoteId))
-        folderDao.delete(subtree) // the closure rows cascade with the folders
-    }
+    override suspend fun deletePermanently(ids: List<FolderId>, token: org.samesame.notes.core.security.LockToken?) =
+        deleteSubtrees(ids.map(FolderId::value), token, purge = false)
 
     override suspend fun purgeExpiredTrash() {
         val cutoff = clock.now() - TimeUnit.DAYS.toMillis(Limits.TRASH_RETENTION_DAYS.toLong())
-        deletePermanently(folderDao.trashedBefore(cutoff).map(::FolderId))
+        // The 30-day purge is internal, not user-triggered: it needs no credential (owner decision 2026-11-08).
+        deleteSubtrees(folderDao.trashedBefore(cutoff), token = null, purge = true)
+    }
+
+    private suspend fun deleteSubtrees(raw: List<String>, token: org.samesame.notes.core.security.LockToken?, purge: Boolean) {
+        if (raw.isEmpty()) return
+        val subtree = folderDao.subtreeIds(raw)
+        val noteIds = folderDao.noteIdsIn(subtree).map(::NoteId)
+        // The notes go through the note permanent-delete path (rows, search entries, bundle files).
+        val unguarded = notes as? DefaultNoteRepository
+        if (purge && unguarded != null) unguarded.deleteForeverUnguarded(noteIds) else notes.deleteForever(noteIds, token)
+        folderDao.delete(subtree) // the closure rows cascade with the folders
     }
 }
