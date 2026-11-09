@@ -76,6 +76,9 @@ class FontSizeHoldState {
         return FontSizeRows.rowAt(y, rows.values.sortedBy { it.index })
     }
 
+    /** True once the popup has reported its bounds (before that [insidePopup] spans everything). */
+    internal val popupShown: Boolean get() = popupLeft.isFinite() && popupRight.isFinite()
+
     internal fun insidePopup(x: Float): Boolean = x in popupLeft..popupRight
 
     internal fun insidePopup(x: Float, y: Float): Boolean = insidePopup(x) && y in popupTop..popupBottom
