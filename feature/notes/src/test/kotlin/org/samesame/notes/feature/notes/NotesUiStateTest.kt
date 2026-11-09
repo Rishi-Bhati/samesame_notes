@@ -145,4 +145,15 @@ class NotesUiStateTest {
         assertThat(listSubtitle(state(NoteFilter.All, showFolderCards = false))).isEqualTo(ListSubtitle.None)
         assertThat(listSubtitle(state(NoteFilter.Trash))).isEqualTo(ListSubtitle.None)
     }
+
+    @Test
+    fun drawerFoldersRowCountsTopLevelFoldersOnly() {
+        assertThat(NotesUiState(folders = folders).rootFolderCount).isEqualTo(2)
+    }
+
+    @Test
+    fun drawerFoldersRowShowsNoNumberWithoutTopLevelFolders() {
+        assertThat(NotesUiState().rootFolderCount).isNull()
+        assertThat(NotesUiState(folders = listOf(folder("child", parentId = "top-a"))).rootFolderCount).isNull()
+    }
 }

@@ -60,6 +60,12 @@ data class NotesUiState(
     val isFoldersRoot get() = filter == NoteFilter.Uncategorized
     val viewMode get() = preferences.viewMode
 
+    /**
+     * Live top-level folders: the number the drawer's Folders row shows (the row is the folder
+     * browser). Null when the user has no folders, so the row then shows no number.
+     */
+    val rootFolderCount: Int? get() = folders.count { it.parentId == null }.takeIf { it > 0 }
+
     /** Topmost folders in the Trash: the cards the Recycle bin shows before the notes. */
     val trashFolders: List<Folder>
         get() {

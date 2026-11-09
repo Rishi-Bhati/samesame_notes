@@ -46,7 +46,8 @@ val DrawerWidth = 347.dp
 internal fun NotesDrawer(
     selected: NoteFilter,
     allCount: Int,
-    foldersCount: Int,
+    /** Top-level folders; null when there are none, so the row shows no number. */
+    foldersCount: Int?,
     favoritesCount: Int = 0,
     lockedCount: Int = 0,
     onSelectAll: () -> Unit,

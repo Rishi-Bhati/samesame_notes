@@ -10,11 +10,16 @@ import org.samesame.notes.core.database.entity.FolderWithStats
 
 @Dao
 interface FolderDao {
+    /**
+     * Live folders with stats. The card's note count covers the whole subtree (the notes opening the
+     * folder lists: `NoteFilter.InFolder` includes subfolders), ignoring trashed notes.
+     */
     @Query(
         """
         SELECT f.*,
           (SELECT MAX(c.depth) FROM folder_closure c WHERE c.descendant = f.id) AS depth,
-          (SELECT COUNT(*) FROM notes n WHERE n.folder_id = f.id AND n.trashed_at IS NULL) AS note_count
+          (SELECT COUNT(*) FROM notes n WHERE n.trashed_at IS NULL AND n.folder_id IN
+            (SELECT descendant FROM folder_closure WHERE ancestor = f.id)) AS note_count
         FROM folders f
         WHERE f.trashed_at IS NULL
         ORDER BY f.sort_order, f.name COLLATE NOCASE
