@@ -22,11 +22,13 @@ internal object FontSizeRows {
     }
 
     /**
-     * The applied row, where a glide starts: the heading, else the plain size row (for Body's 17 too, so the first
-     * steps reach the neighbouring sizes), else Body.
+     * The applied row, where a glide starts: the heading; Body when Body was the last pick ([bodyPicked]) and the
+     * size is still Body's; else the plain size row (also for 17 that was not picked as Body, so the first steps
+     * reach 16 and 18); else Body.
      */
-    fun anchorRow(heading: TextSizeCatalog.Heading?, size: Int, sizes: List<Int>): Int = when {
+    fun anchorRow(heading: TextSizeCatalog.Heading?, size: Int, sizes: List<Int>, bodyPicked: Boolean = false): Int = when {
         heading != null -> heading.ordinal
+        bodyPicked && size == TextSizeCatalog.BODY_SIZE -> BODY_INDEX
         size in sizes -> SIZE_START + sizes.indexOf(size)
         else -> BODY_INDEX
     }

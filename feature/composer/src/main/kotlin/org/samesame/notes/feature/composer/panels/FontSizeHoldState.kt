@@ -19,6 +19,17 @@ class FontSizeHoldState {
     /** Rows in the popup's scrolling size list (0 while the popup is not shown). */
     internal var listCount by mutableIntStateOf(0)
 
+    /**
+     * Body and the plain "17" row apply the same style, so the last pick tells which of the two rows the next glide
+     * starts on (one step from Body is then H3 or 6, from "17" it is 16 or 18).
+     */
+    internal var lastPickBody by mutableStateOf(false)
+        private set
+
+    fun notePick(pick: FontSizePick) {
+        lastPickBody = pick == FontSizePick.Body
+    }
+
     private var gliding by mutableStateOf(false)
     private var anchorY by mutableFloatStateOf(0f)
     private var fingerY by mutableFloatStateOf(0f)

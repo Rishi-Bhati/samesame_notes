@@ -65,7 +65,7 @@ internal fun FontSizeMenu(
     DisposableEffect(hold) { onDispose { hold.clear() } }
     SideEffect {
         hold.listCount = sizes.size
-        hold.selectedRow = FontSizeRows.anchorRow(selectedHeading, selectedSize, sizes)
+        hold.selectedRow = FontSizeRows.anchorRow(selectedHeading, selectedSize, sizes, hold.lastPickBody)
     }
     // The list follows a glide's highlight (centred, so it is always visible); the highlight never depends on the scroll.
     val rowHeightPx = with(LocalDensity.current) { RowHeight.toPx() }
