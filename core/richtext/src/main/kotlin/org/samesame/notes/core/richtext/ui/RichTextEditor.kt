@@ -198,11 +198,18 @@ fun RichTextToolbarEffect(state: RichTextEditorState, coordinates: () -> LayoutC
         val origin = coordinates()?.takeIf { it.isAttached }?.localToRoot(Offset.Zero) ?: Offset.Zero
         val rect = local.translate(origin).let { if (it.height <= 0f) it.copy(bottom = it.top + 1f) else it }
         val hasSel = state.hasSelection()
+        // E1 (owner decision): the view state offers Cut next to Copy. The host enters edit mode at the selection and
+        // cuts; the library never edits a body it shows read-only, so no handler means no Cut.
+        val cut = when {
+            !hasSel -> null
+            readOnly -> state.onReadOnlyCut
+            else -> ({ state.cut() })
+        }
         toolbar.showMenu(
             rect = rect,
             onCopyRequested = if (hasSel) ({ state.copy() }) else null,
             onPasteRequested = if (!readOnly && state.canPaste()) ({ state.paste() }) else null,
-            onCutRequested = if (!readOnly && hasSel) ({ state.cut() }) else null,
+            onCutRequested = cut,
             onSelectAllRequested = if (state.body.length > 0) ({ state.selectAll() }) else null,
         )
     }

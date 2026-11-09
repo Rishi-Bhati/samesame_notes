@@ -243,26 +243,30 @@ internal fun OpacityRow(
                     .offset(x = travel * frac + thumb / 2 - 20.dp, y = rowHeight / 2 - 26.7.dp).width(40.dp),
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
-            Canvas(Modifier.align(Alignment.Center).fillMaxWidth().height(20.2.dp).clip(RoundedCornerShape(50))) {
-                val cell = 5.8.dp.toPx()
-                val a = if (dark) Color(0xFF3A3A3A) else Color(0xFFE0E0E0)
-                val b = if (dark) Color(0xFF2B2B2B) else Color(0xFFC8C8C8)
-                var y = 0f; var row = 0
-                while (y < size.height) {
-                    var x = 0f; var col = 0
-                    while (x < size.width) {
-                        drawRect(if ((row + col) % 2 == 0) a else b, Offset(x, y), androidx.compose.ui.geometry.Size(cell, cell))
-                        x += cell; col++
-                    }
-                    y += cell; row++
-                }
-                drawRect(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(tint.copy(alpha = 0f), tint)))
-            }
             Slider(
                 value = value.toFloat(), onValueChange = { onValue(it.roundToInt()) }, valueRange = 1f..100f,
                 modifier = Modifier.align(Alignment.Center).fillMaxWidth().height(40.dp).semantics { contentDescription = "opacity" },
                 thumb = { Box(Modifier.size(thumb).clip(CircleShape).background(Color(0xFFFCFCFC))) },
-                track = { },
+                // The track must have a real measured size: Material3 maps a drag's x position to a value through the
+                // track width, so an empty (0 px) track swallowed every drag and only the -/+ buttons worked. Draw the
+                // checker/gradient pill here instead of behind the slider so the drag maths and the artwork agree.
+                track = {
+                    Canvas(Modifier.fillMaxWidth().height(20.2.dp).clip(RoundedCornerShape(50))) {
+                        val cell = 5.8.dp.toPx()
+                        val a = if (dark) Color(0xFF3A3A3A) else Color(0xFFE0E0E0)
+                        val b = if (dark) Color(0xFF2B2B2B) else Color(0xFFC8C8C8)
+                        var y = 0f; var row = 0
+                        while (y < size.height) {
+                            var x = 0f; var col = 0
+                            while (x < size.width) {
+                                drawRect(if ((row + col) % 2 == 0) a else b, Offset(x, y), androidx.compose.ui.geometry.Size(cell, cell))
+                                x += cell; col++
+                            }
+                            y += cell; row++
+                        }
+                        drawRect(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(tint.copy(alpha = 0f), tint)))
+                    }
+                },
             )
         }
         Spacer(Modifier.width(19.8.dp))

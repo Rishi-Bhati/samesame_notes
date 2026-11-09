@@ -58,3 +58,18 @@ data class ParagraphStyle(
     val list: ListKind = ListKind.None,
     val checked: Boolean = false,
 )
+
+/**
+ * Plain-text marker a list paragraph gets outside the editor (the .txt export and the clipboard): two spaces per
+ * indent level, then `• `, `1. ` or `[x] `/`[ ] `. [number] is the 1-based item number of a [ListKind.Numbered]
+ * paragraph (null when the caller has no numbering; it then falls back to 1).
+ */
+fun listMarkerPrefix(style: ParagraphStyle, number: Int?): String {
+    val marker = when (style.list) {
+        ListKind.None -> ""
+        ListKind.Bullet -> "• "
+        ListKind.Numbered -> "${number ?: 1}. "
+        ListKind.Checklist -> if (style.checked) "[x] " else "[ ] "
+    }
+    return "  ".repeat(style.indent.coerceAtLeast(0)) + marker
+}

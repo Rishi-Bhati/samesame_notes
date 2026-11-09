@@ -242,4 +242,50 @@ class BodyTextTest {
         assertThat(b.paragraphStyles.single().list).isEqualTo(ListKind.None)
         assertThat(b.toRichText().text).isEqualTo("x")
     }
+
+    // E4: the system clipboard text carries the markers, because they are not characters in the body.
+
+    @Test fun plainTextWithListMarkersAddsBulletsNumbersAndCheckboxes() {
+        val b = BodyText(
+            RichText.of("one\ntwo\nthree\nfour").copy(
+                paragraphs = listOf(
+                    ParagraphStyle(list = ListKind.Bullet),
+                    ParagraphStyle(list = ListKind.Numbered),
+                    ParagraphStyle(list = ListKind.Numbered),
+                    ParagraphStyle(list = ListKind.Checklist, checked = true),
+                ),
+            ),
+        )
+        assertThat(b.plainTextWithListMarkers(0, b.length)).isEqualTo("• one\n1. two\n2. three\n[x] four")
+    }
+
+    @Test fun plainTextWithListMarkersOnlyMarksCoveredParagraphStarts() {
+        val b = BodyText(
+            RichText.of("one\ntwo\nthree").copy(
+                paragraphs = listOf(
+                    ParagraphStyle(list = ListKind.Bullet),
+                    ParagraphStyle(list = ListKind.Bullet),
+                    ParagraphStyle(list = ListKind.Bullet),
+                ),
+            ),
+        )
+        // Starts mid-paragraph: no marker for the first line; a paragraph whose start is covered gets one.
+        assertThat(b.plainTextWithListMarkers(2, 8)).isEqualTo("e\n• two\n")
+        // Starting inside the third paragraph leaves its marker out too.
+        assertThat(b.plainTextWithListMarkers(9, 13)).isEqualTo("hree")
+    }
+
+    @Test fun plainTextWithListMarkersKeepsIndentationAndDropsObjects() {
+        val b = BodyText(
+            RichText.of("a\no").copy(
+                paragraphs = listOf(
+                    ParagraphStyle(list = ListKind.Bullet, indent = 1),
+                    ParagraphStyle(list = ListKind.Checklist),
+                ),
+            ),
+        )
+        b.setSelection(b.length)
+        b.insertObject("img-1")
+        assertThat(b.plainTextWithListMarkers(0, b.length)).isEqualTo("  • a\n[ ] o")
+    }
 }
