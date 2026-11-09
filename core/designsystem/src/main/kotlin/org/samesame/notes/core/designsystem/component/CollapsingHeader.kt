@@ -48,10 +48,28 @@ import org.samesame.notes.core.designsystem.motion.SameSameMotion
 import org.samesame.notes.core.designsystem.theme.SameSameText
 import org.samesame.notes.core.designsystem.theme.SameSameTheme
 import org.samesame.notes.core.designsystem.theme.fixed
+import androidx.compose.foundation.gestures.draggable
 import androidx.compose.runtime.mutableStateOf
 import kotlin.math.roundToInt
 
+/** Expanded header height of a portrait window that is tall enough (the reference measurement). */
 private val ExpandedHeight = 359.25.dp
+
+/**
+ * Expanded header height in dp for a window of [windowHeightDp]. The expanded header is a share of the window height
+ * chosen by size class; 0 means the toolbar only (no big title), which keeps phone landscape usable. Portrait keeps
+ * the reference 359.25 dp on tall windows (0.405 of 887 dp) and scales down on shorter ones.
+ */
+internal fun expandedHeaderDp(windowHeightDp: Float, landscape: Boolean): Float = when {
+    landscape -> when {
+        windowHeightDp < 640f -> 0f
+        windowHeightDp < 670f -> windowHeightDp * 0.4f
+        windowHeightDp < 1080f -> windowHeightDp * 0.38f
+        else -> windowHeightDp * 0.25f
+    }
+    windowHeightDp < 639f -> 0f
+    else -> minOf(ExpandedHeight.value, windowHeightDp * 0.405f)
+}
 internal val CollapsedExtra = 120.dp
 private val ToolbarHeight = 56.dp
 /** Secondary top bar height below the status bar. */
@@ -84,7 +102,14 @@ fun CollapsingHeaderScaffold(
     val density = LocalDensity.current
     val statusBar = WindowInsets.statusBars.getTop(density)
     val collapsedPx = with(density) { CollapsedExtra.toPx() } + statusBar
-    val expandedPx = with(density) { ExpandedHeight.toPx() }
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val expandedDp = expandedHeaderDp(
+        configuration.screenHeightDp.toFloat(),
+        landscape = configuration.screenWidthDp > configuration.screenHeightDp,
+    )
+    // Proportion 0 (or a window too short for the big title): toolbar only, the title lives in the toolbar.
+    val toolbarOnly = with(density) { expandedDp.dp.toPx() } <= collapsedPx
+    val expandedPx = if (toolbarOnly) collapsedPx else with(density) { expandedDp.dp.toPx() }
     val range = (expandedPx - collapsedPx).coerceAtLeast(1f)
     var offset by remember { mutableFloatStateOf(0f) }
     val scrollableNow by rememberUpdatedState(contentScrollable)
@@ -131,7 +156,14 @@ fun CollapsingHeaderScaffold(
                     val h = (expandedPx - offset).roundToInt().coerceIn(constraints.minHeight, constraints.maxHeight)
                     val placeable = measurable.measure(constraints.copy(minHeight = h, maxHeight = h))
                     layout(placeable.width, h) { placeable.place(0, 0) }
-                },
+                }.draggable(
+                    // A drag on the header moves it like a drag on the list, so a tall header can never block scrolling.
+                    orientation = androidx.compose.foundation.gestures.Orientation.Vertical,
+                    enabled = !toolbarOnly,
+                    state = androidx.compose.foundation.gestures.rememberDraggableState { delta ->
+                        if (scrollableNow) offset = (offset - delta).coerceIn(0f, range)
+                    },
+                ),
             ) {
                 // Expanded centred title block.
                 Column(
@@ -139,6 +171,10 @@ fun CollapsingHeaderScaffold(
                         .align(Alignment.TopCenter)
                         .padding(top = if (subtitle != null) TitleTop else TitleTop + 18.3.dp)
                         .graphicsLayer {
+                            if (toolbarOnly) {
+                                alpha = 0f
+                                return@graphicsLayer
+                            }
                             // The big title travels up with the list (about 0.63 of the scroll) while it fades.
                             val fraction = (offset / range).coerceIn(0f, 1f)
                             alpha = (1f - fraction * SameSameMotion.TitleFadeK).coerceIn(0f, 1f)
@@ -173,7 +209,7 @@ fun CollapsingHeaderScaffold(
                     Column(
                         Modifier.weight(1f).padding(start = 8.dp).graphicsLayer {
                             val fraction = (offset / range).coerceIn(0f, 1f)
-                            alpha = ((fraction - 0.4f) / 0.6f).coerceIn(0f, 1f)
+                            alpha = if (toolbarOnly) 1f else ((fraction - 0.4f) / 0.6f).coerceIn(0f, 1f)
                         },
                         verticalArrangement = Arrangement.Center,
                     ) {

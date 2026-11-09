@@ -3,15 +3,16 @@ package org.samesame.notes.feature.notes
 import kotlin.math.roundToInt
 
 /**
- * Scroll bar proportions for a lazy grid, measured in ROWS rather than items. The thumb advances one unit per
- * row whatever the heights of the cards, so a taller or shorter row scrolling off the top cannot make the thumb
- * jump, and the mapping is continuous at every row boundary. [lazyScrollTarget] is its exact inverse, so dragging
- * the thumb and the positions the list reports afterwards agree.
+ * Scroll bar proportions for a lazy grid, measured in PIXELS of the content. Every row counts with its own height
+ * (a short header row is worth its few dp, a note row its card height), so the thumb moves in proportion to the
+ * distance scrolled whatever row is first. Heights of rows that are not laid out come from [rowAdvances] (rows seen
+ * earlier) or from the frozen estimates. [lazyScrollTarget] is its exact inverse, so dragging the thumb and the
+ * positions the list reports afterwards agree.
  */
 internal data class LazyScrollMetrics(
     /** 0..1 position of the viewport in the estimated content. */
     val scrollFraction: Float = 0f,
-    /** 0..1 share of the rows visible; 1 means the bar is not needed. */
+    /** 0..1 share of the content that is visible; 1 means the bar is not needed. */
     val thumbFraction: Float = 1f,
     val itemCount: Int = 0,
     val columns: Int = 1,
@@ -25,12 +26,16 @@ internal data class LazyScrollMetrics(
     val rowOffset: Float = 0f,
     /** Px from the first row's top to the next row's top (includes the row gap). */
     val rowAdvance: Float = 0f,
-    /** Advances of the rows laid out right now, by row index: the drag uses the real heights where they are known. */
+    /** Advances (px, row top to next row top) of every row measured so far, by row index. */
     val rowAdvances: Map<Int, Float> = emptyMap(),
-    /** Stable advance used for rows that are not laid out yet. */
+    /** Stable advance used for note rows that were never measured. */
     val rowEstimate: Float = 0f,
-    /** Rows that fit in the viewport (fractional), from the stable estimate. */
-    val visibleRows: Float = 1f,
+    /** Advance used for header rows that were never measured. */
+    val headerEstimate: Float = 0f,
+    /** Viewport extent in px. */
+    val viewport: Float = 0f,
+    /** Estimated height of all the content in px. */
+    val contentExtent: Float = 0f,
 )
 
 /** One laid-out grid item: its main-axis top (viewport-relative, negative once scrolled) and its height. */
@@ -101,20 +106,36 @@ internal fun stableScrollEstimate(
     else -> previous
 }
 
-/** Keeps the row estimate across recompositions while the layout (item count, columns, headers) is unchanged. */
+/**
+ * Keeps the row estimate across recompositions while the layout (item count, columns, headers) is unchanged, and
+ * the advance of every row seen so far (cleared when the layout changes).
+ */
 internal class ScrollEstimateHolder {
     private var estimate = ScrollEstimate()
+    private val known = HashMap<Int, Float>()
 
     fun estimateFor(itemCount: Int, columns: Int, headerItems: Int, measuredRowAdvance: Float): Float {
-        estimate = stableScrollEstimate(estimate, itemCount, columns, headerItems, measuredRowAdvance)
+        val next = stableScrollEstimate(estimate, itemCount, columns, headerItems, measuredRowAdvance)
+        if (next != estimate) known.clear()
+        estimate = next
         return estimate.rowAdvance
+    }
+
+    /**
+     * Remembers the advances of the laid-out [rows] and returns everything known. The last laid-out row is not
+     * recorded: its advance is its own height (the next row's top is unknown), without the gap.
+     */
+    fun advancesWith(rows: List<GridRow>): Map<Int, Float> {
+        for (i in 0 until rows.size - 1) known[rows[i].index] = rows[i].advance
+        return known
     }
 }
 
 /**
  * @param rows the rows laid out right now (topmost first)
  * @param estimatedRowAdvance the stable advance from [stableScrollEstimate]; when positive it is used for the
- * unseen rows and for the viewport size so the thumb does not wobble while scrolling.
+ * note rows never seen, so the thumb does not wobble while scrolling.
+ * @param knownAdvances advances of rows seen earlier (the laid-out rows take precedence).
  */
 internal fun lazyScrollMetrics(
     itemCount: Int,
@@ -123,6 +144,7 @@ internal fun lazyScrollMetrics(
     rows: List<GridRow>,
     viewportExtent: Float,
     estimatedRowAdvance: Float = 0f,
+    knownAdvances: Map<Int, Float> = emptyMap(),
 ): LazyScrollMetrics {
     if (itemCount <= 0 || viewportExtent <= 0f || rows.isEmpty()) return LazyScrollMetrics()
     val cols = columns.coerceAtLeast(1)
@@ -134,11 +156,18 @@ internal fun lazyScrollMetrics(
     // LazyGrid item offsets are relative to the viewport, so a scrolled row has a negative top: -top is the scroll.
     val offset = (-first.top).toFloat().coerceIn(0f, advance)
     val estimate = (if (estimatedRowAdvance > 0f) estimatedRowAdvance else measuredRowAdvance(rows, headers)).coerceAtLeast(1f)
-    val visible = (viewportExtent / estimate).coerceAtLeast(1f)
-    val maxRow = (total - visible).coerceAtLeast(0f)
-    val position = first.index + offset / advance
-    val scroll = if (maxRow <= 0f) 0f else (position / maxRow).coerceIn(0f, 1f)
-    val thumb = (visible / total).coerceIn(0f, 1f)
+    val advances = HashMap<Int, Float>(knownAdvances.size + rows.size)
+    advances.putAll(knownAdvances)
+    // The last laid-out row only has its own height as advance; keep a better value measured earlier.
+    rows.forEachIndexed { i, row -> if (i < rows.size - 1 || row.index !in advances) advances[row.index] = row.advance }
+    val headerKnown = advances.filterKeys { it < headers }.values
+    val headerEstimate = if (headerKnown.isEmpty()) 0f else headerKnown.average().toFloat()
+    val content = contentExtent(total, headers, advances, estimate, headerEstimate)
+    val above = startOfRow(first.index, headers, advances, estimate, headerEstimate)
+    val position = above + offset
+    val maxScroll = (content - viewportExtent).coerceAtLeast(0f)
+    val scroll = if (maxScroll <= 0f) 0f else (position / maxScroll).coerceIn(0f, 1f)
+    val thumb = (viewportExtent / content).coerceIn(0f, 1f)
     return LazyScrollMetrics(
         scrollFraction = scroll,
         thumbFraction = thumb,
@@ -149,22 +178,42 @@ internal fun lazyScrollMetrics(
         firstRow = first.index,
         rowOffset = offset,
         rowAdvance = advance,
-        rowAdvances = rows.associate { it.index to it.advance },
+        rowAdvances = advances,
         rowEstimate = estimate,
-        visibleRows = visible,
+        headerEstimate = headerEstimate,
+        viewport = viewportExtent,
+        contentExtent = content,
     )
 }
+
+private fun advanceOf(row: Int, headers: Int, advances: Map<Int, Float>, estimate: Float, headerEstimate: Float): Float =
+    advances[row] ?: if (row < headers) headerEstimate else estimate
+
+private fun startOfRow(row: Int, headers: Int, advances: Map<Int, Float>, estimate: Float, headerEstimate: Float): Float {
+    var sum = 0f
+    for (r in 0 until row) sum += advanceOf(r, headers, advances, estimate, headerEstimate)
+    return sum
+}
+
+private fun contentExtent(total: Int, headers: Int, advances: Map<Int, Float>, estimate: Float, headerEstimate: Float): Float =
+    startOfRow(total, headers, advances, estimate, headerEstimate)
 
 /** Item index and within-item offset to scroll to for a bar [fraction] (0..1): the inverse of [lazyScrollMetrics]. */
 internal fun lazyScrollTarget(metrics: LazyScrollMetrics, fraction: Float): Pair<Int, Int> {
     if (metrics.rows <= 0 || metrics.itemCount <= 0 || metrics.columns <= 0) return 0 to 0
-    val maxRow = (metrics.rows - metrics.visibleRows).coerceAtLeast(0f)
-    if (maxRow <= 0f) return 0 to 0
-    val position = fraction.coerceIn(0f, 1f) * maxRow
-    val row = position.toInt().coerceIn(0, metrics.rows - 1)
-    val within = (position - row).coerceIn(0f, 1f)
-    val advance = metrics.rowAdvances[row] ?: metrics.rowEstimate
-    val offset = (within * advance).roundToInt().coerceAtLeast(0)
+    val maxScroll = (metrics.contentExtent - metrics.viewport).coerceAtLeast(0f)
+    if (maxScroll <= 0f) return 0 to 0
+    val position = fraction.coerceIn(0f, 1f) * maxScroll
+    var row = 0
+    var start = 0f
+    while (row < metrics.rows - 1) {
+        val advance = advanceOf(row, metrics.headerItems, metrics.rowAdvances, metrics.rowEstimate, metrics.headerEstimate)
+        if (position < start + advance) break
+        start += advance
+        row++
+    }
+    val advance = advanceOf(row, metrics.headerItems, metrics.rowAdvances, metrics.rowEstimate, metrics.headerEstimate)
+    val offset = (position - start).coerceIn(0f, advance).roundToInt()
     val index = if (row < metrics.headerItems) row
     else metrics.headerItems + (row - metrics.headerItems) * metrics.columns
     return index.coerceIn(0, metrics.itemCount - 1) to offset

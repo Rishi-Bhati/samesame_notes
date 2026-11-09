@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -827,7 +828,9 @@ private fun NotesGrid(
             }
         }
     }
-        GridScrollBar(gridState, scrollEstimate, columns, headerItems)
+        // topMargin keeps the thumb (and its 48 dp touch zone) below the sort row at the top of the list, so the sort
+        // arrow is never under the bar's touch target.
+        GridScrollBar(gridState, scrollEstimate, columns, headerItems, topMargin = 36.dp)
     }
 }
 
@@ -843,6 +846,7 @@ internal fun GridScrollBar(
     scrollEstimate: ScrollEstimateHolder,
     columns: Int,
     headerItems: Int,
+    topMargin: androidx.compose.ui.unit.Dp = 0.dp,
 ) {
     val scope = rememberCoroutineScope()
     val metrics = remember(gridState, scrollEstimate, columns, headerItems) {
@@ -863,6 +867,7 @@ internal fun GridScrollBar(
         needed = { metrics.value.thumbFraction < 0.999f },
         edgeStrip = true,
         showOnStart = false,
+        topMargin = topMargin,
         accentColor = SameSameTheme.colors.accent,
     )
 }
@@ -889,6 +894,7 @@ private fun gridMetrics(
         rows = rows,
         viewportExtent = (info.viewportEndOffset - info.viewportStartOffset).toFloat(),
         estimatedRowAdvance = estimate,
+        knownAdvances = scrollEstimate.advancesWith(rows),
     )
 }
 
@@ -948,12 +954,19 @@ private fun SortRow(
             Icon(AppIcons.Sort, null, tint = colors.textTertiary, modifier = Modifier.size(18.dp)) // sort_bar_icon_size
             Text(label, fontSize = cappedSp(13f), color = colors.textTertiary, modifier = Modifier.padding(start = 6.dp)) // icon margin_end 6dp
         }
-        Box(Modifier.padding(start = 14.9.dp, end = 12.dp).width(1.dp).height(16.dp).background(Color(0xFFE8E8E8)))
-        Icon(
-            if (state.preferences.sortDirection == SortDirection.Descending) AppIcons.ArrowDown else AppIcons.ArrowUp,
-            stringResource(R.string.feature_notes_sort_direction), tint = colors.textTertiary,
-            modifier = Modifier.clickable(onClick = onToggleDirection).padding(4.dp).size(18.dp), // arrow layout padding 4dp
-        )
+        Box(Modifier.padding(start = 14.9.dp).width(1.dp).height(16.dp).background(Color(0xFFE8E8E8)))
+        // The arrow's touch target is 38 x 26 dp (the drawn 18 dp glyph sits where it always did: 12 dp after the divider,
+        // 4 dp padding), not the bare 26 dp box, so it is easy to hit and does not depend on the scroll bar's strip.
+        Box(
+            Modifier.width(38.dp).fillMaxHeight().clickable(onClick = onToggleDirection).padding(end = 4.dp),
+            contentAlignment = Alignment.CenterEnd,
+        ) {
+            Icon(
+                if (state.preferences.sortDirection == SortDirection.Descending) AppIcons.ArrowDown else AppIcons.ArrowUp,
+                stringResource(R.string.feature_notes_sort_direction), tint = colors.textTertiary,
+                modifier = Modifier.size(18.dp),
+            )
+        }
     }
     // Ref #04: the sort menu is right-aligned 10.3dp from the screen edge, its top 9.9dp below the row top.
     Box(Modifier.align(Alignment.TopEnd)) {

@@ -15,6 +15,39 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import org.samesame.notes.feature.composer.canvas.Viewport
 
+/**
+ * Debug-only trace of the pull-to-add-page gesture (adb logcat -s SameSamePull): why it is (not) allowed and how a pan splits
+ * between the scroll and the pull. Off in release builds (the screen turns it on for debuggable apps only).
+ */
+object PullLog {
+    @Volatile var enabled = false
+    private var lastReason: String? = null
+    private var lastAt = 0L
+
+    /** The permission check of a pan: logged when the answer changes or at most twice a second. */
+    fun allowed(allowed: Boolean, mode: String, mode0: Boolean, editor: Boolean, crop: Boolean, vertical: Boolean) {
+        if (!enabled) return
+        val reason = "allowed=$allowed mode=$mode infinite=$mode0 editor=$editor crop=$crop vertical=$vertical"
+        val now = android.os.SystemClock.uptimeMillis()
+        if (reason != lastReason || now - lastAt > 500) {
+            lastReason = reason
+            lastAt = now
+            android.util.Log.d("SameSamePull", reason)
+        }
+    }
+
+    fun pan(vertical: Boolean, rawBefore: Float, along: Float, leftover: Float, scroll: Offset, scale: Float, content: androidx.compose.ui.geometry.Size, size: androidx.compose.ui.unit.IntSize) {
+        if (!enabled) return
+        val viewDoc = if (scale > 0f) (if (vertical) size.height else size.width) / scale else 0f
+        val max = if (vertical) content.height - viewDoc else content.width - viewDoc
+        android.util.Log.d(
+            "SameSamePull",
+            "pan vertical=$vertical along=$along leftover=$leftover raw=$rawBefore scroll=${if (vertical) scroll.y else scroll.x} " +
+                "max=$max scale=$scale view=${size.width}x${size.height} content=${content.width}x${content.height}",
+        )
+    }
+}
+
 private const val FLAG_CANCELED = 0x20 // MotionEvent.FLAG_CANCELED (API 33)
 private const val STYLUS_LINGER_MS = 500L
 
@@ -132,9 +165,11 @@ private fun panWithPull(
     if (pullChange != 0f) pull.dragBy(pullChange)
     val scrolled = if (vertical) Offset(pan.x, rest) else Offset(rest, pan.y)
     val before = viewport.scroll
+    val rawBefore = pull.raw
     viewport.transformBy(scrolled, 1f, focus)
     val moved = (viewport.scroll - before) * viewport.scale // px the content actually scrolled (towards the end = +)
     val leftover = -(if (vertical) scrolled.y else scrolled.x) - (if (vertical) moved.y else moved.x)
+    PullLog.pan(vertical, rawBefore, along, leftover, viewport.scroll, viewport.scale, viewport.content, viewport.size)
     if (leftover > 0.5f) pull.dragBy(leftover)
 }
 

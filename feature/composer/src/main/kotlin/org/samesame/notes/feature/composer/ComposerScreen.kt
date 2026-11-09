@@ -1846,6 +1846,12 @@ internal fun ComposerEditor(
                         val t = session.chrome.value.toolbar
                         val allowed = session.holder.current.layout.mode != PageMode.Infinite && t.mode != EditorMode.Reading &&
                             latestEditor == null && cropPage == null
+                        org.samesame.notes.feature.composer.input.PullLog.enabled =
+                            (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+                        org.samesame.notes.feature.composer.input.PullLog.allowed(
+                            allowed, t.mode.toString(), session.holder.current.layout.mode == PageMode.Infinite,
+                            latestEditor != null, cropPage != null, !latestLayout.horizontal,
+                        )
                         if (allowed) pullToAdd to !latestLayout.horizontal else null
                     },
                     // The router asks this for a first touch only in text mode, and for both fingers of a pinch in text and
