@@ -21,10 +21,13 @@ internal object FontSizeRows {
         else -> sizes.getOrNull(index - SIZE_START)?.let(FontSizePick::Size)
     }
 
-    /** Row under a touch at [y] (root coordinates), or -1 when the touch is between/away from rows. */
-    fun rowAt(y: Float, rows: List<RowBounds>): Int =
-        rows.firstOrNull { y >= it.top && y < it.bottom }?.index ?: -1
+    /**
+     * The applied row, where a glide starts: the heading, else the plain size row (for Body's 17 too, so the first
+     * steps reach the neighbouring sizes), else Body.
+     */
+    fun anchorRow(heading: TextSizeCatalog.Heading?, size: Int, sizes: List<Int>): Int = when {
+        heading != null -> heading.ordinal
+        size in sizes -> SIZE_START + sizes.indexOf(size)
+        else -> BODY_INDEX
+    }
 }
-
-/** A row's bounds in root coordinates, reported by the popup (scrolling updates them). */
-data class RowBounds(val index: Int, val top: Float, val bottom: Float)

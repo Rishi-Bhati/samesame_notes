@@ -33,60 +33,45 @@ class FontSizeHoldGestureTest {
         assertThat(FontSizeHoldGesture.start(pressed = true, distance = 400f, touchSlop = slop, timedOut = false)).isEqualTo(Start.Glide)
     }
 
-    @Test fun releaseOnAHighlightedRowApplies() {
-        assertThat(FontSizeHoldGesture.release(highlighted = 5, insidePopup = true, enteredPopup = true, overButton = false))
-            .isEqualTo(Release.Apply)
+    @Test fun releaseAwayFromTheToolbarAppliesTheHighlight() {
+        assertThat(FontSizeHoldGesture.release(highlighted = 5, leftButton = true, overToolbar = false)).isEqualTo(Release.Apply)
+        // Below the toolbar (over the keyboard) too: larger sizes are below the applied one.
+        assertThat(FontSizeHoldGesture.release(highlighted = 20, leftButton = true, overToolbar = false)).isEqualTo(Release.Apply)
     }
 
-    /** The other rc1 failure: a stationary hold opened the popup and the release on the button closed it again. */
-    @Test fun releaseOnTheButtonWithoutGlidingKeepsThePopupOpen() {
-        assertThat(FontSizeHoldGesture.release(highlighted = -1, insidePopup = false, enteredPopup = false, overButton = true))
-            .isEqualTo(Release.KeepOpen)
+    /** A hold without moving (or a wobble that stays on the button) leaves the popup open. */
+    @Test fun releaseWithoutLeavingTheButtonKeepsThePopupOpen() {
+        assertThat(FontSizeHoldGesture.release(highlighted = 13, leftButton = false, overToolbar = true)).isEqualTo(Release.KeepOpen)
+        assertThat(FontSizeHoldGesture.release(highlighted = -1, leftButton = false, overToolbar = true)).isEqualTo(Release.KeepOpen)
     }
 
-    @Test fun releaseInsideThePopupBetweenRowsKeepsItOpen() {
-        assertThat(FontSizeHoldGesture.release(highlighted = -1, insidePopup = true, enteredPopup = true, overButton = false))
-            .isEqualTo(Release.KeepOpen)
+    /** Glided away and back onto the toolbar (the button included): a change of mind. */
+    @Test fun releaseBackOverTheToolbarCancels() {
+        assertThat(FontSizeHoldGesture.release(highlighted = -1, leftButton = true, overToolbar = true)).isEqualTo(Release.Cancel)
+        assertThat(FontSizeHoldGesture.release(highlighted = 13, leftButton = true, overToolbar = true)).isEqualTo(Release.Cancel)
+        // Nothing to apply (the popup never reported its rows).
+        assertThat(FontSizeHoldGesture.release(highlighted = -1, leftButton = true, overToolbar = false)).isEqualTo(Release.Cancel)
     }
 
-    @Test fun releaseOutsideCancels() {
-        assertThat(FontSizeHoldGesture.release(highlighted = -1, insidePopup = false, enteredPopup = true, overButton = false))
-            .isEqualTo(Release.Cancel)
-        assertThat(FontSizeHoldGesture.release(highlighted = -1, insidePopup = false, enteredPopup = false, overButton = false))
-            .isEqualTo(Release.Cancel)
-        // Glided into the popup and back onto the button: that is a change of mind, not a tap.
-        assertThat(FontSizeHoldGesture.release(highlighted = -1, insidePopup = false, enteredPopup = true, overButton = true))
-            .isEqualTo(Release.Cancel)
-    }
-
-    /** The hold state maps a finger over the reported rows to the row under it, and only inside the popup. */
-    @Test fun holdStateHighlightsTheRowUnderTheFingerDeterministically() {
+    /** The hold state derives the highlight from the glide alone and hides it while the finger is back over the toolbar. */
+    @Test fun holdStateHighlightsRelativeToTheAppliedRow() {
         val hold = FontSizeHoldState()
-        assertThat(hold.popupShown).isFalse()
-        // Popup 1180..1484 x 900..1800; Heading 1..3 and Body rows 88 px tall from y = 916.
-        hold.reportPopup(1180f, 1484f, 900f, 1800f)
-        for (i in 0..FontSizeRows.BODY_INDEX) hold.reportRow(RowBounds(i, 916f + i * 88f, 916f + (i + 1) * 88f))
-        assertThat(hold.popupShown).isTrue()
-
-        // Fast or slow, the same end point gives the same row: there is no path or velocity input.
-        val slowPath = (0..22).map { 1700f - it * 20f } // ends at y = 1260, inside the Body row (1180..1268)
-        slowPath.forEach { hold.moveTo(1300f, it) }
-        val slow = hold.highlighted
-        hold.moveTo(1300f, 1700f)
-        hold.moveTo(1300f, slowPath.last())
-        assertThat(hold.highlighted).isEqualTo(slow)
-        assertThat(slow).isEqualTo(FontSizeRows.BODY_INDEX)
-
-        // Each row in turn.
-        hold.moveTo(1300f, 920f); assertThat(hold.highlighted).isEqualTo(0)
-        hold.moveTo(1300f, 1010f); assertThat(hold.highlighted).isEqualTo(1)
-        hold.moveTo(1300f, 1250f); assertThat(hold.highlighted).isEqualTo(FontSizeRows.BODY_INDEX)
+        assertThat(hold.highlighted).isEqualTo(-1)
+        // The glide starts before the popup has reported: nothing yet, then the applied row once it has.
+        hold.startGlide(1650f, 70f)
+        assertThat(hold.highlighted).isEqualTo(-1)
+        hold.listCount = TextSizeCatalog.SIZES.size
+        hold.selectedRow = FontSizeRows.anchorRow(TextSizeCatalog.Heading.H2, 24, TextSizeCatalog.SIZES)
+        assertThat(hold.highlighted).isEqualTo(1)
+        hold.glideTo(1650f - 70f); assertThat(hold.highlighted).isEqualTo(0)
+        hold.glideTo(1650f + 140f); assertThat(hold.highlighted).isEqualTo(FontSizeRows.BODY_INDEX)
+        hold.glideTo(1650f + 140f, suppressed = true); assertThat(hold.highlighted).isEqualTo(-1)
+        hold.glideTo(1650f + 140f); assertThat(hold.highlighted).isEqualTo(FontSizeRows.BODY_INDEX)
         assertThat(FontSizeRows.pick(hold.highlighted, TextSizeCatalog.SIZES)).isEqualTo(FontSizePick.Body)
-        // Inside the popup but above the first row (its top padding): no row.
-        hold.moveTo(1300f, 905f); assertThat(hold.highlighted).isEqualTo(-1)
-
-        // Outside the popup (left of it, over the toolbar button): nothing highlighted, so a release there cancels.
-        hold.moveTo(560f, 1250f); assertThat(hold.highlighted).isEqualTo(-1)
-        assertThat(hold.insidePopup(560f, 1250f)).isFalse()
+        hold.endGlide()
+        assertThat(hold.highlighted).isEqualTo(-1)
+        hold.clear()
+        hold.startGlide(0f, 70f)
+        assertThat(hold.highlighted).isEqualTo(-1)
     }
 }

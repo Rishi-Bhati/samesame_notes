@@ -39,30 +39,15 @@ class FontSizeCatalogTest {
         assertThat(FontSizeRows.pick(FontSizeRows.count(sizes), sizes)).isNull()
     }
 
-    @Test fun rowAtUsesRootBounds() {
-        val rows = listOf(
-            RowBounds(0, top = 100f, bottom = 144f),
-            RowBounds(1, top = 144f, bottom = 188f),
-            RowBounds(3, top = 200f, bottom = 244f),
-        )
-        assertThat(FontSizeRows.rowAt(120f, rows)).isEqualTo(0)
-        assertThat(FontSizeRows.rowAt(144f, rows)).isEqualTo(1)
-        assertThat(FontSizeRows.rowAt(243.9f, rows)).isEqualTo(3)
-        assertThat(FontSizeRows.rowAt(244f, rows)).isEqualTo(-1)
-        assertThat(FontSizeRows.rowAt(190f, rows)).isEqualTo(-1)
-        assertThat(FontSizeRows.rowAt(0f, rows)).isEqualTo(-1)
-    }
-
-    @Test fun holdTracksTheFingerRow() {
-        val hold = FontSizeHoldState()
-        hold.reportRow(RowBounds(0, 100f, 144f))
-        hold.reportRow(RowBounds(1, 144f, 188f))
-        assertThat(hold.moveTo(0f, 160f)).isTrue()
-        assertThat(hold.highlighted).isEqualTo(1)
-        assertThat(hold.moveTo(0f, 161f)).isFalse()
-        assertThat(hold.moveTo(0f, 10f)).isTrue()
-        assertThat(hold.highlighted).isEqualTo(-1)
-        hold.clear()
-        assertThat(hold.moveTo(0f, 160f)).isFalse()
+    @Test fun theGlideAnchorIsTheAppliedRow() {
+        val sizes = TextSizeCatalog.SIZES
+        assertThat(FontSizeRows.anchorRow(TextSizeCatalog.Heading.H1, 32, sizes)).isEqualTo(0)
+        assertThat(FontSizeRows.anchorRow(TextSizeCatalog.Heading.H3, 20, sizes)).isEqualTo(2)
+        // Body text (17) anchors on the "17" row, so the first steps reach 16 and 18.
+        assertThat(FontSizeRows.anchorRow(null, 17, sizes)).isEqualTo(FontSizeRows.SIZE_START + sizes.indexOf(17))
+        assertThat(FontSizeRows.anchorRow(null, 6, sizes)).isEqualTo(FontSizeRows.SIZE_START)
+        assertThat(FontSizeRows.anchorRow(null, 13, sizes)).isEqualTo(FontSizeRows.BODY_INDEX)
+        val custom = TextSizeCatalog.menuSizes(13f)
+        assertThat(FontSizeRows.anchorRow(null, 13, custom)).isEqualTo(FontSizeRows.SIZE_START + custom.indexOf(13))
     }
 }

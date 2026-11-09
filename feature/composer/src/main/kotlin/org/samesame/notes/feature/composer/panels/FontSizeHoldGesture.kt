@@ -21,13 +21,13 @@ internal object FontSizeHoldGesture {
 
     /** What lifting the finger does once the press became a glide. */
     enum class Release {
-        /** A row is highlighted: apply it and close the popup. */
+        /** Lifted away from the toolbar with a row highlighted: apply it and close the popup. */
         Apply,
 
-        /** Released without choosing (still on the button, or between rows inside the popup): leave the popup open. */
+        /** Lifted without the finger ever leaving the button (a hold without moving): leave the popup open. */
         KeepOpen,
 
-        /** Released outside the popup after gliding away from the button: close the popup, nothing applied. */
+        /** Glided away and lifted back over the toolbar (a change of mind), or nothing to apply: close, unchanged. */
         Cancel,
     }
 
@@ -43,14 +43,13 @@ internal object FontSizeHoldGesture {
     }
 
     /**
-     * Lifting during a glide: [highlighted] is the flat row under the finger (-1 for none), [insidePopup] whether the
-     * finger is over the popup now, [enteredPopup] whether it was over the popup at any time in this glide, and
-     * [overButton] whether it is over the font-size button.
+     * Lifting during a glide: [highlighted] is the glide's flat row (-1 for none), [leftButton] whether the finger
+     * left the font-size button at any time in this glide, and [overToolbar] whether it is over the toolbar strip now.
      */
-    fun release(highlighted: Int, insidePopup: Boolean, enteredPopup: Boolean, overButton: Boolean): Release = when {
+    fun release(highlighted: Int, leftButton: Boolean, overToolbar: Boolean): Release = when {
+        !leftButton -> Release.KeepOpen
+        overToolbar -> Release.Cancel
         highlighted >= 0 -> Release.Apply
-        insidePopup -> Release.KeepOpen
-        !enteredPopup && overButton -> Release.KeepOpen
         else -> Release.Cancel
     }
 }

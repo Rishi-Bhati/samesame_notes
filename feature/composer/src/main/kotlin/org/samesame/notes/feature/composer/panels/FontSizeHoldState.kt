@@ -1,93 +1,53 @@
 package org.samesame.notes.feature.composer.panels
 
-import androidx.compose.foundation.ScrollState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
 /**
- * Shared state of the font-size button's press-and-slide gesture: the popup reports the root bounds of its rows, of
- * itself and of its scrolling list, the button turns the finger's root position into a highlighted row and shows it
- * (also in the popup), and scrolls the list through [scrollState] with the whole popup as a scroll pad ([GlideScrollPad]).
+ * Shared state of the font-size button's press-and-glide gesture. The popup reports its applied row and the length
+ * of its size list; the button reports the glide (anchor y, finger y). The highlighted row is derived from those
+ * alone ([GlideScrollPad.glideIndex]), so it is a pure function of the finger's displacement since the glide began.
  */
 class FontSizeHoldState {
-    /** Flat row index under the finger, or -1. */
-    var highlighted by mutableIntStateOf(-1)
-        internal set
+    /** Flat row the popup shows as applied (the glide's anchor), -1 while the popup is not shown. */
+    internal var selectedRow by mutableIntStateOf(-1)
 
-    private val rows = mutableStateMapOf<Int, RowBounds>()
+    /** Rows in the popup's scrolling size list (0 while the popup is not shown). */
+    internal var listCount by mutableIntStateOf(0)
 
-    /** Extent of the popup in root coordinates (a finger outside it highlights nothing). */
-    internal var popupLeft = Float.NEGATIVE_INFINITY
-        private set
-    internal var popupRight = Float.POSITIVE_INFINITY
-        private set
-    internal var popupTop = Float.NEGATIVE_INFINITY
-        private set
-    internal var popupBottom = Float.POSITIVE_INFINITY
-        private set
+    private var gliding by mutableStateOf(false)
+    private var anchorY by mutableFloatStateOf(0f)
+    private var fingerY by mutableFloatStateOf(0f)
+    private var stepPx by mutableFloatStateOf(1f)
+    private var suppressed by mutableStateOf(false)
 
-    /** Rows in the scrolling size list (0 = unknown: list rows are then found through their reported bounds). */
-    internal var listCount = 0
-
-    /** Visible part of the scrolling size list in root coordinates. */
-    internal var listTop = 0f
-        private set
-    internal var listBottom = 0f
-        private set
-
-    /** The size list's scroll state while the popup is shown. */
-    internal var scrollState: ScrollState? = null
-
-    fun reportRow(bounds: RowBounds) {
-        rows[bounds.index] = bounds
+    /** Flat row highlighted by the glide, or -1 (no glide, popup not shown yet, or finger back over the toolbar). */
+    val highlighted: Int by derivedStateOf {
+        if (!gliding || suppressed) -1
+        else GlideScrollPad.glideIndex(selectedRow, anchorY, fingerY, stepPx, FontSizeRows.SIZE_START + listCount)
     }
 
-    internal fun reportPopup(left: Float, right: Float, top: Float = Float.NEGATIVE_INFINITY, bottom: Float = Float.POSITIVE_INFINITY) {
-        popupLeft = left; popupRight = right; popupTop = top; popupBottom = bottom
+    /** A glide starts with the finger at [y]: the highlight sits on the applied row until the finger moves a step. */
+    fun startGlide(y: Float, stepPx: Float) {
+        anchorY = y; fingerY = y; this.stepPx = stepPx; suppressed = false; gliding = true
     }
 
-    internal fun reportList(top: Float, bottom: Float) {
-        listTop = top; listBottom = bottom
+    /** The finger is at [y]; [suppressed] hides the highlight (finger back over the toolbar: lifting there cancels). */
+    fun glideTo(y: Float, suppressed: Boolean = false) {
+        fingerY = y; this.suppressed = suppressed
     }
 
+    fun endGlide() {
+        gliding = false; suppressed = false
+    }
+
+    /** The popup went away. */
     fun clear() {
-        rows.clear()
-        highlighted = -1
-        popupLeft = Float.NEGATIVE_INFINITY; popupRight = Float.POSITIVE_INFINITY
-        popupTop = Float.NEGATIVE_INFINITY; popupBottom = Float.POSITIVE_INFINITY
-        listTop = 0f; listBottom = 0f
+        selectedRow = -1
         listCount = 0
-        scrollState = null
-    }
-
-    /**
-     * Row under [y]: inside the scrolling list it is computed from the live scroll value (exact on every animation
-     * frame), elsewhere from the reported row bounds (headings and Body).
-     */
-    fun rowAt(y: Float): Int {
-        val list = scrollState
-        if (list != null && listCount > 0 && y >= listTop && y < listBottom) {
-            val content = (listBottom - listTop) + list.maxValue
-            val i = GlideScrollPad.listIndexAt(y, listTop, listBottom, list.value.toFloat(), content / listCount, listCount)
-            return if (i < 0) -1 else FontSizeRows.SIZE_START + i
-        }
-        return FontSizeRows.rowAt(y, rows.values.sortedBy { it.index })
-    }
-
-    /** True once the popup has reported its bounds (before that [insidePopup] spans everything). */
-    internal val popupShown: Boolean get() = popupLeft.isFinite() && popupRight.isFinite()
-
-    internal fun insidePopup(x: Float): Boolean = x in popupLeft..popupRight
-
-    internal fun insidePopup(x: Float, y: Float): Boolean = insidePopup(x) && y in popupTop..popupBottom
-
-    /** The finger moved to ([x], [y]); returns true when the highlighted row changed (caller gives haptic feedback). */
-    fun moveTo(x: Float, y: Float): Boolean {
-        val next = if (insidePopup(x, y)) rowAt(y) else -1
-        if (next == highlighted) return false
-        highlighted = next
-        return true
     }
 }

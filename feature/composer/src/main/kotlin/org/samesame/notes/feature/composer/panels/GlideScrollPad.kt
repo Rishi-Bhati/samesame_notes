@@ -1,67 +1,43 @@
 package org.samesame.notes.feature.composer.panels
 
-import kotlin.math.floor
+import kotlin.math.roundToInt
 
 /**
- * Press-and-glide on the font-size button: once the finger glides into the popup, the popup's size list follows it.
+ * Press-and-glide on the font-size button: the mapping from the finger to the highlighted row of the popup.
  *
- * The model is deterministic: the highlighted row is always the row under the finger in the list as it is currently
- * scrolled ([listIndexAt]), so the same finger position over the same scroll value always gives the same size, no
- * matter how fast the finger got there. There is no velocity term and no smoothing. The list itself moves only while
- * the finger is in the top or bottom edge zone of the list ([edgeBias]): the scroll step is proportional to the depth
- * in the zone and capped at [MAX_EDGE_SCROLL_DP_PER_S], so holding at an edge travels steadily and every size is
- * reachable in one glide ([edgeScrollStep]). Between the zones the list stays put and the highlight steps row by row
- * as the finger moves over the visible rows.
+ * The mapping is purely positional and relative. When the glide starts, the highlight sits on the applied row (the
+ * anchor) and the finger's y is remembered; from then on the highlight is the anchor plus one row per [STEP_DP] of
+ * vertical travel (finger up = up the list), clamped to the list ([glideIndex]). Nothing depends on time, speed, the
+ * number of move events, where the popup sits or how its list is scrolled, so the same displacement always gives the
+ * same row. The list only follows the highlight ([centredScroll]); scrolling never changes it.
  *
- * All functions are pure (px in one coordinate space), so the mapping is JVM-testable.
+ * All functions are pure (px), so the mapping is JVM-testable.
  */
 internal object GlideScrollPad {
-    /** Fraction of the visible list height that is the top/bottom auto-scroll edge zone. */
-    const val EDGE_ZONE = 0.15f
-    /** Fastest auto-scroll, at the very edge of the list. */
-    const val MAX_EDGE_SCROLL_DP_PER_S = 900f
+    /**
+     * Finger travel per row. Smaller than the 44 dp row on purpose: the whole popup (30 rows) spans 812 dp at this
+     * step, which still fits the screen height, while 44 dp would need 1276 dp. 28 dp is the floor for comfortable,
+     * deliberate single steps.
+     */
+    const val STEP_DP = 28f
+
+    /** Rows moved for a finger at [y] when the glide started at [anchorY]; rounds to the nearest step. */
+    fun steps(y: Float, anchorY: Float, stepPx: Float): Int =
+        if (stepPx <= 0f) 0 else ((y - anchorY) / stepPx).roundToInt()
 
     /**
-     * Index within the scrolling list of the row under [y] (rows of [rowHeight] stacked from the content top, the
-     * viewport spanning [listTop]..[listBottom] and scrolled by [scroll]), or -1 outside the viewport / past [count].
+     * Highlighted flat row for a finger at [y]: [anchorIndex] (the applied row) plus [steps], clamped to 0 until
+     * [count]; -1 while the anchor or the list is unknown.
      */
-    fun listIndexAt(y: Float, listTop: Float, listBottom: Float, scroll: Float, rowHeight: Float, count: Int): Int {
-        if (rowHeight <= 0f || y < listTop || y >= listBottom) return -1
-        val i = floor((y - listTop + scroll) / rowHeight).toInt()
-        return if (i in 0 until count) i else -1
+    fun glideIndex(anchorIndex: Int, anchorY: Float, y: Float, stepPx: Float, count: Int): Int {
+        if (count <= 0 || anchorIndex !in 0 until count) return -1
+        return (anchorIndex + steps(y, anchorY, stepPx)).coerceIn(0, count - 1)
     }
 
     /**
-     * Where [y] sits in the list's auto-scroll edge zones: -1 at the top edge, +1 at the bottom edge, 0 between them
-     * and outside the viewport; linear in between. [zoneFraction] is the share of the list height that is a zone.
+     * Scroll value that centres row [listIndex] (rows of [rowHeight] stacked from the content top) in a viewport of
+     * [viewport] px, clamped to 0..[maxScroll]; the highlighted row is then always fully visible.
      */
-    fun edgeBias(y: Float, listTop: Float, listBottom: Float, zoneFraction: Float = EDGE_ZONE): Float {
-        val height = listBottom - listTop
-        if (height <= 0f || y < listTop || y > listBottom) return 0f
-        val zone = height * zoneFraction.coerceIn(0f, 0.5f)
-        if (zone <= 0f) return 0f
-        val fromTop = y - listTop
-        val fromBottom = listBottom - y
-        return when {
-            fromTop < zone -> -((zone - fromTop) / zone)
-            fromBottom < zone -> (zone - fromBottom) / zone
-            else -> 0f
-        }
-    }
-
-    /**
-     * Scroll delta (px, positive = toward the list end) for one frame of [dtMs] with the finger at [y], proportional
-     * to the edge depth and capped at [maxPxPerS]; 0 between the edge zones.
-     */
-    fun edgeScrollStep(
-        y: Float,
-        listTop: Float,
-        listBottom: Float,
-        dtMs: Float,
-        maxPxPerS: Float,
-        zoneFraction: Float = EDGE_ZONE,
-    ): Float {
-        if (maxPxPerS <= 0f || dtMs <= 0f) return 0f
-        return edgeBias(y, listTop, listBottom, zoneFraction) * maxPxPerS * (dtMs / 1000f)
-    }
+    fun centredScroll(listIndex: Int, rowHeight: Float, viewport: Float, maxScroll: Float): Float =
+        (listIndex * rowHeight + rowHeight / 2f - viewport / 2f).coerceIn(0f, maxScroll.coerceAtLeast(0f))
 }

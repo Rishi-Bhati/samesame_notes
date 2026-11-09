@@ -45,12 +45,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
-import androidx.compose.foundation.gestures.scrollBy
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.withFrameMillis
+import androidx.compose.ui.layout.boundsInRoot
 import org.samesame.notes.feature.composer.panels.GlideScrollPad
 import org.samesame.notes.core.designsystem.theme.SameSameTheme
 import org.samesame.notes.feature.composer.R
@@ -149,6 +146,7 @@ fun TextToolbar(
     val c = toolbarColors()
     val haptic = LocalHapticFeedback.current
     val fontSizeCoords = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<LayoutCoordinates?>(null) }
+    val toolbarCoords = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<LayoutCoordinates?>(null) }
     // The gesture survives recompositions (the popup opening recomposes this toolbar), so read the latest callbacks.
     val tapFontSize = androidx.compose.runtime.rememberUpdatedState(onFontSize)
     val holdOpen = androidx.compose.runtime.rememberUpdatedState(onFontSizeHoldOpen)
@@ -157,7 +155,7 @@ fun TextToolbar(
     val currentFontSize = androidx.compose.runtime.rememberUpdatedState(model.fontSize)
     val fontSizeName = stringResource(R.string.feature_composer_font_size)
     ToolbarSurface(modifier) {
-        Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxSize().onGloballyPositioned { toolbarCoords.value = it }, verticalAlignment = Alignment.CenterVertically) {
             Spacer(Modifier.width(ToggleStart))
             ModeToggle(stringResource(R.string.feature_composer_handwriting), onHandwriting) {
                 Icon(AppIcons.Handwriting, null, Modifier.size(24.dp), tint = c.icon)
@@ -183,33 +181,14 @@ fun TextToolbar(
                         .onGloballyPositioned { fontSizeCoords.value = it }
                         .pointerInput(fontSizeHold) {
                             val longPressMs = viewConfiguration.longPressTimeoutMillis
-                            // Fastest edge-zone auto-scroll of the size list, in root px/s.
-                            val edgeScrollPxPerS = GlideScrollPad.MAX_EDGE_SCROLL_DP_PER_S.dp.toPx()
-                            // Finger in root coordinates while held; the scroll-pad loop runs only while [holding].
-                            val holding = mutableStateOf(false)
-                            var finger = Offset.Zero
+                            val stepPx = GlideScrollPad.STEP_DP.dp.toPx()
                             coroutineScope {
+                                // A light tick per step of the glide's highlight (not when it appears or hides).
                                 launch {
-                                    snapshotFlow { holding.value }.collectLatest { held ->
-                                        var last = -1L
-                                        while (held) {
-                                            val now = withFrameMillis { it }
-                                            val dt = if (last < 0) 16f else (now - last).toFloat()
-                                            last = now
-                                            val list = fontSizeHold.scrollState ?: continue
-                                            // Deterministic pad: the list moves only while the finger is in its top/bottom
-                                            // edge zone (speed by depth, capped); the highlight is always the row under
-                                            // the finger in the list as it is scrolled now.
-                                            if (fontSizeHold.insidePopup(finger.x)) {
-                                                val step = GlideScrollPad.edgeScrollStep(
-                                                    finger.y, fontSizeHold.listTop, fontSizeHold.listBottom, dt, edgeScrollPxPerS,
-                                                )
-                                                if (step != 0f) list.scrollBy(step)
-                                            }
-                                            if (fontSizeHold.moveTo(finger.x, finger.y)) {
-                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                            }
-                                        }
+                                    var last = -1
+                                    snapshotFlow { fontSizeHold.highlighted }.collect { h ->
+                                        if (h >= 0 && last >= 0 && h != last) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        last = h
                                     }
                                 }
                                 awaitEachGesture {
@@ -243,40 +222,35 @@ fun TextToolbar(
                                         FontSizeHoldGesture.Start.Glide -> Unit
                                     }
                                     // Glide: the popup is (or becomes) open and this same pointer drives it until it lifts
-                                    // (Compose keeps sending it to this node outside its bounds). The scroll-pad loop above
-                                    // follows [finger]; release applies the row under it, see FontSizeHoldGesture.release.
+                                    // (Compose keeps sending it to this node outside its bounds). The highlight starts on the
+                                    // applied row and moves one row per step of vertical travel from the press point
+                                    // (GlideScrollPad); release applies it, see FontSizeHoldGesture.release.
                                     val sizes = TextSizeCatalog.menuSizes(currentFontSize.value.toFloat())
-                                    fontSizeHold.highlighted = -1
                                     holdOpen.value()
                                     var release = FontSizeHoldGesture.Release.Cancel
                                     var picked: FontSizePick? = null
-                                    var enteredPopup = false
-                                    finger = fontSizeCoords.value?.localToRoot(down.position) ?: down.position
-                                    holding.value = true
+                                    var leftButton = false
+                                    val toRoot = { p: Offset -> fontSizeCoords.value?.localToRoot(p) ?: p }
+                                    fontSizeHold.startGlide(toRoot(down.position).y, stepPx)
                                     try {
                                         while (true) {
                                             val event = awaitPointerEvent()
                                             val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                                            finger = fontSizeCoords.value?.localToRoot(change.position) ?: change.position
-                                            val inPopup = fontSizeHold.popupShown && fontSizeHold.insidePopup(finger.x, finger.y)
-                                            if (inPopup) enteredPopup = true
+                                            val p = change.position
+                                            if (p.x < 0f || p.y < 0f || p.x >= size.width || p.y >= size.height) leftButton = true
+                                            val finger = toRoot(p)
+                                            val overToolbar = toolbarCoords.value?.boundsInRoot()?.let { finger.y >= it.top && finger.y < it.bottom } ?: false
+                                            fontSizeHold.glideTo(finger.y, suppressed = leftButton && overToolbar)
                                             if (!change.pressed) {
-                                                fontSizeHold.moveTo(finger.x, finger.y)
-                                                val p = change.position
-                                                val overButton = p.x >= 0f && p.y >= 0f && p.x < size.width && p.y < size.height
-                                                release = FontSizeHoldGesture.release(fontSizeHold.highlighted, inPopup, enteredPopup, overButton)
+                                                release = FontSizeHoldGesture.release(fontSizeHold.highlighted, leftButton, overToolbar)
                                                 picked = FontSizeRows.pick(fontSizeHold.highlighted, sizes)
                                                 break
-                                            }
-                                            if (fontSizeHold.moveTo(finger.x, finger.y)) {
-                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                             }
                                             change.consume()
                                         }
                                     } finally {
-                                        holding.value = false
+                                        fontSizeHold.endGlide()
                                     }
-                                    fontSizeHold.highlighted = -1
                                     when (release) {
                                         FontSizeHoldGesture.Release.Apply -> picked?.let { pickFontSize.value(it) } ?: cancelFontSize.value()
                                         FontSizeHoldGesture.Release.KeepOpen -> Unit

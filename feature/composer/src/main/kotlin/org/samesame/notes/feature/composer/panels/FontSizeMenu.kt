@@ -17,19 +17,27 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.samesame.notes.core.designsystem.theme.SameSameTheme
 import org.samesame.notes.feature.composer.R
+import kotlinx.coroutines.flow.collectLatest
+import kotlin.math.roundToInt
 
 private val MenuWidth = 152.dp
 private val RowHeight = 44.dp
@@ -38,8 +46,8 @@ private val MenuShape = RoundedCornerShape(26.dp)
 
 /**
  * Font-size dropdown (`#31`): heading presets and Body first, then the full range of point sizes (scrolls); the
- * current size / heading is drawn in the accent colour. The rows report their root bounds to [hold] so the
- * font-size button can follow a press-and-slide finger over them.
+ * current size / heading is drawn in the accent colour. The popup reports its applied row to [hold], where the
+ * font-size button's press-and-glide highlights rows relative to it ([GlideScrollPad]).
  */
 @Composable
 internal fun FontSizeMenu(
@@ -54,17 +62,26 @@ internal fun FontSizeMenu(
     val selectedRow = selectedHeading?.ordinal
         ?: if (selectedSize == TextSizeCatalog.BODY_SIZE) FontSizeRows.BODY_INDEX else -1
     val listScroll = rememberScrollState()
-    DisposableEffect(hold, listScroll) {
-        hold.scrollState = listScroll
-        onDispose { hold.clear() }
+    DisposableEffect(hold) { onDispose { hold.clear() } }
+    SideEffect {
+        hold.listCount = sizes.size
+        hold.selectedRow = FontSizeRows.anchorRow(selectedHeading, selectedSize, sizes)
     }
-    SideEffect { hold.listCount = sizes.size }
+    // The list follows a glide's highlight (centred, so it is always visible); the highlight never depends on the scroll.
+    val rowHeightPx = with(LocalDensity.current) { RowHeight.toPx() }
+    var listViewport by remember { mutableIntStateOf(0) }
+    LaunchedEffect(hold, listScroll) {
+        snapshotFlow { (hold.highlighted - FontSizeRows.SIZE_START) to listViewport }.collectLatest { (i, viewport) ->
+            if (i < 0 || i >= hold.listCount || viewport <= 0) return@collectLatest
+            val target = GlideScrollPad.centredScroll(i, rowHeightPx, viewport.toFloat(), listScroll.maxValue.toFloat())
+            listScroll.animateScrollTo(target.roundToInt())
+        }
+    }
     // The same rounded surface as the other toolbar popups (26 dp corners, light 0.5 dp stroke).
     Column(
         modifier.width(MenuWidth).heightIn(max = MenuMaxHeight).shadow(8.dp, MenuShape).clip(MenuShape)
             .background(if (SameSameTheme.colors.isDark) Color(0xFF171717) else Color(0xFFFCFCFC))
             .then(if (SameSameTheme.colors.isDark) Modifier else Modifier.border(0.5.dp, Color(0xFFC7C7C7), MenuShape))
-            .onGloballyPositioned { val b = it.boundsInRoot(); hold.reportPopup(b.left, b.right, b.top, b.bottom) }
             .padding(top = 8.dp, bottom = 14.dp),
     ) {
         TextSizeCatalog.Heading.entries.forEach { heading ->
@@ -86,7 +103,7 @@ internal fun FontSizeMenu(
         Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 3.dp).height(1.dp).background(accent.copy(alpha = 0.35f)))
         Column(
             Modifier
-                .onGloballyPositioned { val b = it.boundsInRoot(); hold.reportList(b.top, b.bottom) }
+                .onSizeChanged { listViewport = it.height }
                 .verticalScroll(listScroll),
         ) {
             sizes.forEachIndexed { i, size ->
@@ -126,10 +143,6 @@ private fun MenuRow(
     val held = hold.highlighted == index
     Box(
         Modifier.fillMaxWidth().height(RowHeight)
-            .onGloballyPositioned {
-                val b = it.boundsInRoot()
-                hold.reportRow(RowBounds(index, b.top, b.bottom))
-            }
             .then(if (held) Modifier.padding(horizontal = 4.dp) else Modifier)
             .clip(RoundedCornerShape(if (held) 8.dp else 0.dp))
             .background(if (held) accent.copy(alpha = 0.16f) else Color.Transparent)
