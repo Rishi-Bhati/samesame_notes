@@ -103,6 +103,24 @@ class FolderDaoTest {
     }
 
     @Test
+    fun `live stats count the notes in a folder and its subfolders without trashed notes`() = runBlocking<Unit> {
+        seedTree()
+
+        val live = folders.observeWithStats().first()
+        assertThat(live.first { it.folder.id == "p" }.noteCount).isEqualTo(3) // n-p, n-a, n-b
+        assertThat(live.first { it.folder.id == "a" }.noteCount).isEqualTo(2) // n-a, n-b
+        assertThat(live.first { it.folder.id == "b" }.noteCount).isEqualTo(1)
+        assertThat(live.first { it.folder.id == "s" }.noteCount).isEqualTo(1)
+
+        notes.setTrashed(listOf("n-b"), 1000L)
+
+        val afterTrash = folders.observeWithStats().first()
+        assertThat(afterTrash.first { it.folder.id == "p" }.noteCount).isEqualTo(2)
+        assertThat(afterTrash.first { it.folder.id == "a" }.noteCount).isEqualTo(1)
+        assertThat(afterTrash.first { it.folder.id == "b" }.noteCount).isEqualTo(0)
+    }
+
+    @Test
     fun `restore brings the whole subtree back`() = runBlocking {
         seedTree()
         folders.trashSubtree(listOf("p"), 1000L)

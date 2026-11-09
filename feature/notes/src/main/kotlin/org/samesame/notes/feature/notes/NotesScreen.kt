@@ -354,7 +354,7 @@ internal fun NotesScreen(
                 NotesDrawer(
                     selected = state.filter,
                     allCount = state.allNotesCount,
-                    foldersCount = state.rootNotesCount,
+                    foldersCount = state.rootFolderCount,
                     favoritesCount = state.favoritesCount,
                     lockedCount = state.lockedCount,
                     onSelectAll = { close { viewModel.selectFilter(NoteFilter.All) } },

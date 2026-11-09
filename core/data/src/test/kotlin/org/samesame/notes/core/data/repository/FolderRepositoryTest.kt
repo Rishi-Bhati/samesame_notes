@@ -112,6 +112,25 @@ class FolderRepositoryTest {
     }
 
     @Test
+    fun `live folder stats count the notes in their subtrees`() = runBlocking<Unit> {
+        val p = folders.createFolder("P", null)
+        val a = folders.createFolder("A", p)
+        notes.createNote(p)
+        val inChild = notes.createNote(a)
+        notes.createNote(null)
+
+        val byId = folders.observeFolders().first().associateBy { it.id }
+        assertThat(byId.getValue(p).noteCount).isEqualTo(2)
+        assertThat(byId.getValue(a).noteCount).isEqualTo(1)
+
+        notes.moveToTrash(listOf(inChild))
+
+        val afterTrash = folders.observeFolders().first().associateBy { it.id }
+        assertThat(afterTrash.getValue(p).noteCount).isEqualTo(1)
+        assertThat(afterTrash.getValue(a).noteCount).isEqualTo(0)
+    }
+
+    @Test
     fun `deletePermanently removes the rows and the notes bundle files`() = runBlocking<Unit> {
         val p = folders.createFolder("P", null)
         val a = folders.createFolder("A", p)
