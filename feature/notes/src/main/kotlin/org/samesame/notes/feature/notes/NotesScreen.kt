@@ -148,7 +148,7 @@ fun NotesRoute(
                     onBack = { page = Page.Notes },
                     onOpenFolder = { viewModel.selectFilter(NoteFilter.InFolder(it)); page = Page.Notes },
                     onOpenRoot = { viewModel.selectFilter(NoteFilter.Uncategorized); page = Page.Notes },
-                    onCreateFolder = viewModel::createFolder,
+                    onCreateFolder = viewModel::createFolderUnder,
                     onRenameFolder = { id, name -> viewModel.renameFolder(id, name) },
                     onTrashFolders = { ids, lockedCount ->
                         if (lockedCount > 0) verifyTrash = ids.map { it.value } else viewModel.trashFolders(ids)
