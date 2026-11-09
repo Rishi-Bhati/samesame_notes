@@ -38,6 +38,17 @@ class LazyScrollMetricsTest {
     private val variableRowHeights = listOf(300f, 900f, 400f, 1200f, 550f, 700f)
     private val variableEstimate = variableRowHeights.average().toFloat()
 
+    private val headerAdvance = 31f
+
+    /** Row advances of a list with one short header row followed by note rows. */
+    private fun withHeader(vararg notes: Float) = listOf(headerAdvance) + notes.toList()
+
+    private fun metricsAt(advances: List<Float>, scroll: Float, viewport: Float, headers: Int = 0, estimate: Float, known: Map<Int, Float> = emptyMap()): LazyScrollMetrics {
+        val rows = visibleAt(advances, scroll, viewport)
+        val items = headers + (advances.size - headers) * columns
+        return lazyScrollMetrics(items, columns, headers, rows, viewport, estimate, known)
+    }
+
     @Test fun `empty grid needs no bar`() {
         val metrics = lazyScrollMetrics(0, columns, 0, emptyList(), 800f)
         assertThat(metrics.thumbFraction).isEqualTo(1f)
@@ -46,158 +57,104 @@ class LazyScrollMetricsTest {
     }
 
     @Test fun `grid that fits fills the thumb`() {
-        // 4 notes, 2 columns = 2 rows of 400 on an 800 viewport: nothing to scroll.
         val metrics = lazyScrollMetrics(4, columns, 0, rowsOf(400f, 400f), 800f)
         assertThat(metrics.rows).isEqualTo(2)
         assertThat(metrics.thumbFraction).isEqualTo(1f)
         assertThat(metrics.scrollFraction).isEqualTo(0f)
     }
 
-    @Test fun `scroll position comes from the first row offset with the right sign`() {
-        // Row 0 is 300 tall and scrolled 150 px past the top: half way through row 0.
-        val metrics = lazyScrollMetrics(20, columns, 0, rowsOf(300f, 700f, firstTop = -150), 800f)
+    @Test fun `position is the scrolled pixels over the scrollable pixels`() {
+        // 20 notes = 10 rows; rows 0 and 1 are laid out (300, 700), the rest use the 500 px estimate.
+        val metrics = lazyScrollMetrics(20, columns, 0, rowsOf(300f, 700f, firstTop = -150), 800f, estimatedRowAdvance = 500f)
         assertThat(metrics.firstRow).isEqualTo(0)
         assertThat(metrics.rowOffset).isWithin(0.001f).of(150f)
-        val maxRow = metrics.rows - metrics.visibleRows
-        assertThat(metrics.scrollFraction).isWithin(0.0001f).of(0.5f / maxRow)
+        val content = 300f + 700f + 8 * 500f
+        assertThat(metrics.contentExtent).isWithin(0.01f).of(content)
+        assertThat(metrics.scrollFraction).isWithin(0.0001f).of(150f / (content - 800f))
+        assertThat(metrics.thumbFraction).isWithin(0.0001f).of(800f / content)
     }
 
     @Test fun `scrolling down increases the fraction`() {
-        val top = lazyScrollMetrics(20, columns, 0, rowsOf(300f, 700f), 800f)
-        val down = lazyScrollMetrics(20, columns, 0, rowsOf(300f, 700f, firstTop = -100), 800f)
+        val top = lazyScrollMetrics(20, columns, 0, rowsOf(300f, 700f), 800f, 500f)
+        val down = lazyScrollMetrics(20, columns, 0, rowsOf(300f, 700f, firstTop = -100), 800f, 500f)
         assertThat(down.scrollFraction).isGreaterThan(top.scrollFraction)
     }
 
-    @Test fun `row boundary is continuous with variable row heights`() {
-        val before = lazyScrollMetrics(
-            12, columns, 0,
-            visibleAt(variableRowHeights, scroll = 299f, viewport = 900f),
-            900f, estimatedRowAdvance = variableEstimate,
-        )
-        val after = lazyScrollMetrics(
-            12, columns, 0,
-            visibleAt(variableRowHeights, scroll = 301f, viewport = 900f),
-            900f, estimatedRowAdvance = variableEstimate,
-        )
-        assertThat(before.firstRow).isEqualTo(0)
-        assertThat(after.firstRow).isEqualTo(1)
-        // A row boundary is one row of travel on the bar, never a jump by the height difference of the two rows.
-        assertThat(abs(after.scrollFraction - before.scrollFraction)).isLessThan(0.005f)
+    @Test fun `short header row moves the thumb in proportion to its pixels`() {
+        // 1 header (31 px) + 13 notes in 2 columns = 7 note rows of 500 px.
+        val advances = withHeader(500f, 500f, 500f, 500f, 500f, 500f, 500f)
+        val items = 1 + 13
+        val viewport = 1000f
+        val known = mapOf(0 to headerAdvance) // the header was seen on the way down
+        val atTop = lazyScrollMetrics(items, columns, 1, visibleAt(advances, 0f, viewport), viewport, 500f, known)
+        val pastHeader = lazyScrollMetrics(items, columns, 1, visibleAt(advances, 31f, viewport), viewport, 500f, known)
+        val travel = atTop.contentExtent - viewport
+        // The header's 31 px is 31/travel of the bar, not a whole row unit.
+        assertThat(pastHeader.scrollFraction - atTop.scrollFraction).isWithin(0.0005f).of(31f / travel)
+        assertThat(pastHeader.scrollFraction - atTop.scrollFraction).isLessThan(0.02f)
     }
 
-    @Test fun `fraction is monotonic across rows of different heights`() {
-        var previous = -1f
+    @Test fun `fraction is continuous and monotonic scrolling up and down through a header`() {
+        val advances = withHeader(500f, 520f, 480f, 500f, 510f, 500f, 490f)
+        val items = 1 + 13
+        val viewport = 1000f
+        val maxScroll = advances.sum() - viewport
+        val travel = maxScroll
+        val known = HashMap<Int, Float>()
+        // Scroll down first so the rows are measured, then back up.
         var scroll = 0f
-        val end = variableRowHeights.sum() - 900f
-        while (scroll <= end) {
-            val metrics = lazyScrollMetrics(
-                12, columns, 0,
-                visibleAt(variableRowHeights, scroll, 900f),
-                900f, variableEstimate,
-            )
-            assertThat(metrics.scrollFraction).isAtLeast(previous)
-            previous = metrics.scrollFraction
-            scroll += 7f
+        while (scroll <= maxScroll) {
+            val rows = visibleAt(advances, scroll, viewport)
+            for (i in 0 until rows.size - 1) known[rows[i].index] = rows[i].advance
+            scroll += 9f
         }
+        var previous = 2f
+        scroll = maxScroll
+        while (scroll >= 0f) {
+            val m = lazyScrollMetrics(items, columns, 1, visibleAt(advances, scroll, viewport), viewport, 500f, known)
+            assertThat(m.scrollFraction).isAtMost(previous)
+            // One 9 px step moves the thumb by about a step of travel (plus the estimate error of a row first laid out).
+            if (previous <= 1f) assertThat(previous - m.scrollFraction).isAtMost((9f + 20f) / travel)
+            previous = m.scrollFraction
+            scroll -= 9f
+        }
+        assertThat(previous).isAtMost(0.01f)
     }
 
-    @Test fun `drag target round-trips the thumb within a pixel (variable rows)`() {
-        val barTravel = 1000f
+    @Test fun `drag target round-trips the thumb within a pixel (header and variable rows)`() {
+        val advances = withHeader(300f, 900f, 400f, 1200f, 550f, 700f)
         val viewport = 900f
-        val starts = rowStarts(variableRowHeights)
-        val rowAdvances = variableRowHeights.mapIndexed { index, advance -> index to advance }.toMap()
-        val visible = viewport / variableEstimate
-        val rows = variableRowHeights.size
-        val maxRow = rows - visible
-        // What the bar sees while dragging when the target row is laid out (its real height is known).
-        val metrics = LazyScrollMetrics(
-            itemCount = rows * columns,
-            columns = columns,
-            rows = rows,
-            rowAdvances = rowAdvances,
-            rowEstimate = variableEstimate,
-            visibleRows = visible,
-        )
+        val estimate = 675f
+        val barTravel = 1000f
+        val known = advances.mapIndexed { i, a -> i to a }.toMap()
+        val items = 1 + 6 * columns
+        val seen = lazyScrollMetrics(items, columns, 1, visibleAt(advances, 0f, viewport), viewport, estimate, known)
+        val starts = rowStarts(advances)
         for (finger in 0..1000 step 5) {
             val fraction = finger / barTravel
-            val position = fraction * maxRow
-            val row = position.toInt().coerceIn(0, rows - 1)
-            val (index, offset) = lazyScrollTarget(metrics, fraction)
-            assertThat(index).isEqualTo(row * columns)
-            // The list lands there and the row it landed on is laid out, so it reports its real advance.
+            val (index, offset) = lazyScrollTarget(seen, fraction)
+            val row = rowOfItem(index, 1, columns)
             val landed = lazyScrollMetrics(
-                rows * columns, columns, 0,
-                visibleAt(variableRowHeights, scroll = starts[row] + offset, viewport),
-                viewport, variableEstimate,
+                items, columns, 1, visibleAt(advances, starts[row] + offset, viewport), viewport, estimate, known,
             )
             assertThat(landed.firstRow).isEqualTo(row)
             assertThat(abs(landed.scrollFraction * barTravel - finger)).isAtMost(1.0f)
         }
     }
 
-    @Test fun `real laid-out rows round-trip through the drag target`() {
-        // At the top of the list rows 0 and 1 are laid out: grabbing the thumb there round-trips exactly.
-        val metrics = lazyScrollMetrics(
-            12, columns, 0,
-            visibleAt(variableRowHeights, scroll = 0f, viewport = 900f),
-            900f, variableEstimate,
-        )
-        val maxRow = metrics.rows - metrics.visibleRows
-        val starts = rowStarts(variableRowHeights)
-        for (row in listOf(0, 1)) {
-            for (within in listOf(0f, 0.25f, 0.5f, 0.99f)) {
-                val fraction = (row + within) / maxRow
-                val (index, offset) = lazyScrollTarget(metrics, fraction)
-                val landed = lazyScrollMetrics(
-                    12, columns, 0,
-                    visibleAt(variableRowHeights, scroll = starts[row] + offset, viewport = 900f)
-                        .filter { it.index >= row },
-                    900f, variableEstimate,
-                )
-                // Only meaningful while the target row is the first laid-out row.
-                if (landed.firstRow != row) continue
-                assertThat(index).isEqualTo(row * columns)
-                assertThat(abs(landed.scrollFraction - fraction) * 1000f).isAtMost(1.0f)
-            }
-        }
-    }
-
-    @Test fun `inverse uses variable row advances when they are known`() {
-        val metrics = LazyScrollMetrics(
-            thumbFraction = 0.25f,
-            itemCount = 8,
-            columns = 2,
-            rows = 4,
-            firstRow = 0,
-            rowOffset = 0f,
-            rowAdvance = 300f,
-            rowAdvances = mapOf(0 to 300f, 1 to 900f, 2 to 400f, 3 to 1200f),
-            rowEstimate = 600f,
-            visibleRows = 1f,
-        )
-        val maxRow = 3f
-        // Half way through row 1 (advance 900) and half way through row 2 (advance 400).
-        assertThat(lazyScrollTarget(metrics, 1.5f / maxRow)).isEqualTo(2 to 450)
-        assertThat(lazyScrollTarget(metrics, 2.5f / maxRow)).isEqualTo(4 to 200)
-        // The end of the thumb is the last row's top: the list cannot start a row past the last one.
-        assertThat(lazyScrollTarget(metrics, 1f)).isEqualTo(6 to 0)
-    }
-
-    @Test fun `target maps a fraction onto a row, a header and a within-row offset`() {
+    @Test fun `target maps a fraction onto a header, a note row and an offset`() {
         val metrics = lazyScrollMetrics(
             itemCount = 10, columns = columns, headerItems = 1,
             rows = listOf(GridRow(0, 0, 100f), GridRow(1, 100, 500f), GridRow(2, 600, 400f)),
             viewportExtent = 600f, estimatedRowAdvance = 400f,
         )
-        // 1 header row + ceil(9 / 2) = 6 rows; 600 / 400 = 1.5 rows visible => 4.5 rows of travel.
+        // 6 rows: 100 + 500 + 400 + 3 * 400 = 2200 px of content, 1600 px of travel.
         assertThat(metrics.rows).isEqualTo(6)
-        assertThat(metrics.headerItems).isEqualTo(1)
-        val maxRow = metrics.rows - metrics.visibleRows
-        val (index, offset) = lazyScrollTarget(metrics, 2.5f / maxRow)
-        assertThat(index).isEqualTo(3) // row 2 starts at item 3 (header row + two-item rows)
-        assertThat(offset).isWithin(1).of(200) // half of row 2's 400 advance
+        assertThat(metrics.contentExtent).isWithin(0.01f).of(2200f)
         assertThat(lazyScrollTarget(metrics, 0f)).isEqualTo(0 to 0)
-        assertThat(lazyScrollTarget(metrics, 0.2f / maxRow)).isEqualTo(0 to 20) // header row start
+        assertThat(lazyScrollTarget(metrics, 50f / 1600f)).isEqualTo(0 to 50) // inside the header row
+        assertThat(lazyScrollTarget(metrics, 100f / 1600f)).isEqualTo(1 to 0) // first note row
+        assertThat(lazyScrollTarget(metrics, 800f / 1600f)).isEqualTo(3 to 200) // row 2 starts at item 3
     }
 
     @Test fun `row index and row count handle full-span headers`() {
@@ -249,7 +206,6 @@ class LazyScrollMetricsTest {
     }
 
     @Test fun `list layout maps one item per row`() {
-        // 1 column: the same row model is the plain list.
         val metrics = lazyScrollMetrics(
             itemCount = 10, columns = 1, headerItems = 0,
             rows = listOf(GridRow(0, -250, 500f), GridRow(1, 250, 300f)),
@@ -257,23 +213,22 @@ class LazyScrollMetricsTest {
         )
         assertThat(metrics.rows).isEqualTo(10)
         assertThat(metrics.firstRow).isEqualTo(0)
-        val maxRow = metrics.rows - metrics.visibleRows
-        assertThat(metrics.scrollFraction).isWithin(0.0001f).of(0.5f / maxRow)
-        assertThat(lazyScrollTarget(metrics, 2f / maxRow)).isEqualTo(2 to 0)
+        // 500 + 300 + 8 * 400 = 4000 px, 3200 px of travel; 250 px scrolled.
+        assertThat(metrics.scrollFraction).isWithin(0.0001f).of(250f / 3200f)
+        assertThat(lazyScrollTarget(metrics, 900f / 3200f)).isEqualTo(2 to 100)
     }
 
     @Test fun `drag target is monotonic in the fraction`() {
+        val advances = mapOf(0 to 300f, 1 to 900f, 2 to 400f, 3 to 1200f, 4 to 550f, 5 to 700f)
         val metrics = LazyScrollMetrics(
-            itemCount = 12, columns = 2, rows = 6,
-            rowAdvances = mapOf(0 to 300f, 1 to 900f, 2 to 400f, 3 to 1200f, 4 to 550f, 5 to 700f),
-            rowEstimate = 600f, visibleRows = 1.5f,
+            itemCount = 12, columns = 2, rows = 6, rowAdvances = advances, rowEstimate = 600f,
+            viewport = 900f, contentExtent = advances.values.sum(),
         )
         var previous = -1f
         for (i in 0..100) {
             val (index, offset) = lazyScrollTarget(metrics, i / 100f)
             val row = rowOfItem(index, metrics.headerItems, metrics.columns)
-            val advance = metrics.rowAdvances[row] ?: metrics.rowEstimate
-            val position = row + offset / advance
+            val position = rowStarts(advances.values.toList())[row] + offset
             assertThat(position).isAtLeast(previous)
             previous = position
         }
@@ -281,5 +236,16 @@ class LazyScrollMetricsTest {
 
     @Test fun `target tolerates degenerate metrics`() {
         assertThat(lazyScrollTarget(LazyScrollMetrics(), 0.5f)).isEqualTo(0 to 0)
+    }
+
+    @Test fun `holder remembers advances and forgets them when the layout changes`() {
+        val holder = ScrollEstimateHolder()
+        holder.estimateFor(40, 2, 0, 100f)
+        val known = holder.advancesWith(listOf(GridRow(0, 0, 100f), GridRow(1, 100, 110f), GridRow(2, 210, 90f)))
+        assertThat(known).containsExactly(0, 100f, 1, 110f)
+        holder.estimateFor(40, 2, 0, 240f)
+        assertThat(holder.advancesWith(emptyList())).hasSize(2)
+        holder.estimateFor(39, 2, 0, 105f)
+        assertThat(holder.advancesWith(emptyList())).isEmpty()
     }
 }
