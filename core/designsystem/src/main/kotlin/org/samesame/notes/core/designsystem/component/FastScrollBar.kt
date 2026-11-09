@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.heightIn
@@ -106,8 +107,10 @@ object FastScrollBarGeometry {
  * Dragging is relative: the thumb follows the finger from where it was, with no jump.
  *
  * Touch: the thumb itself; with [edgeStrip] (vertical home lists) also a 48 dp strip along the end edge while the bar is
- * shown. The strip shares its touches with the content below and only takes a press once it moves along the bar past
- * the touch slop, so taps on the cards under it and sideways swipes still work. No full-size node takes pointer input.
+ * shown. The strip is watched from the root (an ancestor of [content], the list the bar scrolls), in the Initial pass, and
+ * only takes a press once it moves along the bar past the touch slop, so taps on the cards under it and sideways swipes
+ * still reach the content. Nothing overlays the content for hit testing.
+ * @param content the scrolled content; pass it (instead of stacking the bar over it) when [edgeStrip] is set.
  *
  * While dragging, [label] (if any) shows in a bubble before the thumb (vertical) or above it (horizontal): 15 sp #FAFAFA
  * on the accent at 90 %, 15 dp corners, min 56 x 30 dp, 16 dp side padding, 26 / 20 dp from the thumb.
@@ -132,6 +135,7 @@ fun FastScrollBar(
     label: (() -> String)? = null,
     accentColor: Color = DEFAULT_ACCENT,
     idleColor: Color = IDLE,
+    content: @Composable BoxScope.() -> Unit = {},
 ) {
     val fraction by rememberUpdatedState(scrollFraction)
     val scrub by rememberUpdatedState(onScrub)
@@ -257,49 +261,48 @@ fun FastScrollBar(
         heldFraction = -1f
     }
 
-    Box(modifier.fillMaxSize().onSizeChanged { area = it }) {
-        if (edgeStrip && !horizontal) {
-            // The edge strip (and the thumb within it): shares touches with the content below; see the KDoc.
-            Box(
-                Modifier
-                    .align(if (rtl) Alignment.CenterStart else Alignment.CenterEnd)
-                    .fillMaxHeight()
-                    .width(STRIP)
-                    .then(
-                        SharedPointerInputElement(rtl) {
-                            awaitEachGesture {
-                                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                                // A hidden (or unneeded) bar is not a target: the press belongs to the content.
-                                if (down.isConsumed || !neededNow() || alpha.value < 0.5f) return@awaitEachGesture
-                                val thumbStart = startMargin() + thumbAlong()
-                                var fingerStart = down.position.y
-                                if (FastScrollBarGeometry.isOnThumb(down.position.y, thumbStart, px(thumbH), px(STRIP))) {
-                                    down.consume()
-                                } else {
-                                    val slop = viewConfiguration.touchSlop
-                                    while (true) {
-                                        val ev = awaitPointerEvent(PointerEventPass.Initial)
-                                        if (ev.changes.size > 1) return@awaitEachGesture
-                                        val ch = ev.changes.firstOrNull { it.id == down.id } ?: return@awaitEachGesture
-                                        if (!ch.pressed || ch.isConsumed) return@awaitEachGesture
-                                        val d = ch.position - down.position
-                                        if (FastScrollBarGeometry.stripTakesOver(d.x, d.y, slop)) {
-                                            ch.consume()
-                                            // Relative from here: the thumb does not jump by the slop distance.
-                                            fingerStart = ch.position.y
-                                            break
-                                        }
-                                        if (d.getDistance() > slop) return@awaitEachGesture // sideways: not ours
-                                    }
-                                }
-                                relativeDrag(down.id, fingerStart, PointerEventPass.Initial) { ev ->
-                                    ev.changes.firstOrNull { it.id == down.id }?.position?.y
-                                }
-                            }
-                        },
-                    ),
-            )
+    // The edge strip is watched from this root, an ancestor of [content] (not an overlay sibling): an ancestor sees every
+    // touch in the Initial pass without taking part in the siblings' hit test, so it can never swallow a tap on the
+    // content under the strip (the sort arrow, the cards). It consumes only a press on the thumb or a vertical drag
+    // that starts in the strip.
+    val stripGesture = if (edgeStrip && !horizontal) {
+        Modifier.pointerInput(rtl) {
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                val stripPx = px(STRIP)
+                val inStrip = if (rtl) down.position.x <= stripPx else down.position.x >= size.width - stripPx
+                // A hidden (or unneeded) bar is not a target: the press belongs to the content.
+                if (!inStrip || down.isConsumed || !neededNow() || alpha.value < 0.5f) return@awaitEachGesture
+                val thumbStart = startMargin() + thumbAlong()
+                var fingerStart = down.position.y
+                if (FastScrollBarGeometry.isOnThumb(down.position.y, thumbStart, px(thumbH), px(STRIP))) {
+                    down.consume()
+                } else {
+                    val slop = viewConfiguration.touchSlop
+                    while (true) {
+                        val ev = awaitPointerEvent(PointerEventPass.Initial)
+                        if (ev.changes.size > 1) return@awaitEachGesture
+                        val ch = ev.changes.firstOrNull { it.id == down.id } ?: return@awaitEachGesture
+                        if (!ch.pressed || ch.isConsumed) return@awaitEachGesture
+                        val d = ch.position - down.position
+                        if (FastScrollBarGeometry.stripTakesOver(d.x, d.y, slop)) {
+                            ch.consume()
+                            // Relative from here: the thumb does not jump by the slop distance.
+                            fingerStart = ch.position.y
+                            break
+                        }
+                        if (d.getDistance() > slop) return@awaitEachGesture // sideways: not ours
+                    }
+                }
+                relativeDrag(down.id, fingerStart, PointerEventPass.Initial) { ev ->
+                    ev.changes.firstOrNull { it.id == down.id }?.position?.y
+                }
+            }
         }
+    } else Modifier
+
+    Box(modifier.fillMaxSize().onSizeChanged { area = it }.then(stripGesture)) {
+        content()
         Canvas(
             Modifier
                 .offset { thumbTopLeft() }
@@ -364,35 +367,6 @@ fun FastScrollBar(
             }
         }
     }
-}
-
-/**
- * `pointerInput` that also lets the siblings below it get the same touches (the edge strip lies over list cards: it
- * must not swallow their taps). Handler changes only with [key].
- */
-private class SharedPointerInputElement(
-    private val key: Any?,
-    private val handler: PointerInputEventHandler,
-) : ModifierNodeElement<SharedPointerInputNode>() {
-    override fun create() = SharedPointerInputNode(handler)
-    override fun update(node: SharedPointerInputNode) = node.update(handler)
-    override fun equals(other: Any?): Boolean = other is SharedPointerInputElement && other.key == key
-    override fun hashCode(): Int = key?.hashCode() ?: 0
-}
-
-private class SharedPointerInputNode(handler: PointerInputEventHandler) : DelegatingNode(), PointerInputModifierNode {
-    private val input = delegate(SuspendingPointerInputModifierNode(handler))
-
-    fun update(handler: PointerInputEventHandler) {
-        input.pointerInputEventHandler = handler
-    }
-
-    override fun onPointerEvent(pointerEvent: PointerEvent, pass: PointerEventPass, bounds: IntSize) =
-        input.onPointerEvent(pointerEvent, pass, bounds)
-
-    override fun onCancelPointerInput() = input.onCancelPointerInput()
-
-    override fun sharePointerInputWithSiblings(): Boolean = true
 }
 
 /** Our own thumb glyph: a stadium (0.79 of the box wide, 0.91 tall) with an up and a down chevron cut out (even-odd). */
