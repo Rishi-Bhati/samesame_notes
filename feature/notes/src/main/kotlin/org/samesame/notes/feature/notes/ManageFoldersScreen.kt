@@ -66,7 +66,10 @@ internal fun ManageFoldersScreen(
     onOpenRoot: () -> Unit,
     onCreateFolder: (name: String, color: Long?) -> Unit,
     onRenameFolder: (FolderId, String) -> Unit = { _, _ -> },
-    onTrashFolders: (List<FolderId>) -> Unit = {},
+    /** Trashes the folders; the count is the locked notes inside them (more than zero: verify identity first). */
+    onTrashFolders: (List<FolderId>, lockedCount: Int) -> Unit = { _, _ -> },
+    /** Locked notes inside the folders' subtrees, for the delete dialog. */
+    lockedNotesIn: suspend (List<FolderId>) -> Int = { 0 },
 ) {
     val colors = SameSameTheme.colors
     var creating by remember { mutableStateOf(false) }
@@ -141,7 +144,14 @@ internal fun ManageFoldersScreen(
             )
         }
     }
-    if (confirmTrash) {
+    // Locked notes the delete would take along (null while counting: the dialog waits for it).
+    var lockedToDelete by remember { mutableStateOf<Int?>(null) }
+    androidx.compose.runtime.LaunchedEffect(confirmTrash) {
+        lockedToDelete = null
+        if (confirmTrash) lockedToDelete = lockedNotesIn(selectedFolders.map { it.id })
+    }
+    val lockedCount = lockedToDelete
+    if (confirmTrash && lockedCount != null) {
         val text = trashDialogText(
             selectedFolders.size, 0,
             selectedFolders.any { hasContents(it, folders) },
@@ -154,11 +164,12 @@ internal fun ManageFoldersScreen(
                 confirmTrash = false
                 val ids = selectedFolders.map { it.id }
                 selected = emptySet()
-                onTrashFolders(ids)
+                onTrashFolders(ids, lockedCount)
             },
             atBottom = true,
         ) {
             Text(stringResource(text.message, *text.args.toTypedArray()), style = SameSameText.DialogMessage.capped(), color = colors.textPrimary)
+            LockedDeleteNotice(lockedCount)
         }
     }
     renaming?.let { f ->

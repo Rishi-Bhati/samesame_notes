@@ -75,6 +75,11 @@
     <string name="feature_notes_trash_msg_one_note">Move 1 note to the Trash?</string>
     <string name="feature_notes_trash_msg_n_note">Move %d notes to the Trash?</string>
     <string name="feature_notes_move_to_trash_confirm">Move to Trash</string>
+    <!-- Extra line of the delete dialogs when locked notes would go too (they ask for the password or biometrics first). -->
+    <plurals name="feature_notes_delete_includes_locked">
+        <item quantity="one">This includes 1 locked note, so you\'ll need to confirm it\'s you first.</item>
+        <item quantity="other">This includes %d locked notes, so you\'ll need to confirm it\'s you first.</item>
+    </plurals>
     <!-- Permanent-delete dialogs (same shapes) -->
     <string name="feature_notes_delete_msg_one_folder_one_note">Permanently delete 1 folder and 1 note?</string>
     <string name="feature_notes_delete_msg_one_folder_n_note">Permanently delete 1 folder and %d notes?</string>

@@ -135,6 +135,33 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
     /** Whether the note's container is locked (reads the plaintext manifest; false when there is none). */
     fun isLocked(noteId: String): Boolean = isLockedContainer(noteId)
 
+    /** Whether the locked note is open in this process (it was decrypted with a verified credential and not closed yet). */
+    fun isOpenUnlocked(noteId: String): Boolean = openKeys.containsKey(checkId(noteId))
+
+    /**
+     * Whether [master] opens the note key of the locked note [noteId]; false only for a wrong (or foreign) key. A plain,
+     * missing or unreadable container has no key to check and gives true: callers decide on the catalog lock flag.
+     */
+    suspend fun opensWith(noteId: String, master: ByteArray): Boolean = withContext(Dispatchers.IO) {
+        val container = containerFile(noteId)
+        if (!container.exists()) return@withContext true
+        val info = try {
+            ZipFile(container).use { readManifestInfo(it) }
+        } catch (e: IOException) {
+            return@withContext true
+        }
+        val wrapped = info.wrappedKey
+        if (!info.locked || wrapped == null) return@withContext true
+        try {
+            LockCrypto.unwrapNoteKey(master, noteId, wrapped).fill(0)
+            true
+        } catch (e: java.security.GeneralSecurityException) {
+            false
+        } catch (e: IllegalArgumentException) {
+            false // not even a key of the right shape
+        }
+    }
+
     private fun isLockedContainer(noteId: String): Boolean = lockedCache.getOrPut(checkId(noteId)) {
         val c = containerFile(noteId)
         if (!c.exists()) false else runCatching { ZipFile(c).use { readManifestInfo(it).locked } }.getOrDefault(false)

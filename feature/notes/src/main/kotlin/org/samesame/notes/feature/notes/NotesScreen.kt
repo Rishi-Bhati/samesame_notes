@@ -137,16 +137,30 @@ fun NotesRoute(
         }
         Page.ManageFolders -> {
             BackHandler { page = Page.Notes }
-            ManageFoldersScreen(
-                folders = state.folders,
-                rootNoteCount = state.rootNotesCount,
-                onBack = { page = Page.Notes },
-                onOpenFolder = { viewModel.selectFilter(NoteFilter.InFolder(it)); page = Page.Notes },
-                onOpenRoot = { viewModel.selectFilter(NoteFilter.Uncategorized); page = Page.Notes },
-                onCreateFolder = viewModel::createFolder,
-                onRenameFolder = { id, name -> viewModel.renameFolder(id, name) },
-                onTrashFolders = viewModel::trashFolders,
-            )
+            // Folders holding locked notes are trashed only after the identity check (L1); the ids wait here meanwhile.
+            var verifyTrash by rememberSaveable { mutableStateOf<List<String>?>(null) }
+            Box(Modifier.fillMaxSize()) {
+                ManageFoldersScreen(
+                    folders = state.folders,
+                    rootNoteCount = state.rootNotesCount,
+                    onBack = { page = Page.Notes },
+                    onOpenFolder = { viewModel.selectFilter(NoteFilter.InFolder(it)); page = Page.Notes },
+                    onOpenRoot = { viewModel.selectFilter(NoteFilter.Uncategorized); page = Page.Notes },
+                    onCreateFolder = viewModel::createFolder,
+                    onRenameFolder = { id, name -> viewModel.renameFolder(id, name) },
+                    onTrashFolders = { ids, lockedCount ->
+                        if (lockedCount > 0) verifyTrash = ids.map { it.value } else viewModel.trashFolders(ids)
+                    },
+                    lockedNotesIn = viewModel::lockedCountInFolders,
+                )
+                LockFlowTransition(verifyTrash) { ids ->
+                    LockAuthFlow(
+                        mode = LockAuthMode.VerifyOnly,
+                        onCancel = { verifyTrash = null },
+                        onToken = { token -> verifyTrash = null; viewModel.trashFolders(ids.map { org.samesame.notes.core.model.FolderId(it) }, token) },
+                    )
+                }
+            }
         }
         Page.Search -> {
             BackHandler { page = Page.Notes }
@@ -167,6 +181,11 @@ private sealed interface LockAction {
     data object Lock : LockAction
     data object Unlock : LockAction
     data class Open(val id: NoteId) : LockAction
+
+    /** Deletes that include locked notes (L1): the selection to the Trash, permanently, or the whole Recycle bin. */
+    data object Trash : LockAction
+    data object DeleteForever : LockAction
+    data object EmptyTrash : LockAction
 }
 
 /** Keeps the open lock flow (and the note it acts on) across activity recreation. */
@@ -177,6 +196,9 @@ private val LockActionSaver = listSaver<LockAction?, String>(
             LockAction.Lock -> listOf("lock")
             LockAction.Unlock -> listOf("unlock")
             is LockAction.Open -> listOf("open", action.id.value)
+            LockAction.Trash -> listOf("trash")
+            LockAction.DeleteForever -> listOf("deleteForever")
+            LockAction.EmptyTrash -> listOf("emptyTrash")
         }
     },
     restore = { parts ->
@@ -184,6 +206,9 @@ private val LockActionSaver = listSaver<LockAction?, String>(
             "lock" -> LockAction.Lock
             "unlock" -> LockAction.Unlock
             "open" -> parts.getOrNull(1)?.let { LockAction.Open(NoteId(it)) }
+            "trash" -> LockAction.Trash
+            "deleteForever" -> LockAction.DeleteForever
+            "emptyTrash" -> LockAction.EmptyTrash
             else -> null
         }
     },
@@ -269,6 +294,19 @@ internal fun NotesScreen(
     val selectedFolderHasChild = selectedFolders.any { hasContents(it, state.folders + state.trashedFolders) }
     val unlockedIds = selectedNotes.filter { !it.isLocked }.map { it.id }
     val lockedCount = selectedNotes.size - unlockedIds.size
+    val moreItems = SelectionCounts(
+        notes = selectedNotes.size, locked = lockedCount, favorites = selectedNotes.count(Note::isFavorite), folders = selectedFolders.size,
+    ).moreMenuItems()
+    // L1: locked notes the open delete dialog would remove (null while counting); such a delete verifies identity first.
+    var deleteLockedCount by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(confirmTrash, confirmDeleteForever, confirmEmpty) {
+        deleteLockedCount = null
+        deleteLockedCount = when {
+            confirmEmpty -> viewModel.lockedCountInTrash()
+            confirmTrash || confirmDeleteForever -> viewModel.lockedCountInSelection()
+            else -> null
+        }
+    }
     /** Share / Save as file start here: all-locked selections get the "unlock first" notice instead. */
     fun beginTransfer(kind: TransferKind) {
         if (unlockedIds.isEmpty()) lockedNotice = kind
@@ -371,7 +409,7 @@ internal fun NotesScreen(
                                 BottomBarItem(AppIcons.FolderMove, stringResource(R.string.feature_notes_action_move), onMove, hasNotes),
                                 BottomBarItem(AppIcons.Share, stringResource(R.string.feature_notes_action_share), { beginTransfer(TransferKind.Share) }, hasNotes),
                                 BottomBarItem(AppIcons.Trash, stringResource(R.string.feature_notes_action_delete), { confirmTrash = true }, hasSelection),
-                                BottomBarItem(AppIcons.More, stringResource(R.string.feature_notes_action_more), { moreMenu = true }, hasNotes),
+                                BottomBarItem(AppIcons.More, stringResource(R.string.feature_notes_action_more), { moreMenu = true }, hasNotes && moreItems.isNotEmpty()),
                             ),
                         )
                     }
@@ -509,18 +547,17 @@ internal fun NotesScreen(
                 // Ref #19: menu bottom 90.3dp above the screen bottom, right edge 20.2dp from the screen edge.
                 Box(Modifier.align(Alignment.BottomEnd).padding(bottom = 90.3.dp, end = 20.2.dp)) {
                     AppDropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
-                        val allLocked = selectedNotes.isNotEmpty() && selectedNotes.all(Note::isLocked)
-                        AppMenuItem(
-                            stringResource(if (allLocked) R.string.feature_notes_more_unlock else R.string.feature_notes_more_lock),
-                            { moreMenu = false; if (allLocked) confirmUnlock = true else lockAction = LockAction.Lock },
-                        )
-                        AppMenuItem(stringResource(R.string.feature_notes_more_save_as_file), { moreMenu = false; beginTransfer(TransferKind.Save) })
-                        AppMenuItem(stringResource(R.string.feature_notes_more_duplicate), { moreMenu = false; viewModel.duplicateSelection() })
-                        val allFav = state.notes.filter { it.id in state.selection }.let { it.isNotEmpty() && it.all(Note::isFavorite) }
-                        AppMenuItem(
-                            stringResource(if (allFav) R.string.feature_notes_more_remove_favorite else R.string.feature_notes_more_add_favorite),
-                            { moreMenu = false; viewModel.toggleSelectionFavorite() },
-                        )
+                        // Which items show follows the reference rules (SelectionMenu.kt): no Duplicate with a locked note, ...
+                        moreItems.forEach { item ->
+                            when (item) {
+                                SelectionMenuItem.Lock -> AppMenuItem(stringResource(R.string.feature_notes_more_lock), { moreMenu = false; lockAction = LockAction.Lock })
+                                SelectionMenuItem.Unlock -> AppMenuItem(stringResource(R.string.feature_notes_more_unlock), { moreMenu = false; confirmUnlock = true })
+                                SelectionMenuItem.SaveAsFile -> AppMenuItem(stringResource(R.string.feature_notes_more_save_as_file), { moreMenu = false; beginTransfer(TransferKind.Save) })
+                                SelectionMenuItem.Duplicate -> AppMenuItem(stringResource(R.string.feature_notes_more_duplicate), { moreMenu = false; viewModel.duplicateSelection() })
+                                SelectionMenuItem.RemoveFavorite -> AppMenuItem(stringResource(R.string.feature_notes_more_remove_favorite), { moreMenu = false; viewModel.toggleSelectionFavorite() })
+                                SelectionMenuItem.AddFavorite -> AppMenuItem(stringResource(R.string.feature_notes_more_add_favorite), { moreMenu = false; viewModel.toggleSelectionFavorite() })
+                            }
+                        }
                     }
                 }
             }
@@ -536,6 +573,9 @@ internal fun NotesScreen(
                         LockAction.Lock -> viewModel.lockSelection(token)
                         LockAction.Unlock -> viewModel.unlockSelection(token)
                         is LockAction.Open -> viewModel.openLocked(action.id, token) { onOpenNote(action.id) }
+                        LockAction.Trash -> viewModel.moveSelectionToTrash(token)
+                        LockAction.DeleteForever -> viewModel.deleteSelectionForever(token)
+                        LockAction.EmptyTrash -> viewModel.emptyTrash(token)
                     }
                 },
             )
@@ -599,12 +639,13 @@ internal fun NotesScreen(
         )
     }
 
-    if (confirmTrash) {
+    val lockedToDelete = deleteLockedCount
+    if (confirmTrash && lockedToDelete != null) {
         AppDialog(
             onDismissRequest = { confirmTrash = false },
             dismissLabel = stringResource(R.string.feature_notes_cancel),
             confirmLabel = stringResource(R.string.feature_notes_move_to_trash_confirm),
-            onConfirm = { confirmTrash = false; viewModel.moveSelectionToTrash() },
+            onConfirm = { confirmTrash = false; if (lockedToDelete > 0) lockAction = LockAction.Trash else viewModel.moveSelectionToTrash() },
             atBottom = true,
         ) {
             val text = trashDialogText(selectedFolders.size, state.selection.size, selectedFolderHasChild)
@@ -612,14 +653,18 @@ internal fun NotesScreen(
                 stringResource(text.message, *text.args.toTypedArray()),
                 style = SameSameText.DialogMessage.capped(), color = SameSameTheme.colors.textPrimary,
             )
+            LockedDeleteNotice(lockedToDelete)
         }
     }
-    if (confirmDeleteForever) {
+    if (confirmDeleteForever && lockedToDelete != null) {
         AppDialog(
             onDismissRequest = { confirmDeleteForever = false },
             dismissLabel = stringResource(R.string.feature_notes_cancel),
             confirmLabel = stringResource(R.string.feature_notes_delete_forever_confirm),
-            onConfirm = { confirmDeleteForever = false; viewModel.deleteSelectionForever() },
+            onConfirm = {
+                confirmDeleteForever = false
+                if (lockedToDelete > 0) lockAction = LockAction.DeleteForever else viewModel.deleteSelectionForever()
+            },
             atBottom = true,
         ) {
             val text = permanentDeleteDialogText(selectedFolders.size, state.selection.size, selectedFolderHasChild)
@@ -627,17 +672,19 @@ internal fun NotesScreen(
                 stringResource(text.message, *text.args.toTypedArray()),
                 style = SameSameText.DialogMessage.capped(), color = SameSameTheme.colors.textPrimary,
             )
+            LockedDeleteNotice(lockedToDelete)
         }
     }
-    if (confirmEmpty) {
+    if (confirmEmpty && lockedToDelete != null) {
         AppDialog(
             onDismissRequest = { confirmEmpty = false },
             dismissLabel = stringResource(R.string.feature_notes_cancel),
             confirmLabel = stringResource(R.string.feature_notes_trash_empty_action),
-            onConfirm = { confirmEmpty = false; viewModel.emptyTrash() },
+            onConfirm = { confirmEmpty = false; if (lockedToDelete > 0) lockAction = LockAction.EmptyTrash else viewModel.emptyTrash() },
             atBottom = true,
         ) {
             Text(stringResource(R.string.feature_notes_trash_empty_title), style = SameSameText.DialogMessage.capped(), color = SameSameTheme.colors.textPrimary)
+            LockedDeleteNotice(lockedToDelete)
         }
     }
 }

@@ -32,6 +32,10 @@ interface NoteDao {
     @Query("SELECT * FROM notes WHERE is_locked = 1 AND trashed_at IS NULL")
     fun observeLocked(): Flow<List<NoteEntity>>
 
+    /** The ids among [ids] whose catalog row is locked (trashed or not). */
+    @Query("SELECT id FROM notes WHERE is_locked = 1 AND id IN (:ids)")
+    suspend fun lockedAmong(ids: List<String>): List<String>
+
     @Query("SELECT * FROM notes WHERE trashed_at IS NOT NULL ORDER BY trashed_at DESC")
     fun observeTrash(): Flow<List<NoteEntity>>
 

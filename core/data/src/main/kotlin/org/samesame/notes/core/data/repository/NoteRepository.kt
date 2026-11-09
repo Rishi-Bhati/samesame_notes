@@ -150,9 +150,26 @@ interface NoteRepository {
 
     suspend fun setFavorite(ids: List<NoteId>, favorite: Boolean)
     suspend fun moveToFolder(ids: List<NoteId>, folderId: FolderId?)
-    suspend fun moveToTrash(ids: List<NoteId>)
+
+    /**
+     * Moves the notes to the Recycle bin. Locked notes need [token] (a verified credential, closed by the caller): without a
+     * valid one the whole call throws [LockVerificationRequiredException] and nothing moves. A locked note that is open in
+     * the editor (decrypted with a verified credential in this process) counts as verified.
+     */
+    suspend fun moveToTrash(ids: List<NoteId>, token: org.samesame.notes.core.security.LockToken? = null)
     suspend fun restoreFromTrash(ids: List<NoteId>)
-    suspend fun deleteForever(ids: List<NoteId>)
+
+    /** Deletes the notes for good. Locked notes need [token], exactly like [moveToTrash]. */
+    suspend fun deleteForever(ids: List<NoteId>, token: org.samesame.notes.core.security.LockToken? = null)
+
+    /** The locked notes among [ids] (catalog lock flag), for the "verify your identity" step before deleting. */
+    suspend fun lockedNoteIds(ids: List<NoteId>): List<NoteId>
+
+    /**
+     * Throws [LockVerificationRequiredException] unless every locked note among [ids] is covered by [token] (or open in
+     * the editor). The guard behind [moveToTrash] and [deleteForever]; folder deletes use it for the notes in the subtrees.
+     */
+    suspend fun requireLockVerified(ids: List<NoteId>, token: org.samesame.notes.core.security.LockToken?)
 
     /**
      * Deletes the note permanently (catalog row, container, working copy, search row) when it holds no user
@@ -183,3 +200,10 @@ interface NoteRepository {
     /** Permanently deletes notes that have been in Trash longer than the retention period. */
     suspend fun purgeExpiredTrash()
 }
+
+/**
+ * A delete of locked notes was refused: no verified [org.samesame.notes.core.security.LockToken], or one that does not open
+ * them. Nothing was changed.
+ */
+class LockVerificationRequiredException(val noteIds: List<NoteId>) :
+    SecurityException("Deleting ${noteIds.size} locked note(s) needs identity verification")

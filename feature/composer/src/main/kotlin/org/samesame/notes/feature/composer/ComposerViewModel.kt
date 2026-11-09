@@ -135,8 +135,13 @@ class ComposerViewModel @AssistedInject constructor(
     /** Moves the open note to the Recycle bin, then [onDone] leaves the editor (the reference: the note is gone from the editor). */
     fun moveToTrash(onDone: () -> Unit) {
         // App scope: the write must finish even though leaving the editor clears this view-model.
-        appScope.launch { runCatching { notes.moveToTrash(listOf(id)) } }
-        onDone()
+        val trash = appScope.launch { runCatching { notes.moveToTrash(listOf(id)) } }
+        // A locked note counts as verified only while it is open here (the repository refuses it otherwise): leave the
+        // editor, which closes the note, only after the move is done.
+        viewModelScope.launch {
+            trash.join()
+            onDone()
+        }
     }
 
     /**
