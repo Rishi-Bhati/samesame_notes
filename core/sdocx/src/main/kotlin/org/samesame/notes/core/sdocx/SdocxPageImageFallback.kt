@@ -35,6 +35,7 @@ object SdocxPageImageFallback {
         var nextBind = (archive.media.entries.maxOfOrNull { it.bindNumber } ?: -1) + 1
         val newMedia = ArrayList(archive.media.entries)
         val newFiles = LinkedHashMap(archive.mediaFiles)
+        val stamp = nowUs()
 
         val newPages = archive.pages.map { page ->
             val image = pageImages[page.pageId] ?: return@map page
@@ -46,12 +47,11 @@ object SdocxPageImageFallback {
                 fileName = fileName,
                 fileHash = hexSha256(image),
                 refCount = 1,
-                modifiedTime = page.modifiedTime,
+                modifiedTime = stamp,
                 isFileAttached = if (archive.media.extended) true else null,
             )
             newFiles[entryName] = image
 
-            val stamp = nowUs()
             val objectRecord = imageObjectRecord(
                 uuid = newUuid(),
                 modifiedUs = stamp,
@@ -68,7 +68,7 @@ object SdocxPageImageFallback {
                 modifiedTime = stamp,
                 children = emptyList(),
             )
-            copyPageWithExtraObject(page, obj, stamp)
+            copyPageWithExtraObject(page, obj, stamp, newUuid)
         }
 
         val media = MediaRegistry(
@@ -77,9 +77,29 @@ object SdocxPageImageFallback {
             entries = newMedia,
             hasTerminator = archive.media.hasTerminator,
         )
+        // Adding objects changes every derived hash; bump the note stamp so the end tag mirrors it.
+        val note = org.samesame.notes.core.sdocx.record.NoteRecord(
+            propOffset = archive.note.propOffset,
+            noteFlags = archive.note.noteFlags,
+            propMask = archive.note.propMask,
+            formatVersion = archive.note.formatVersion,
+            noteId = archive.note.noteId,
+            fileRevision = archive.note.fileRevision + 1,
+            createdTime = archive.note.createdTime,
+            modifiedTime = stamp,
+            width = archive.note.width,
+            height = archive.note.height,
+            pageHorizontalPadding = archive.note.pageHorizontalPadding,
+            pageVerticalPadding = archive.note.pageVerticalPadding,
+            minFormatVersion = archive.note.minFormatVersion,
+            title = archive.note.title,
+            body = archive.note.body,
+            properties = archive.note.properties,
+            docHash = archive.note.docHash,
+        )
         return SdocxArchive(
-            endTag = archive.endTag,
-            note = archive.note,
+            endTag = SdocxMirror.endTag(note, archive.endTag, modifiedTimeUs = stamp, displayModifiedTimeUs = stamp),
+            note = note,
             pageIdInfo = archive.pageIdInfo,
             pages = newPages,
             media = media,
@@ -88,9 +108,14 @@ object SdocxPageImageFallback {
         )
     }
 
-    private fun copyPageWithExtraObject(page: PageRecord, obj: ObjectEntry, stamp: Long): PageRecord {
+    private fun copyPageWithExtraObject(
+        page: PageRecord,
+        obj: ObjectEntry,
+        stamp: Long,
+        newUuid: () -> String,
+    ): PageRecord {
         val layers = if (page.layers.isEmpty()) {
-            val layerId = UUID.randomUUID().toString()
+            val layerId = newUuid()
             listOf(
                 LayerRecord(
                     flags = 0x02,
@@ -108,16 +133,7 @@ object SdocxPageImageFallback {
             )
         } else {
             page.layers.mapIndexed { index, layer ->
-                if (index != 0) layer else LayerRecord(
-                    flags = layer.flags,
-                    optMask = layer.optMask,
-                    layerNumber = layer.layerNumber,
-                    optionalRaw = layer.optionalRaw,
-                    objects = layer.objects + obj,
-                    originalHash = layer.originalHash,
-                    layerId = layer.layerId,
-                    modifiedTime = layer.modifiedTime,
-                )
+                if (index != 0) layer else layerWithTime(layer, layer.objects + obj, stamp)
             }
         }
         return PageRecord(
@@ -127,7 +143,8 @@ object SdocxPageImageFallback {
             offsetX = page.offsetX,
             offsetY = page.offsetY,
             pageId = page.pageId,
-            modifiedTime = page.modifiedTime,
+            // The page content changed: bump its stamp so the page hash changes for sync/diff.
+            modifiedTime = stamp,
             formatVersion = page.formatVersion,
             minFormatVersion = page.minFormatVersion,
             pageFlags = page.pageFlags,
@@ -136,6 +153,26 @@ object SdocxPageImageFallback {
             layers = layers,
             originalHash = page.originalHash,
             currentLayerIndex = page.currentLayerIndex,
+        )
+    }
+
+    /** Adds [objects] to [layer] and bumps its stamp when its optional area can be rewritten safely. */
+    private fun layerWithTime(layer: LayerRecord, objects: List<ObjectEntry>, stamp: Long): LayerRecord {
+        val fields = LayerOptionalCodec.parse(layer.optionalRaw, layer.optMask)
+        val time = if (fields?.time != null) {
+            fields.withTime(stamp)
+        } else {
+            fields
+        }
+        return LayerRecord(
+            flags = layer.flags,
+            optMask = layer.optMask,
+            layerNumber = layer.layerNumber,
+            optionalRaw = time?.write() ?: layer.optionalRaw,
+            objects = objects,
+            originalHash = layer.originalHash,
+            layerId = layer.layerId,
+            modifiedTime = time?.time ?: layer.modifiedTime,
         )
     }
 

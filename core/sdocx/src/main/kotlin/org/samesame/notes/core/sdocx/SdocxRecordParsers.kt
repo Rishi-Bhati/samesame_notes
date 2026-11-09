@@ -114,17 +114,23 @@ internal fun parseTextCommon(bytes: ByteArray, objFormatVersion: Int): TextCommo
             tailFlags = r.i32()
             reservedTail = r.i32()
             if (tailFlags and TextCommon.TAIL_FLAG_OBJECT_SPANS != 0) {
-                val n = r.i32()
-                repeat(maxOf(n, 0)) {
-                    r.i32() // entryLen
+                val n = r.count(r.i32(), 12)
+                repeat(n) {
+                    val entryStart = r.pos
+                    val entryLen = r.i32()
                     val objLen = r.i32()
                     val objType = r.i32()
                     val rec = r.bytes(objLen)
                     val charPos = r.i32()
                     objectSpans += TextCommon.ObjectSpan(objType, rec, charPos)
+                    // Unknown bytes inside an entry are part of the entry; skip them so the next
+                    // entry starts where entryLen says it does.
+                    val entryEnd = entryStart + 4 + entryLen
+                    if (entryEnd in r.pos..r.size) r.seek(entryEnd)
                 }
             }
         }
+        val tailExtra = if (r.remaining > 0) r.bytes(r.remaining) else ByteArray(0)
 
         TextCommon(
             text = text,
@@ -139,6 +145,7 @@ internal fun parseTextCommon(bytes: ByteArray, objFormatVersion: Int): TextCommo
             tailFlags = tailFlags,
             reservedTail = reservedTail,
             objectSpans = objectSpans,
+            tailExtra = tailExtra,
         )
     } catch (_: Exception) {
         null

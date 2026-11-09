@@ -114,7 +114,8 @@ object SdocxVoiceList {
             docHash = archive.note.docHash,
         )
         return SdocxArchive(
-            endTag = archive.endTag,
+            // The voice list lives in note.note; end_tag.bin mirrors the note stamps.
+            endTag = SdocxMirror.endTag(note, archive.endTag, modifiedTimeUs = nowUs, displayModifiedTimeUs = nowUs),
             note = note,
             pageIdInfo = archive.pageIdInfo,
             pages = archive.pages,

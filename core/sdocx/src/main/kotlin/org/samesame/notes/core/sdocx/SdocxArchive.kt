@@ -32,4 +32,7 @@ class SdocxArchive(
     /** All media entries, keyed by bindNumber. */
     val mediaByBindNumber: Map<Int, org.samesame.notes.core.sdocx.record.MediaEntry>
         get() = media.entries.associateBy { it.bindNumber }
+
+    fun withEndTag(tag: EndTagRecord): SdocxArchive =
+        SdocxArchive(tag, note, pageIdInfo, pages, media, mediaFiles, extraEntries)
 }

@@ -140,6 +140,7 @@ internal object SdocxSerializers {
             if (registry.extended) {
                 val body = LeWriter()
                 writeMediaEntryBody(body, entry)
+                body.bytes(entry.extra)
                 val bodyBytes = body.toByteArray()
                 w.i32(bodyBytes.size)
                 w.bytes(bodyBytes)
@@ -147,9 +148,11 @@ internal object SdocxSerializers {
                 writeMediaEntryBody(w, entry)
             }
         }
+        // Extended files are detected by the trailing "EOFX", so always write it; a basic file keeps
+        // the source's choice (an empty native registry often has no terminator).
         if (registry.extended) {
             w.bytes("EOFX".toByteArray(Charsets.US_ASCII))
-        } else if (registry.entries.isNotEmpty()) {
+        } else if (registry.entries.isNotEmpty() && registry.hasTerminator) {
             w.bytes("EOF".toByteArray(Charsets.US_ASCII))
         }
         return w.toByteArray()
@@ -194,10 +197,13 @@ internal object SdocxSerializers {
             w.i64(tag.displayCreatedTime)
             w.i64(tag.displayModifiedTime)
             w.i64(tag.lastRecognizedDataModifiedTime)
-            w.str16(tag.fixedFont)
-            w.i32(tag.fixedTextDirection)
-            w.i32(tag.fixedBackgroundTheme)
+            if (tag.hasFixedFontGroup) {
+                w.str16(tag.fixedFont)
+                w.i32(tag.fixedTextDirection)
+                w.i32(tag.fixedBackgroundTheme)
+            }
         }
+        w.bytes(tag.tailExtra)
         w.bytes(SdocxFormat.END_TAG_MAGIC.toByteArray(Charsets.US_ASCII))
         w.patchU16(0, w.size - 2)
         return w.toByteArray()

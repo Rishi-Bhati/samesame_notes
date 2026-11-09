@@ -5,6 +5,8 @@ import org.samesame.notes.core.model.richtext.ParagraphStyle
 import org.samesame.notes.core.model.richtext.RichText
 import org.samesame.notes.core.model.richtext.TextAlign
 import org.samesame.notes.core.sdocx.io.LeWriter
+import org.samesame.notes.core.sdocx.record.TextBoxRecord
+import org.samesame.notes.core.sdocx.record.TextCommon
 
 /**
  * Builds text-box object records (`base → shapeBase → shape → textBox`) and their text-common
@@ -32,11 +34,23 @@ internal object SdocxTextCodec {
     const val DEFAULT_COLOR = 0xFF252525L
     const val DEFAULT_FONT_SIZE = 17f
 
-    /** Full text-box object record for a title/body text box. */
-    fun textBox(uuid: String, modifiedUs: Long, text: RichText, titled: Boolean): ByteArray {
+    /**
+     * Full text-box object record for a title/body text box.
+     *
+     * [previous] is the source text box when an imported note's text is edited. Span/paragraph
+     * kinds SameSame cannot model (font name, hyperlink, timestamp, line spacing, …) and inline
+     * object anchors are re-anchored onto unchanged text instead of being dropped (spec §12.2).
+     */
+    fun textBox(
+        uuid: String,
+        modifiedUs: Long,
+        text: RichText,
+        titled: Boolean,
+        previous: TextBoxRecord? = null,
+    ): ByteArray {
         val base = baseBlock(uuid, modifiedUs)
         val shapeBase = shapeBaseBlock()
-        val shape = shapeBlock(text, titled)
+        val shape = shapeBlock(text, titled, previous?.text)
         val textBox = textBoxBlock()
         return base + shapeBase + shape + textBox
     }
@@ -67,8 +81,8 @@ internal object SdocxTextCodec {
         u8(0)
     }.toByteArray()
 
-    private fun shapeBlock(text: RichText, titled: Boolean): ByteArray {
-        val tc = textCommon(text)
+    private fun shapeBlock(text: RichText, titled: Boolean, previous: TextCommon?): ByteArray {
+        val tc = textCommon(text, previous)
         val mask = if (titled) 0x1001L else 0x3001L
         val w = LeWriter().apply {
             i32(0) // blockSize placeholder
@@ -102,7 +116,7 @@ internal object SdocxTextCodec {
     }.toByteArray()
 
     /** Serializes the text-common block (objects spec §6). */
-    fun textCommon(text: RichText): ByteArray {
+    fun textCommon(text: RichText, previous: TextCommon? = null): ByteArray {
         val units = text.text
         val w = LeWriter()
         w.i32(units.length)
@@ -111,27 +125,152 @@ internal object SdocxTextCodec {
             w.u8((c.code ushr 8) and 0xFF)
         }
 
-        val spans = buildSpans(text)
+        val anchor = previous?.let { Anchor.of(it.text, units) }
+        val spans = buildSpans(text) + preservedSpans(previous, anchor)
         w.i32(spans.size)
         for (s in spans) {
             w.u16(s.size)
             w.bytes(s)
         }
 
-        val paragraphs = buildParagraphs(text)
+        val paragraphs = buildParagraphs(text) + preservedParagraphs(previous, anchor)
         w.i32(paragraphs.size)
         for (p in paragraphs) {
             w.u16(p.size)
             w.bytes(p)
         }
 
-        w.f32(16f); w.f32(10f); w.f32(16f); w.f32(10f)
-        w.u8(0) // gravity top
-        w.u16(1) // one section
-        w.i32(0); w.i32(units.length)
-        w.i32(0) // tailFlags: no object spans
-        w.i32(0) // reserved
+        if (previous != null) {
+            w.f32(previous.marginLeft); w.f32(previous.marginTop)
+            w.f32(previous.marginRight); w.f32(previous.marginBottom)
+            w.u8(previous.gravity)
+            val sections = previous.sections.takeIf { list ->
+                list.all { it.start in 0..units.length && it.length >= 0 && it.start + it.length <= units.length }
+            }
+            if (sections != null) {
+                w.u16(sections.size)
+                for (s in sections) { w.i32(s.start); w.i32(s.length) }
+            } else {
+                w.u16(1)
+                w.i32(0); w.i32(units.length)
+            }
+        } else {
+            w.f32(16f); w.f32(10f); w.f32(16f); w.f32(10f)
+            w.u8(0) // gravity top
+            w.u16(1) // one section
+            w.i32(0); w.i32(units.length)
+        }
+
+        val tailFlags = previous?.tailFlags ?: 0
+        val objectSpans = preservedObjectSpans(previous, anchor, units)
+        w.i32(tailFlags)
+        w.i32(previous?.reservedTail ?: 0)
+        if (tailFlags and TextCommon.TAIL_FLAG_OBJECT_SPANS != 0) {
+            w.i32(objectSpans.size)
+            for (span in objectSpans) {
+                val entryLen = 4 + 4 + span.record.size + 4
+                w.i32(entryLen)
+                w.i32(span.record.size)
+                w.i32(span.objectType)
+                w.bytes(span.record)
+                w.i32(span.charPos)
+            }
+        }
+        previous?.tailExtra?.let { w.bytes(it) }
         return w.toByteArray()
+    }
+
+    /**
+     * Maps old text offsets to the edited text. Offsets inside the common prefix or suffix are
+     * unchanged; offsets inside the edited middle are dropped (the style of the edited region comes
+     * from SameSame's model). This keeps unknown formatting on untouched text across an edit.
+     */
+    private class Anchor(val oldLength: Int, val prefix: Int, val suffix: Int, val newLength: Int) {
+        private val delta = newLength - oldLength
+
+        fun map(offset: Int): Int? = when {
+            offset <= prefix -> offset
+            offset >= oldLength - suffix -> offset + delta
+            else -> null
+        }
+
+        fun mapRange(start: Int, endExclusive: Int): Pair<Int, Int>? {
+            val s = map(start) ?: return null
+            val e = map(endExclusive) ?: return null
+            return if (e > s) s to e else null
+        }
+
+        companion object {
+            fun of(old: String, new: String): Anchor {
+                val max = minOf(old.length, new.length)
+                var prefix = 0
+                while (prefix < max && old[prefix] == new[prefix]) prefix++
+                var suffix = 0
+                while (suffix < max - prefix && old[old.length - 1 - suffix] == new[new.length - 1 - suffix]) suffix++
+                return Anchor(old.length, prefix, suffix, new.length)
+            }
+        }
+    }
+
+    /** Span kinds rebuilt from SameSame's `CharStyle`; everything else is carried over raw. */
+    private val MODELED_SPAN_KINDS = setOf(SPAN_FG_COLOR, SPAN_FONT_SIZE, SPAN_BOLD, SPAN_ITALIC, SPAN_UNDERLINE, SPAN_BG_COLOR, SPAN_STRIKETHROUGH)
+
+    /** Paragraph kinds rebuilt from SameSame's `ParagraphStyle`. */
+    private val MODELED_PARA_KINDS = setOf(PARA_INDENT, PARA_ALIGN, PARA_LIST)
+
+    private fun preservedSpans(previous: TextCommon?, anchor: Anchor?): List<ByteArray> {
+        if (previous == null || anchor == null) return emptyList()
+        val out = ArrayList<ByteArray>()
+        for (span in previous.spans) {
+            if (span.kind in MODELED_SPAN_KINDS || span.raw.size < 16) continue
+            val range = anchor.mapRange(span.start, span.end) ?: continue
+            out += patchRange(span.raw, range.first, range.second)
+        }
+        return out
+    }
+
+    private fun preservedParagraphs(previous: TextCommon?, anchor: Anchor?): List<ByteArray> {
+        if (previous == null || anchor == null) return emptyList()
+        val out = ArrayList<ByteArray>()
+        for (para in previous.paragraphs) {
+            if (para.kind in MODELED_PARA_KINDS || para.raw.size < 12) continue
+            // Paragraph ends are inclusive on disk.
+            val range = anchor.mapRange(para.start, para.end + 1) ?: continue
+            out += patchRange(para.raw, range.first, range.second - 1)
+        }
+        return out
+    }
+
+    private fun preservedObjectSpans(
+        previous: TextCommon?,
+        anchor: Anchor?,
+        text: String,
+    ): List<TextCommon.ObjectSpan> {
+        if (previous == null || anchor == null) return emptyList()
+        val out = ArrayList<TextCommon.ObjectSpan>()
+        for (span in previous.objectSpans) {
+            val pos = anchor.map(span.charPos) ?: continue
+            if (pos !in 0..text.length) continue
+            // Keep an inline object only while its placeholder character is still there.
+            if (pos < text.length && text[pos] != org.samesame.notes.core.model.richtext.OBJECT_CHAR) continue
+            out += TextCommon.ObjectSpan(span.objectType, span.record, pos)
+        }
+        return out
+    }
+
+    /** Copies a length-prefixed span/paragraph body with new start/end values. */
+    private fun patchRange(raw: ByteArray, start: Int, end: Int): ByteArray {
+        val out = raw.copyOf()
+        putI32(out, 4, start)
+        putI32(out, 8, end)
+        return out
+    }
+
+    private fun putI32(bytes: ByteArray, offset: Int, value: Int) {
+        bytes[offset] = (value and 0xFF).toByte()
+        bytes[offset + 1] = ((value ushr 8) and 0xFF).toByte()
+        bytes[offset + 2] = ((value ushr 16) and 0xFF).toByte()
+        bytes[offset + 3] = ((value ushr 24) and 0xFF).toByte()
     }
 
     private fun buildSpans(text: RichText): List<ByteArray> {

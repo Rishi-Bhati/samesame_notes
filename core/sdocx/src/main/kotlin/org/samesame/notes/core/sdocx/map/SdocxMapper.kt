@@ -109,20 +109,40 @@ object SdocxMapper {
     ): SdocxArchive {
         val titleChanged = title(archive) != document.title
         val bodyChanged = archive.note.body.text?.text.orEmpty() != document.body.text
-        if (!titleChanged && !bodyChanged) return archive
+        val pageIndex = lastViewedPageIndex?.coerceIn(0, maxOf(archive.pages.size - 1, 0))
+        val viewChanged = pageIndex != null && pageIndex != archive.endTag.lastViewedPageIndex
+        if (!titleChanged && !bodyChanged) {
+            // A reading position is stored in end_tag.bin, so an export must update it even when the
+            // note text did not change. It is not an edit: note modified time and docHash stay.
+            if (!viewChanged) return archive
+            return archive.withEndTag(
+                org.samesame.notes.core.sdocx.SdocxMirror.endTag(
+                    archive.note, archive.endTag,
+                    modifiedTimeUs = archive.note.modifiedTime,
+                    displayModifiedTimeUs = archive.endTag.displayModifiedTime,
+                    lastViewedPageIndex = pageIndex,
+                ),
+            )
+        }
 
+        // Rebuild only the changed text box. The previous record lets the codec carry spans and
+        // paragraphs it cannot model (font names, hyperlinks, timestamps, line spacing) across the
+        // edit by re-anchoring them on unchanged text (spec §12.2, §14.3).
         val titleBox = org.samesame.notes.core.sdocx.SdocxTextCodec.textBox(
             uuid = newUuid(), modifiedUs = nowUs, text = RichText.of(document.title), titled = true,
+            previous = archive.note.title,
         )
         val bodyBox = org.samesame.notes.core.sdocx.SdocxTextCodec.textBox(
             uuid = newUuid(), modifiedUs = nowUs, text = document.body, titled = false,
+            previous = archive.note.body,
         )
         val note = org.samesame.notes.core.sdocx.record.NoteRecord(
             propOffset = archive.note.propOffset,
             noteFlags = archive.note.noteFlags,
             propMask = archive.note.propMask,
             formatVersion = archive.note.formatVersion,
-            noteId = document.id,
+            // The sdocx noteId identifies the source note; a SameSame note id is not a replacement.
+            noteId = archive.note.noteId,
             fileRevision = archive.note.fileRevision + 1,
             createdTime = archive.note.createdTime,
             modifiedTime = nowUs,
@@ -140,37 +160,12 @@ object SdocxMapper {
             properties = archive.note.properties,
             docHash = archive.note.docHash,
         )
-        val endTag = org.samesame.notes.core.sdocx.record.EndTagRecord(
-            formatVersion = archive.endTag.formatVersion,
-            noteId = document.id,
-            modifiedTime = nowUs,
-            propertyFlags = archive.endTag.propertyFlags,
-            coverImage = archive.endTag.coverImage,
-            noteWidth = archive.endTag.noteWidth,
-            noteHeight = archive.endTag.noteHeight,
-            appName = archive.endTag.appName,
-            appMajorVersion = archive.endTag.appMajorVersion,
-            appMinorVersion = archive.endTag.appMinorVersion,
-            appPatchName = archive.endTag.appPatchName,
-            minFormatVersion = archive.endTag.minFormatVersion,
-            createdTime = archive.endTag.createdTime,
-            lastViewedPageIndex = (lastViewedPageIndex ?: archive.endTag.lastViewedPageIndex)
-                .coerceIn(0, maxOf(archive.pages.size - 1, 0)),
+        val endTag = org.samesame.notes.core.sdocx.SdocxMirror.endTag(
+            note, archive.endTag, modifiedTimeUs = nowUs, displayModifiedTimeUs = nowUs,
             // Keep the imported note's sdocx page mode: list and single both map to SameSame Pages on
             // import (see toNoteDocument), so deriving it from the layout would turn a LIST note into
-            // SINGLE on the first text edit.
-            pageMode = archive.endTag.pageMode,
-            documentType = archive.endTag.documentType,
-            ownerId = archive.endTag.ownerId,
-            reserved1 = archive.endTag.reserved1,
-            reserved2 = archive.endTag.reserved2,
-            displayCreatedTime = archive.endTag.displayCreatedTime,
-            displayModifiedTime = nowUs,
-            lastRecognizedDataModifiedTime = archive.endTag.lastRecognizedDataModifiedTime,
-            fixedFont = archive.endTag.fixedFont,
-            fixedTextDirection = archive.endTag.fixedTextDirection,
-            fixedBackgroundTheme = archive.endTag.fixedBackgroundTheme,
-            hasTail = archive.endTag.hasTail,
+            // SINGLE on the first text edit. SdocxMirror copies the source pageMode.
+            lastViewedPageIndex = (pageIndex ?: archive.endTag.lastViewedPageIndex),
         )
         return SdocxArchive(
             endTag = endTag,
