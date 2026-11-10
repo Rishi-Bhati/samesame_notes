@@ -122,6 +122,7 @@ object SdocxVoiceList {
             media = MediaRegistry(archive.media.extended, archive.media.formatVersion, media, archive.media.hasTerminator),
             mediaFiles = files,
             extraEntries = archive.extraEntries,
+            trailer = archive.trailer,
         )
     }
 

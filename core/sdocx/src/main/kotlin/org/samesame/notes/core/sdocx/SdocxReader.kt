@@ -61,10 +61,31 @@ class SdocxReader {
                 !name.endsWith(".page") &&
                 !name.startsWith("media/")
         }
-        return SdocxArchive(endTag, note, pageIdInfo, pages, media, mediaFiles, extra)
+        return SdocxArchive(endTag, note, pageIdInfo, pages, media, mediaFiles, extra, trailingEndTag(bytes))
     }
 
     // ---- container ----
+
+    /**
+     * The end-tag copy after the ZIP end-of-central-directory record, when the file has one. A file
+     * without it (or with unreadable trailing bytes) still imports; the writer adds a fresh copy.
+     */
+    private fun trailingEndTag(bytes: ByteArray): EndTagRecord? {
+        var at = bytes.size - 22
+        val floor = maxOf(0, bytes.size - 22 - 0xFFFF - 4096)
+        while (at >= floor) {
+            if (bytes[at] == 0x50.toByte() && bytes[at + 1] == 0x4B.toByte() && bytes[at + 2] == 5.toByte() && bytes[at + 3] == 6.toByte()) {
+                val comment = (bytes[at + 20].toInt() and 0xFF) or ((bytes[at + 21].toInt() and 0xFF) shl 8)
+                val end = at + 22 + comment
+                if (end <= bytes.size) {
+                    if (end == bytes.size) return null
+                    return runCatching { parseEndTag(bytes.copyOfRange(end, bytes.size)) }.getOrNull()
+                }
+            }
+            at--
+        }
+        return null
+    }
 
     private fun unzip(bytes: ByteArray): LinkedHashMap<String, ByteArray> {
         val out = LinkedHashMap<String, ByteArray>()

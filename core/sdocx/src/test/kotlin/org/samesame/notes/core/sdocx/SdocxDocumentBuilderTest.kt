@@ -29,7 +29,12 @@ class SdocxDocumentBuilderTest {
         assertThat(read.note.body.text?.text).isEqualTo("Milk\nEggs")
         assertThat(read.note.width).isEqualTo(SdocxDocumentBuilder.PAGE_WIDTH_PX)
         assertThat(read.pages).hasSize(2)
-        assertThat(read.pages.map { it.pageId }).containsExactly("page-1", "page-2")
+        // Page ids are uuid texts in the file; another kind of id is mapped to a stable uuid.
+        assertThat(read.pages.map { it.pageId })
+            .containsExactly(SdocxDocumentBuilder.pageId("page-1"), SdocxDocumentBuilder.pageId("page-2")).inOrder()
+        assertThat(read.pages.map { it.pageId.length }).containsExactly(36, 36)
+        assertThat(SdocxDocumentBuilder.pageId("3f2a1b0c-9d8e-4f7a-b6c5-d4e3f2a1b0c9")).isEqualTo("3f2a1b0c-9d8e-4f7a-b6c5-d4e3f2a1b0c9")
+        assertThat(read.pages.map { it.layers.size }).containsExactly(1, 1)
     }
 
     @Test
@@ -41,10 +46,13 @@ class SdocxDocumentBuilderTest {
     }
 
     @Test
-    fun `builder does not use branded app metadata`() {
+    fun `builder writes the app fields the way real files have them`() {
         val archive = SdocxDocumentBuilder.toArchive(document, SdocxFixtures.MODIFIED_US)
 
-        assertThat(archive.endTag.appName.lowercase()).contains("samesame")
-        assertThat(archive.endTag.appName.lowercase()).doesNotContain("reference")
+        assertThat(archive.endTag.appName).isEmpty()
+        assertThat(archive.endTag.appMajorVersion).isEqualTo(-1)
+        assertThat(archive.endTag.appMinorVersion).isEqualTo(-1)
+        assertThat(archive.endTag.noteId).isEmpty()
+        assertThat(archive.note.noteId).isEmpty()
     }
 }

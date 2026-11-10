@@ -175,6 +175,7 @@ object SdocxMapper {
             media = archive.media,
             mediaFiles = archive.mediaFiles,
             extraEntries = archive.extraEntries,
+            trailer = archive.trailer,
         )
     }
 
@@ -366,16 +367,12 @@ object SdocxMapper {
     private fun mapParagraphs(tc: TextCommon, length: Int): List<ParagraphStyle> {
         val count = tc.text.count { it == '\n' } + 1
         val paras = MutableList(count) { ParagraphStyle() }
-        fun paragraphIndexAt(offset: Int): Int {
-            val end = offset.coerceIn(0, length)
-            var k = 0
-            for (i in 0 until end) if (tc.text[i] == '\n') k++
-            return k
-        }
         for (record in tc.paragraphs) {
             val p = LeReader(record.raw, 12)
-            val s = record.start.coerceIn(0, length)
-            val e = record.end.coerceIn(0, length)
+            // Paragraph records address paragraphs by index, `[start, end)` (verified on a styled
+            // multi-paragraph file: the fourth paragraph's bullet record is [3, 4)).
+            val s = record.start
+            val e = maxOf(record.end, s + 1)
             val transform: ((ParagraphStyle) -> ParagraphStyle)? = when (record.kind) {
                 2 -> run {
                     val level = p.i32().coerceIn(0, Limits.MAX_INDENT_LEVEL)
@@ -404,9 +401,8 @@ object SdocxMapper {
                 else -> null
             }
             if (transform != null) {
-                for (off in s..e) {
-                    val idx = paragraphIndexAt(off).coerceIn(0, count - 1)
-                    paras[idx] = transform(paras[idx])
+                for (idx in s until e) {
+                    if (idx in 0 until count) paras[idx] = transform(paras[idx])
                 }
             }
         }

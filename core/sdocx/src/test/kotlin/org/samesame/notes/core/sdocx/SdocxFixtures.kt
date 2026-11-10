@@ -321,8 +321,8 @@ object SdocxFixtures {
             w.bytes(s)
         }
         val paras = (if (text.isEmpty()) emptyList() else listOf(
-            paragraph(3, 0, text.length - 1, LeWriter().apply { i32(0); i32(0) }.toByteArray()),
-            paragraph(6, 0, text.length - 1, LeWriter().apply { i32(0); i32(0) }.toByteArray()),
+            paragraph(3, 0, 1, LeWriter().apply { i32(0); i32(0) }.toByteArray()),
+            paragraph(6, 0, 1, LeWriter().apply { i32(0); i32(0) }.toByteArray()),
         )) + extraParagraphs
         w.i32(paras.size)
         for (p in paras) {
@@ -400,7 +400,7 @@ object SdocxFixtures {
             ),
             extraParagraphs = listOf(
                 // line spacing (kind 4): u8 type + 3 pad + f32 value — not modelled.
-                paragraph(4, 0, bodyText.length - 1, LeWriter().apply { u8(0); u8(0); u8(0); u8(0); f32(1.2f) }.toByteArray()),
+                paragraph(4, 0, 1, LeWriter().apply { u8(0); u8(0); u8(0); u8(0); f32(1.2f) }.toByteArray()),
             ),
             objectSpans = listOf(ObjectSpanFixture(SdocxFormat.ObjectType.IMAGE, inlineImage, 5)),
         )

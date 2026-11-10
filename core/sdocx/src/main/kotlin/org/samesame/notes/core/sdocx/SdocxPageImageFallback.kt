@@ -16,7 +16,7 @@ import java.util.UUID
  * registers it in `media/`, leaving the original opaque stroke objects untouched.
  *
  * This is deliberately separate from [SdocxWriter]'s lossless path: it changes page content and is
- * only a visual fallback until real stroke fixtures decode the payload.
+ * only a visual fallback for page content that has no object mapping.
  */
 object SdocxPageImageFallback {
 
@@ -105,6 +105,7 @@ object SdocxPageImageFallback {
             media = media,
             mediaFiles = newFiles,
             extraEntries = archive.extraEntries,
+            trailer = archive.trailer,
         )
     }
 
@@ -157,7 +158,7 @@ object SdocxPageImageFallback {
     }
 
     /** Adds [objects] to [layer] and bumps its stamp when its optional area can be rewritten safely. */
-    private fun layerWithTime(layer: LayerRecord, objects: List<ObjectEntry>, stamp: Long): LayerRecord {
+    internal fun layerWithTime(layer: LayerRecord, objects: List<ObjectEntry>, stamp: Long): LayerRecord {
         val fields = LayerOptionalCodec.parse(layer.optionalRaw, layer.optMask)
         val time = if (fields?.time != null) {
             fields.withTime(stamp)

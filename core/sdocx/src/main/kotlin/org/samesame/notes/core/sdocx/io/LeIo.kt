@@ -150,6 +150,10 @@ internal class LeWriter(initialCapacity: Int = 64) {
         buf[offset + 3] = ((v ushr 24) and 0xFF).toByte()
     }
 
+    fun patchI64(offset: Int, v: Long) {
+        for (i in 0 until 8) buf[offset + i] = ((v ushr (8 * i)) and 0xFF).toByte()
+    }
+
     fun patchF64(offset: Int, v: Double) {
         var bits = v.toRawBits()
         for (i in 0 until 8) {

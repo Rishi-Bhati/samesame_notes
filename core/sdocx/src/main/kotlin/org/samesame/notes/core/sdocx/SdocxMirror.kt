@@ -48,4 +48,36 @@ internal object SdocxMirror {
         hasFixedFontGroup = source.hasFixedFontGroup,
         tailExtra = source.tailExtra,
     )
+
+    /** [tag] with other display times; every other field is identical. */
+    fun withDisplayTimes(tag: EndTagRecord, displayCreated: Long, displayModified: Long): EndTagRecord = EndTagRecord(
+        formatVersion = tag.formatVersion,
+        noteId = tag.noteId,
+        modifiedTime = tag.modifiedTime,
+        propertyFlags = tag.propertyFlags,
+        coverImage = tag.coverImage,
+        noteWidth = tag.noteWidth,
+        noteHeight = tag.noteHeight,
+        appName = tag.appName,
+        appMajorVersion = tag.appMajorVersion,
+        appMinorVersion = tag.appMinorVersion,
+        appPatchName = tag.appPatchName,
+        minFormatVersion = tag.minFormatVersion,
+        createdTime = tag.createdTime,
+        lastViewedPageIndex = tag.lastViewedPageIndex,
+        pageMode = tag.pageMode,
+        documentType = tag.documentType,
+        ownerId = tag.ownerId,
+        reserved1 = tag.reserved1,
+        reserved2 = tag.reserved2,
+        displayCreatedTime = displayCreated,
+        displayModifiedTime = displayModified,
+        lastRecognizedDataModifiedTime = tag.lastRecognizedDataModifiedTime,
+        fixedFont = tag.fixedFont,
+        fixedTextDirection = tag.fixedTextDirection,
+        fixedBackgroundTheme = tag.fixedBackgroundTheme,
+        hasTail = tag.hasTail,
+        hasFixedFontGroup = tag.hasFixedFontGroup,
+        tailExtra = tag.tailExtra,
+    )
 }
