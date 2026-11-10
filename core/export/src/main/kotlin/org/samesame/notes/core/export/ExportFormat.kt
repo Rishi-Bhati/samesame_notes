@@ -57,6 +57,8 @@ data class ExportOptions(
     val markdownAsZip: Boolean = false,
     /** Export only these pages, in note order (the page sorter's Share / Save as file). Null = the whole note. */
     val pageIds: Set<String>? = null,
+    /** SSNOTE: bundle the library files the note links to (container v3). On by default; other formats ignore it. */
+    val includeLinkedFiles: Boolean = true,
 )
 
 /** File name extension and MIME type of what an export writes. */

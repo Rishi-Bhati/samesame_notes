@@ -85,6 +85,7 @@ internal class FileLinkController(
     var pasteMode: FilePasteMode = FilePasteMode.Ask
     var locked: Boolean = false
     var navigation: LibraryFilesNavigation? = null
+    var opener: ((FileId) -> Unit)? = null
 
     /** Where the chooser sits (root view coordinates). */
     var anchorRect: () -> Rect = { Rect.Zero }
@@ -217,13 +218,17 @@ internal class FileLinkController(
         }
     }
 
-    /** Hands [file] to the viewer for its type (the system one for now); false when its content is gone. */
+    /** Hands [file] to the in-app viewer (the system one when the app provides none); false when its content is gone. */
     private suspend fun openFile(file: LibraryFile): Boolean {
         val uri = links.contentUri(file)
         val readable = withContext(Dispatchers.IO) {
             runCatching { context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { true } ?: false }.getOrDefault(false)
         }
         if (!readable) return false
+        opener?.let { open ->
+            open(file.id)
+            return true
+        }
         val intent = Intent(Intent.ACTION_VIEW).setDataAndType(uri, file.mimeType)
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
         try {
@@ -466,6 +471,7 @@ internal fun rememberFileLinkController(
         showFailed = stringResource(R.string.feature_composer_files_show_failed),
     )
     val c = remember(session, links) { FileLinkController(context, view, scope, links, session, body, textState, snackbar, strings) }
+    c.opener = LocalLibraryFileOpener.current
     androidx.compose.runtime.DisposableEffect(c) { onDispose { c.dispose() } }
     return c
 }

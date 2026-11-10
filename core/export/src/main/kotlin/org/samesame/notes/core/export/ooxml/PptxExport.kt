@@ -1,6 +1,7 @@
 package org.samesame.notes.core.export.ooxml
 
 import org.samesame.notes.core.export.ExportAssets
+import org.samesame.notes.core.export.text.toParagraphs
 import org.samesame.notes.core.model.document.NoteDocument
 import java.io.OutputStream
 import kotlin.math.roundToLong
@@ -79,6 +80,17 @@ object PptxExport {
         )
         pkg.part("ppt/theme/theme1.xml", themeXml())
 
+        // label -> uri of every link run in the note; the text box hyperlinks each occurrence of a label.
+        val linkTargets = LinkedHashMap<String, String>()
+        fun collectLinks(rt: org.samesame.notes.core.model.richtext.RichText) {
+            for (p in rt.toParagraphs()) for (sp in p.spans) {
+                val uri = sp.style.link
+                if (!uri.isNullOrEmpty() && sp.text.isNotBlank() && !sp.isObject) linkTargets.putIfAbsent(sp.text.trim(), uri)
+            }
+        }
+        collectLinks(doc.body)
+        for (pg in 0 until assets.pageCount) assets.floatingTexts(pg).forEach(::collectLinks)
+
         for (i in 1..n) {
             val page = i - 1
             val image = if (assets.pageCount > 0) assets.fullPage(page) else null
@@ -89,9 +101,10 @@ object PptxExport {
                 "<p:pic><p:nvPicPr><p:cNvPr id=\"2\" name=\"Page $i\" descr=\"${xmlEscape(alt)}\"/><p:cNvPicPr><a:picLocks noChangeAspect=\"1\"/></p:cNvPicPr><p:nvPr/></p:nvPicPr>" +
                     "<p:blipFill><a:blip r:embed=\"rId2\"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>" +
                     "<p:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"$cx\" cy=\"$cy\"/></a:xfrm><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></p:spPr></p:pic>"
+            val slideLinks = LinkedHashMap<String, String>() // uri -> relationship id
             val paragraphs = text.split('\n').joinToString("") { line ->
                 if (line.isEmpty()) "<a:p><a:endParaRPr lang=\"en-US\" sz=\"1200\"/></a:p>"
-                else "<a:p><a:r><a:rPr lang=\"en-US\" sz=\"1200\"/><a:t>${xmlEscape(line)}</a:t></a:r></a:p>"
+                else "<a:p>" + pptxRuns(line, linkTargets) { uri -> slideLinks.getOrPut(uri) { "rIdLink${slideLinks.size + 1}" } } + "</a:p>"
             }
             val tbHeight = 3000000L
             val tb = "<p:sp><p:nvSpPr><p:cNvPr id=\"3\" name=\"Page text\"/><p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>" +
@@ -101,14 +114,37 @@ object PptxExport {
                 "ppt/slides/slide$i.xml",
                 XML_DECL + "<p:sld $P><p:cSld><p:spTree>$GROUP$pic$tb</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>",
             )
+            val linkRels = slideLinks.entries.joinToString("") { (uri, id) ->
+                "<Relationship Id=\"$id\" Type=\"$REL/hyperlink\" Target=\"${xmlEscape(uri)}\" TargetMode=\"External\"/>"
+            }
             val imgRel = if (image == null) "" else "<Relationship Id=\"rId2\" Type=\"$REL/image\" Target=\"../media/image$i.png\"/>"
             pkg.part(
                 "ppt/slides/_rels/slide$i.xml.rels",
-                XML_DECL + "<Relationships xmlns=\"$RELS_NS\"><Relationship Id=\"rId1\" Type=\"$REL/slideLayout\" Target=\"../slideLayouts/slideLayout1.xml\"/>$imgRel</Relationships>",
+                XML_DECL + "<Relationships xmlns=\"$RELS_NS\"><Relationship Id=\"rId1\" Type=\"$REL/slideLayout\" Target=\"../slideLayouts/slideLayout1.xml\"/>$imgRel$linkRels</Relationships>",
             )
             if (image != null) pkg.part("ppt/media/image$i.png", image.png)
         }
         pkg.finish()
+    }
+
+    /** Runs of one text line; every occurrence of a link label becomes a hyperlink run. */
+    private fun pptxRuns(line: String, targets: Map<String, String>, relFor: (String) -> String): String {
+        val sb = StringBuilder()
+        fun plain(t: String) { if (t.isNotEmpty()) sb.append("<a:r><a:rPr lang=\"en-US\" sz=\"1200\"/><a:t>${xmlEscape(t)}</a:t></a:r>") }
+        var i = 0
+        while (i < line.length) {
+            var hit: Map.Entry<String, String>? = null
+            var at = Int.MAX_VALUE
+            for (e in targets) {
+                val k = line.indexOf(e.key, i)
+                if (k in 0 until at || (k == at && hit != null && e.key.length > hit.key.length)) { at = k; hit = e }
+            }
+            if (hit == null || at == Int.MAX_VALUE) { plain(line.substring(i)); break }
+            plain(line.substring(i, at))
+            sb.append("<a:r><a:rPr lang=\"en-US\" sz=\"1200\" u=\"sng\"><a:hlinkClick r:id=\"${relFor(hit.value)}\"/></a:rPr><a:t>${xmlEscape(hit.key)}</a:t></a:r>")
+            i = at + hit.key.length
+        }
+        return sb.toString()
     }
 
     private fun themeXml(): String {

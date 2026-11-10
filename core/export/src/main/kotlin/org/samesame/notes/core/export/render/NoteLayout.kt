@@ -48,6 +48,9 @@ private const val INDENT_PU = 48
 private const val LIST_GAP = 80
 
 /** Builds the Android spannable for rich text; sizes are in page units (1 sp of the reference = 2.625 pu). */
+/** Link runs (file links, URLs) print blue and underlined; PDF link annotations come with the later PDF engine. */
+private const val LINK_COLOR: Int = 0xFF0563C1.toInt()
+
 internal fun buildSpannable(
     rt: RichText,
     media: (String) -> Bitmap?,
@@ -62,7 +65,7 @@ internal fun buildSpannable(
         val end = (pos + run.length).coerceAtMost(rt.text.length)
         if (end > pos) {
             val f = Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-            out.setSpan(ForegroundColorSpan(colorTransform(s.color?.toInt() ?: Color.BLACK)), pos, end, f)
+            out.setSpan(ForegroundColorSpan(colorTransform(if (s.link != null) LINK_COLOR else s.color?.toInt() ?: Color.BLACK)), pos, end, f)
             s.highlight?.let { out.setSpan(BackgroundColorSpan(colorTransform(it.toInt())), pos, end, f) }
             val face = when {
                 s.bold && s.italic -> Typeface.BOLD_ITALIC
@@ -71,7 +74,7 @@ internal fun buildSpannable(
                 else -> Typeface.NORMAL
             }
             if (face != Typeface.NORMAL) out.setSpan(StyleSpan(face), pos, end, f)
-            if (s.underline) out.setSpan(UnderlineSpan(), pos, end, f)
+            if (s.underline || s.link != null) out.setSpan(UnderlineSpan(), pos, end, f)
             if (s.strikethrough) out.setSpan(StrikethroughSpan(), pos, end, f)
             s.fontSize?.let { out.setSpan(AbsoluteSizeSpan((it * Limits.FONT_PU_PER_POINT * GLYPH_SCALE).toInt().coerceAtLeast(1), false), pos, end, f) }
             if (s.objectId != null && end - pos == 1 && rt.text[pos] == OBJECT_CHAR) {

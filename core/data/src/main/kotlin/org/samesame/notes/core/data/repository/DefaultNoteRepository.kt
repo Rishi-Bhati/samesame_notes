@@ -244,7 +244,9 @@ internal class DefaultNoteRepository @Inject constructor(
         // Locked notes are never exported (the container also refuses).
         if (documents.isLocked(id.value)) throw org.samesame.notes.core.document.NoteLockedException(id.value)
         if (format == org.samesame.notes.core.export.ExportFormat.SSNOTE) {
-            exportNote(id, out)
+            val sources = if (options.includeLinkedFiles) linkedSources(id) else emptyList()
+            if (sources.isEmpty()) exportNote(id, out)
+            else lockFor(id.value).withLock { documents.exportWithFiles(id.value, out, sources) }
             return org.samesame.notes.core.export.expectedTarget(format, options, false, 1)
         }
         if (format == org.samesame.notes.core.export.ExportFormat.SDOCX) {
@@ -258,11 +260,16 @@ internal class DefaultNoteRepository @Inject constructor(
                 // Only recordings made in SameSame (no sdocx source id) need their audio shipped.
                 val audio = document.recordings.filter { it.sourceFileId == null }
                     .mapNotNull { r -> documents.readMedia(id.value, r.media)?.let { r.id to it } }.toMap()
+                val imageSha = document.inlineObjects.filterIsInstance<org.samesame.notes.core.model.document.ImageObject>()
+                    .filter { it.libraryFileId != null }
+                    .mapNotNull { img -> documents.readMedia(id.value, img.media)?.let { img.media to org.samesame.notes.core.sdocx.SdocxLinkChannel.sha(it) } }
+                    .toMap()
                 SdocxExport.exportImported(
                     original, document, out,
                     sideChannel[org.samesame.notes.core.sdocx.SdocxSideChannel.RAW_ARCHIVE_PATH],
                     audio,
                     lastViewedPageIndex = lastViewedPageIndex,
+                    imageSha = { imageSha[it] },
                 )
             } else {
                 val source = object : org.samesame.notes.core.export.ExportSource {
@@ -308,7 +315,16 @@ internal class DefaultNoteRepository @Inject constructor(
         }
 
         val id = UUID.randomUUID().toString()
-        val bundle = org.samesame.notes.core.sdocx.map.SdocxMapper.toImportBundle(archive, id)
+        val rawBundle = org.samesame.notes.core.sdocx.map.SdocxMapper.toImportBundle(archive, id)
+        // Link runs and library ids written by SameSame's own export come back where their label text is unchanged.
+        val bundle = archive.extraEntries[org.samesame.notes.core.sdocx.SdocxLinkChannel.ENTRY]?.let { entry ->
+            val shaOf = { media: String -> rawBundle.media[media]?.let(org.samesame.notes.core.sdocx.SdocxLinkChannel::sha) }
+            org.samesame.notes.core.sdocx.map.SdocxMapper.ImportBundle(
+                document = org.samesame.notes.core.sdocx.SdocxLinkChannel.apply(rawBundle.document, entry, shaOf),
+                title = rawBundle.title, lock = rawBundle.lock, viewState = rawBundle.viewState,
+                media = rawBundle.media, extraEntries = rawBundle.extraEntries,
+            )
+        } ?: rawBundle
         try {
             documents.writeSdocxImport(bundle, archive, bytes)
         } catch (e: Exception) {
@@ -338,6 +354,7 @@ internal class DefaultNoteRepository @Inject constructor(
             ),
         )
         searchDao.replace(NoteSearchEntity(noteId = id, title = bundle.title, body = plain, inkText = ""))
+        fileRefs?.let { runCatching { it.replaceNoteRefs(NoteId(id), org.samesame.notes.core.model.files.NoteFileRefs.of(bundle.document)) } }
         bundle.viewState?.let {
             viewStateDao.upsert(NoteViewStateEntity(id, it.pageIndex, it.offsetInPage, it.zoom))
         }
@@ -415,8 +432,27 @@ internal class DefaultNoteRepository @Inject constructor(
         return NoteId(id)
     }
 
+    /** The library files [id] links to or shows inline, ready to bundle into a v3 `.ssnote`. Empty without Files support. */
+    private suspend fun linkedSources(id: NoteId): List<org.samesame.notes.core.document.LinkedFileSource> {
+        val files = fileRefs ?: return emptyList()
+        val refs = org.samesame.notes.core.model.files.NoteFileRefs.of(currentDocument(id.value)).keys
+        return if (refs.isEmpty()) emptyList() else files.linkedFileSources(refs)
+    }
+
+    override suspend fun linkedFilesBytes(id: NoteId): Long {
+        if (documents.isLocked(id.value)) return 0L
+        val files = fileRefs ?: return 0L
+        val refs = org.samesame.notes.core.model.files.NoteFileRefs.of(currentDocument(id.value)).keys
+        return if (refs.isEmpty()) 0L else files.linkedFilesBytes(refs)
+    }
+
     override suspend fun importNote(input: java.io.InputStream, folderId: FolderId?): NoteId {
-        val (doc, legacyViewState) = documents.importWithLegacyViewState(input)
+        val restorer = fileRefs?.let { files ->
+            org.samesame.notes.core.document.LinkedFilesRestorer { title, entries, open -> files.restoreBundled(title, entries, open) }
+        }
+        val imported = documents.importContainer(input, restorer)
+        val doc = imported.document
+        val legacyViewState = imported.legacyViewState
         val plain = doc.body.plainText()
         val now = clock.now()
         noteDao.upsert(
@@ -437,6 +473,7 @@ internal class DefaultNoteRepository @Inject constructor(
             ),
         )
         searchDao.replace(NoteSearchEntity(noteId = doc.id, title = doc.title, body = plain, inkText = ""))
+        fileRefs?.let { runCatching { it.replaceNoteRefs(NoteId(doc.id), org.samesame.notes.core.model.files.NoteFileRefs.of(doc)) } }
         legacyViewState?.let {
             viewStateDao.upsert(NoteViewStateEntity(doc.id, it.pageIndex, it.offsetInPage, it.zoom))
         }

@@ -36,7 +36,8 @@ class ComposerActivity : FragmentActivity() {
             val dark = isDarkTheme(settings.themeMode)
             SystemBarAppearance(dark)
             SameSameTheme(darkTheme = dark) {
-                ComposerRoute(noteId = noteId, onBack = { finish() })
+                // The editor lives in this activity, outside the navigation host, so it gets the Files entry points here.
+                ProvideLibraryFiles { ComposerRoute(noteId = noteId, onBack = { finish() }) }
             }
         }
     }

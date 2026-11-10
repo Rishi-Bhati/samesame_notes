@@ -46,12 +46,18 @@ import javax.inject.Inject
 sealed interface TransferRequest {
     val ids: List<NoteId>
     val format: ExportFormat
+    /** `.ssnote` only: bundle the library files the notes link to. */
+    val includeLinkedFiles: Boolean
 
     /** Export, then open the system share sheet. */
-    data class Share(override val ids: List<NoteId>, override val format: ExportFormat) : TransferRequest
+    data class Share(
+        override val ids: List<NoteId>, override val format: ExportFormat, override val includeLinkedFiles: Boolean = true,
+    ) : TransferRequest
 
     /** Export, then let the user pick where to put the file(s). Several notes: one zip or a folder of files. */
-    data class Save(override val ids: List<NoteId>, override val format: ExportFormat) : TransferRequest
+    data class Save(
+        override val ids: List<NoteId>, override val format: ExportFormat, override val includeLinkedFiles: Boolean = true,
+    ) : TransferRequest
 }
 
 @HiltViewModel
@@ -103,7 +109,7 @@ fun NoteTransferHost(
                 r
             } else false
             progress = Progress(0, req.ids.size, "")
-            val batch = service.exportToCache(req.ids, req.format) { done, total, title -> progress = Progress(done, total, title) }
+            val batch = service.exportToCache(req.ids, req.format, org.samesame.notes.core.export.ExportOptions(includeLinkedFiles = req.includeLinkedFiles)) { done, total, title -> progress = Progress(done, total, title) }
             progress = null
             if (batch.items.isEmpty()) {
                 onMessage(if (batch.failed > 0) failed else nothing)

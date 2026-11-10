@@ -59,6 +59,7 @@ import org.samesame.notes.core.designsystem.theme.SameSameTheme
 import org.samesame.notes.core.model.NoteId
 import org.samesame.notes.core.model.files.FileSortField
 import org.samesame.notes.core.model.files.LibraryFile
+import org.samesame.notes.feature.files.viewer.openLibraryFile
 
 private enum class Menu { None, Main, View }
 private enum class Dialog { None, RenameFile, RenameFolder, CreateFolder, Delete, Info }
@@ -72,6 +73,7 @@ internal fun FilesScreen(
     onBack: () -> Unit,
     onOpenSearch: () -> Unit,
     onOpenTrash: () -> Unit,
+    onOpenStorage: () -> Unit,
     onMove: () -> Unit,
     onOpenNote: (NoteId) -> Unit,
 ) {
@@ -92,7 +94,8 @@ internal fun FilesScreen(
         val intent = FilesIntents.send(files, files.map(viewModel::contentUri))
         FilesIntents.launch(context, android.content.Intent.createChooser(intent, null))
     }
-    fun open(file: LibraryFile) {
+    fun open(file: LibraryFile) { openLibraryFile(context, file.id) }
+    fun openWith(file: LibraryFile) {
         val uri = viewModel.contentUri(file)
         if (!FilesIntents.launch(context, FilesIntents.view(file, uri))) {
             scope.launch {
@@ -172,6 +175,7 @@ internal fun FilesScreen(
                                 AppMenuItem(stringResource(R.string.feature_files_menu_view), { menu = Menu.View })
                                 AppMenuItem(stringResource(R.string.feature_files_menu_create_folder), { menu = Menu.None; dialog = Dialog.CreateFolder })
                                 AppMenuItem(stringResource(R.string.feature_files_menu_recycle_bin), { menu = Menu.None; onOpenTrash() })
+                                AppMenuItem(stringResource(R.string.feature_files_storage_title), { menu = Menu.None; onOpenStorage() })
                             }
                         }
                     }
@@ -238,7 +242,7 @@ internal fun FilesScreen(
                 }
                 if (singleFile) {
                     AppMenuItem(stringResource(R.string.feature_files_more_info), { moreMenu = false; infoFile = filesSelected.first(); dialog = Dialog.Info })
-                    AppMenuItem(stringResource(R.string.feature_files_more_open_with), { moreMenu = false; open(filesSelected.first()) })
+                    AppMenuItem(stringResource(R.string.feature_files_more_open_with), { moreMenu = false; openWith(filesSelected.first()) })
                 }
             }
         }
@@ -302,6 +306,15 @@ private fun FilesGrid(
     val list = state.viewMode == FilesViewMode.List
     LaunchedEffect(gridState) {
         androidx.compose.runtime.snapshotFlow { gridState.canScrollForward || gridState.canScrollBackward }.collect(onScrollable)
+    }
+    // "Open in Files": bring the revealed file into view once (the folder row and the sort row come before the files).
+    LaunchedEffect(state.reveal, state.files) {
+        val id = state.reveal ?: return@LaunchedEffect
+        val index = state.files.indexOfFirst { it.id == id }
+        if (index >= 0) {
+            gridState.scrollToItem(index + (if (state.subFolders.isNotEmpty()) 1 else 0) + 1)
+            viewModel.revealShown()
+        }
     }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val gap = 14.dp

@@ -33,3 +33,6 @@ interface LibraryFilesNavigation {
 }
 
 val LocalLibraryFilesNavigation = staticCompositionLocalOf<LibraryFilesNavigation?> { null }
+
+/** Opens a library file in the app's own viewer; while null, link taps use the system viewer. */
+val LocalLibraryFileOpener = staticCompositionLocalOf<((FileId) -> Unit)?> { null }

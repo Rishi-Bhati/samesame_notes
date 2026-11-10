@@ -47,6 +47,7 @@ object DocxExport {
         val textH = pageH - 2 * MARGIN
 
         val rels = ArrayList<Pair<String, String>>() // id -> media target
+        val hyperlinks = LinkedHashMap<String, String>() // uri -> relationship id
         val media = LinkedHashMap<String, ByteArray>() // word/media/x -> bytes
         var docPrId = 1
         val mediaIdByPath = HashMap<String, String>()
@@ -134,7 +135,14 @@ object DocxExport {
                         is VoiceObject -> sb.append(run("[Voice recording]", null))
                         else -> Unit
                     }
-                } else if (span.text.isNotEmpty()) sb.append(run(span.text, span))
+                } else if (span.text.isNotEmpty()) {
+                    val uri = span.style.link?.takeIf { it.isNotEmpty() }
+                    if (uri == null) sb.append(run(span.text, span))
+                    else {
+                        val rid = hyperlinks.getOrPut(uri) { "rIdLink${hyperlinks.size + 1}" }
+                        sb.append("<w:hyperlink r:id=\"$rid\" w:history=\"1\">").append(run(span.text, span)).append("</w:hyperlink>")
+                    }
+                }
             }
             return sb.append("</w:p>").toString()
         }
@@ -181,6 +189,9 @@ object DocxExport {
         val relXml = StringBuilder(XML_DECL + "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">")
         relXml.append("<Relationship Id=\"rIdStyles\" Type=\"$REL_NS/styles\" Target=\"styles.xml\"/>")
         relXml.append("<Relationship Id=\"rIdNumbering\" Type=\"$REL_NS/numbering\" Target=\"numbering.xml\"/>")
+        for ((uri, id) in hyperlinks) {
+            relXml.append("<Relationship Id=\"$id\" Type=\"$REL_NS/hyperlink\" Target=\"${xmlEscape(uri)}\" TargetMode=\"External\"/>")
+        }
         for ((id, target) in rels) relXml.append("<Relationship Id=\"$id\" Type=\"$REL_NS/image\" Target=\"$target\"/>")
         relXml.append("</Relationships>")
         pkg.part("word/_rels/document.xml.rels", relXml.toString())
@@ -198,12 +209,13 @@ object DocxExport {
             if (s.bold) rpr.append("<w:b/>")
             if (s.italic) rpr.append("<w:i/>")
             if (s.strikethrough) rpr.append("<w:strike/>")
-            s.color?.let { rpr.append("<w:color w:val=\"${it.rgbHex()}\"/>") }
+            if (s.link != null) rpr.append("<w:color w:val=\"0563C1\"/>")
+            else s.color?.let { rpr.append("<w:color w:val=\"${it.rgbHex()}\"/>") }
             s.fontSize?.let {
                 val hp = (it * HALF_POINTS_PER_SIZE).roundToInt().coerceIn(2, 3276)
                 rpr.append("<w:sz w:val=\"$hp\"/><w:szCs w:val=\"$hp\"/>")
             }
-            if (s.underline) rpr.append("<w:u w:val=\"single\"/>")
+            if (s.underline || s.link != null) rpr.append("<w:u w:val=\"single\"/>")
             s.highlight?.let { rpr.append("<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"${it.rgbHex()}\"/>") }
         }
         val pr = if (rpr.isEmpty()) "" else "<w:rPr>$rpr</w:rPr>"

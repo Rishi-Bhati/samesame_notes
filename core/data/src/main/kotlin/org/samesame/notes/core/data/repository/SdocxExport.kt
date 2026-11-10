@@ -5,6 +5,7 @@ import org.samesame.notes.core.export.render.renderPageImages
 import org.samesame.notes.core.model.document.NoteDocument
 import org.samesame.notes.core.sdocx.SdocxArchive
 import org.samesame.notes.core.sdocx.SdocxDocumentBuilder
+import org.samesame.notes.core.sdocx.SdocxLinkChannel
 import org.samesame.notes.core.sdocx.SdocxPageImageFallback
 import org.samesame.notes.core.sdocx.map.SdocxMapper
 import org.samesame.notes.core.sdocx.SdocxVoiceList
@@ -34,7 +35,10 @@ internal object SdocxExport {
         val withPages = SdocxPageImageFallback.apply(base, pageImages, nowUs = ::nowUs)
         // Note-level recordings become the note's voice-data list (spec §3.4 bit 13, objects §7).
         val audio = document.recordings.mapNotNull { r -> source.media(r.media)?.let { r.id to it } }.toMap()
-        val archive = SdocxVoiceList.apply(withPages, document.recordings, nowUs()) { audio[it.id] }
+        val voiced = SdocxVoiceList.apply(withPages, document.recordings, nowUs()) { audio[it.id] }
+        val imageSha = document.inlineObjects.filterIsInstance<org.samesame.notes.core.model.document.ImageObject>()
+            .mapNotNull { img -> source.media(img.media)?.let { img.media to SdocxLinkChannel.sha(it) } }.toMap()
+        val archive = SdocxLinkChannel.withEntry(voiced, SdocxLinkChannel.encode(document) { imageSha[it] })
         SdocxWriter().write(archive, out)
     }
 
@@ -48,10 +52,14 @@ internal object SdocxExport {
         recordingAudio: Map<String, ByteArray> = emptyMap(),
         /** The note's stored page, or null to keep the archive's own value. */
         lastViewedPageIndex: Int? = null,
+        /** sha-256 of an inline image's bytes by its media path, for the link side channel. */
+        imageSha: (String) -> String? = { null },
     ) {
         val now = nowUs()
         val textEdited = SdocxMapper.applyDocumentEdits(archive, document, now, lastViewedPageIndex = lastViewedPageIndex)
-        val edited = SdocxVoiceList.apply(textEdited, document.recordings, now) { recordingAudio[it.id] }
+        val voiced = SdocxVoiceList.apply(textEdited, document.recordings, now) { recordingAudio[it.id] }
+        // Links and library ids ride along in one extra entry; an unchanged note keeps the archive (and its bytes) as is.
+        val edited = SdocxLinkChannel.withEntry(voiced, SdocxLinkChannel.encode(document, imageSha))
         if (edited === archive && originalBytes != null) {
             out.write(originalBytes)
             out.flush()

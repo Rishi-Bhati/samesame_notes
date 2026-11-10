@@ -14,6 +14,7 @@ import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import org.samesame.notes.ComposerActivity
+import org.samesame.notes.ProvideLibraryFiles
 import org.samesame.notes.feature.files.FilesKey
 import org.samesame.notes.feature.files.FilesRoute
 import org.samesame.notes.feature.notes.NotesKey
@@ -41,6 +42,7 @@ fun SameSameNavDisplay(
     val open = remember(density) { ScreenTransitions.open<androidx.navigation3.runtime.NavKey>(density) }
     val close = remember(density) { ScreenTransitions.close<androidx.navigation3.runtime.NavKey>(density) }
 
+    ProvideLibraryFiles {
     NavDisplay(
         backStack = backStack,
         onBack = pop,
@@ -72,4 +74,5 @@ fun SameSameNavDisplay(
             entry<SettingsKey> { SettingsRoute(onBack = pop) }
         },
     )
+    }
 }

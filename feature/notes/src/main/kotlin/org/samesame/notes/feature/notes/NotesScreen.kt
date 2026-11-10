@@ -38,6 +38,8 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import org.samesame.notes.feature.share.NoteTransferViewModel
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -594,13 +596,18 @@ internal fun NotesScreen(
         }
     }
     if (saveDialog) {
+        val transferVm: NoteTransferViewModel = hiltViewModel()
+        var includeFiles by remember { mutableStateOf(true) }
+        val linkedBytes by produceState(0L, unlockedIds) { value = transferVm.service.linkedFilesBytes(unlockedIds) }
         SaveAsFileDialog(
             onDismiss = { saveDialog = false },
             onConfirm = { format ->
                 saveDialog = false
                 if (lockedCount > 0) message(resources.getString(R.string.feature_notes_save_except_locked))
-                transfer = TransferRequest.Save(unlockedIds, format)
+                transfer = TransferRequest.Save(unlockedIds, format, includeFiles)
             },
+            linkedFilesBytes = linkedBytes,
+            onIncludeLinkedFilesChange = { includeFiles = it },
         )
     }
     NoteTransferHost(

@@ -130,14 +130,16 @@ class BulkTransferViewModel @Inject constructor(
         }
     }
 
-    fun export(ids: List<NoteId>, format: ExportFormat, tree: Uri) {
+    suspend fun linkedFilesBytes(ids: List<NoteId>): Long = transfer.linkedFilesBytes(ids)
+
+    fun export(ids: List<NoteId>, format: ExportFormat, tree: Uri, includeLinkedFiles: Boolean = true) {
         if (ids.isEmpty() || _state.value is BulkState.Running) return
         _state.value = BulkState.Running(importing = false, done = 0, total = ids.size, name = "")
         viewModelScope.launch {
             val result = try {
                 val parent = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
                 transfer.exportEach(
-                    ids, format,
+                    ids, format, org.samesame.notes.core.export.ExportOptions(includeLinkedFiles = includeLinkedFiles),
                     onProgress = { done, total, title -> _state.value = BulkState.Running(importing = false, done = done, total = total, name = title) },
                 ) { item -> writeInto(parent, item) }
             } catch (e: kotlinx.coroutines.CancellationException) {

@@ -71,7 +71,7 @@ object MarkdownExport {
 
     private fun renderSpans(spans: List<Span>, obj: (Span) -> String): String {
         // group consecutive text spans with the same emphasis so markers are not repeated
-        data class Key(val b: Boolean, val i: Boolean, val s: Boolean, val u: Boolean)
+        data class Key(val b: Boolean, val i: Boolean, val s: Boolean, val u: Boolean, val link: String?)
         val sb = StringBuilder()
         var key: Key? = null
         val buf = StringBuilder()
@@ -92,18 +92,23 @@ object MarkdownExport {
                 k.i -> "*$text*"
                 else -> text
             }
+            k.link?.takeIf { it.isNotEmpty() }?.let { text = "[$text](${mdUrl(it)})" }
             sb.append(lead).append(text).append(trail)
             buf.setLength(0)
         }
         for (span in spans) {
             if (span.isObject) { flush(); key = null; sb.append(obj(span)); continue }
-            val k = Key(span.style.bold, span.style.italic, span.style.strikethrough, span.style.underline)
+            val k = Key(span.style.bold, span.style.italic, span.style.strikethrough, span.style.underline, span.style.link)
             if (k != key) { flush(); key = k }
             buf.append(span.text)
         }
         flush()
         return sb.toString()
     }
+
+    /** Link destination: spaces and parentheses percent-encoded so the markdown link stays well formed. */
+    private fun mdUrl(uri: String): String = uri.replace(" ", "%20").replace("(", "%28").replace(")", "%29")
+        .replace("<", "%3C").replace(">", "%3E")
 
     private fun escapeInline(s: String): String {
         val sb = StringBuilder(s.length + 8)

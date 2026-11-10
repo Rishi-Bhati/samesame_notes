@@ -24,6 +24,7 @@ import org.samesame.notes.core.model.document.NoteDocument
 import org.samesame.notes.core.model.document.PageLayout
 import org.samesame.notes.core.model.document.PageSpec
 import org.samesame.notes.core.model.document.ViewState
+import org.samesame.notes.core.model.files.FileIdRemap
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileNotFoundException
@@ -70,6 +71,13 @@ private const val TMP_SUFFIX = ".tmp"
  * read as before and rewritten as v2 on the next pack.
  */
 const val CONTAINER_VERSION = 2
+
+/**
+ * Container v3 is what "Save as file" writes when it bundles linked library files: v2 plus the optional
+ * `files/files.json` + `files/<sha256>` entries (see [LinkedFileEntry]). Notes on disk stay v2; every reader accepts
+ * v1..v3, and a v3 container without the files section is valid.
+ */
+const val EXPORT_CONTAINER_VERSION = 3
 internal const val PAYLOAD_FILE = "payload.enc"
 
 /** The note is locked and has not been opened with its password / biometrics in this process. */
@@ -806,6 +814,37 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
     }
 
     /**
+     * Streams the packed container as a v3 container that also bundles [files] (`files/files.json` + `files/<sha256>`,
+     * one entry per distinct content). With no files this is exactly [export]. Locked notes are refused.
+     */
+    suspend fun exportWithFiles(noteId: String, out: OutputStream, files: List<LinkedFileSource>) {
+        if (files.isEmpty()) return export(noteId, out)
+        withContext(Dispatchers.IO) {
+            if (isLockedContainer(noteId)) throw NoteLockedException(noteId)
+            ensureWorking(noteId)
+            pack(noteId)
+            ZipFile(containerFile(noteId)).use { zf ->
+                val zos = ZipOutputStream(out)
+                writeEntry(zos, MANIFEST_FILE, manifestBytes(noteId, null, EXPORT_CONTAINER_VERSION), stored = false)
+                for (entry in zf.entries()) {
+                    if (entry.isDirectory || entry.name == MANIFEST_FILE) continue
+                    writeEntry(zos, entry.name, readEntryLimited(zf, entry), stored = entry.method == ZipEntry.STORED)
+                }
+                writeEntry(zos, LINKED_FILES_INDEX, LinkedFilesJson.encode(files.map { it.entry }), stored = false)
+                val written = HashSet<String>()
+                for (f in files) {
+                    if (!written.add(f.entry.sha256)) continue
+                    zos.putNextEntry(ZipEntry("$LINKED_FILES_DIR/${f.entry.sha256}"))
+                    f.open().use { it.copyTo(zos) }
+                    zos.closeEntry()
+                }
+                zos.finish()
+            }
+            out.flush()
+        }
+    }
+
+    /**
      * Validates and stores a foreign container under a fresh id (never the one in the file: an id chosen by
      * someone else could collide with, or shadow the staging paths of, an existing note). Every entry is
      * inflated once under [Limits] caps, so a zip bomb is refused here rather than on first open.
@@ -813,14 +852,24 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
     suspend fun import(input: InputStream): NoteDocument = importWithLegacyViewState(input).first
 
     /** [import] plus the reading position an older (v2-v6) document still carried, for the per-note store. */
-    suspend fun importWithLegacyViewState(input: InputStream): Pair<NoteDocument, ViewState?> = withContext(Dispatchers.IO) {
+    suspend fun importWithLegacyViewState(input: InputStream): Pair<NoteDocument, ViewState?> =
+        importContainer(input, null).let { it.document to it.legacyViewState }
+
+    /**
+     * [importWithLegacyViewState] that also restores the library files a v3 container bundles through [restorer]
+     * (ids the restorer had to change are rewritten in the document). A container without the files section, or a
+     * restorer that fails, still imports the note.
+     */
+    suspend fun importContainer(input: InputStream, restorer: LinkedFilesRestorer?): ContainerImport = withContext(Dispatchers.IO) {
         notesRoot.mkdirs()
         val staged = File(notesRoot, "import-${UUID.randomUUID()}.$NOTE_CONTAINER_EXTENSION$TMP_SUFFIX")
         try {
             staged.outputStream().use { LimitedInputStream(input, Limits.MAX_IMPORT_BYTES, "Note file", closeInput = false).copyTo(it) }
             var text = ""
             var version = 0
-            val doc = ZipFile(staged).use { zf ->
+            var bundled = 0
+            var remap: Map<String, String> = emptyMap()
+            var doc = ZipFile(staged).use { zf ->
                 val info = readManifestInfo(zf)
                 if (info.locked) throw IOException("Locked notes can't be imported: their key lives on the original device")
                 checkEntrySizes(zf, staged.length())
@@ -828,12 +877,52 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
                 version = documentVersion(text)
                 parseDocument(text, version)
             }
+            if (restorer != null) {
+                val result = restoreBundledFiles(staged, doc.title, restorer)
+                bundled = result.first
+                remap = result.second
+            }
             val id = UUID.randomUUID().toString()
-            rewriteContainer(staged, containerFile(id), id)
-            doc.copy(id = id) to
-                if (version < NOTE_DOCUMENT_FORMAT_VERSION) NoteDocumentMigrations.legacyViewState(text) else null
+            rewriteContainer(staged, containerFile(id), id) { FileIdRemap.apply(it, remap) }
+            doc = FileIdRemap.apply(doc, remap)
+            ContainerImport(
+                doc.copy(id = id),
+                if (version < NOTE_DOCUMENT_FORMAT_VERSION) NoteDocumentMigrations.legacyViewState(text) else null,
+                bundled,
+            )
         } finally {
             staged.delete()
+        }
+    }
+
+    /**
+     * Hands the files section of a staged v3 container to [restorer]. Returns (files offered, id remap). Never throws
+     * except for cancellation: a damaged files section must not cost the user the note itself.
+     */
+    private suspend fun restoreBundledFiles(staged: File, title: String, restorer: LinkedFilesRestorer): Pair<Int, Map<String, String>> {
+        try {
+            ZipFile(staged).use { zf ->
+                val info = readManifestInfo(zf)
+                if (info.containerVersion < EXPORT_CONTAINER_VERSION) return 0 to emptyMap()
+                val index = zf.getEntry(LINKED_FILES_INDEX) ?: return 0 to emptyMap()
+                val entries = LinkedFilesJson.decode(
+                    zf.getInputStream(index).use { it.readBytesLimited(Limits.MAX_DOCUMENT_JSON_BYTES.toLong(), LINKED_FILES_INDEX) },
+                ).filter { zf.getEntry("$LINKED_FILES_DIR/${it.sha256}") != null }
+                if (entries.isEmpty()) return 0 to emptyMap()
+                // One shared budget keeps a crafted container from inflating to more than the usual ratio allows.
+                val budget = InflateBudget(staged.length())
+                val remap = restorer.restore(title, entries) { e ->
+                    val zin = zf.getInputStream(zf.getEntry("$LINKED_FILES_DIR/${e.sha256}"))
+                    LimitedInputStream(zin, minOf(Limits.MAX_LIBRARY_FILE_BYTES, budget.remaining()), e.sha256, closeInput = true)
+                        .also { budget.consume(e.size.coerceAtMost(Limits.MAX_LIBRARY_FILE_BYTES)) }
+                }
+                return entries.size to remap
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            log.log(Level.WARNING, "Bundled files of an imported note could not be restored", e)
+            return 0 to emptyMap()
         }
     }
 
@@ -844,6 +933,8 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
         for (entry in zf.entries()) {
             budget.countEntry()
             if (entry.isDirectory) continue
+            // Bundled files are capped when they are restored; the small index is inflated and checked like any entry.
+            if (entry.name != LINKED_FILES_INDEX && entry.name.startsWith("$LINKED_FILES_DIR/")) continue
             zf.getInputStream(entry).use { src ->
                 val limited = budget.limit(src, entry.name)
                 while (limited.read(sink) >= 0) Unit
@@ -960,6 +1051,8 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
         fun consume(bytes: Long) {
             left -= bytes
         }
+
+        fun remaining(): Long = left.coerceAtLeast(0)
     }
 
     /**
@@ -1031,7 +1124,7 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
             }
     }
 
-    private fun rewriteContainer(src: File, dst: File, newId: String) {
+    private fun rewriteContainer(src: File, dst: File, newId: String, transform: (NoteDocument) -> NoteDocument = { it }) {
         dst.parentFile?.mkdirs()
         val tmp = File(dst.parentFile, dst.name + TMP_SUFFIX)
         try {
@@ -1044,7 +1137,7 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
                         if (entry.isDirectory || entry.name == MANIFEST_FILE || !isAllowedEntry(entry.name)) continue
                         var bytes = readEntryLimited(zf, entry)
                         if (entry.name == DOCUMENT_FILE) {
-                            bytes = NoteDocument.fromJson(bytes.decodeToString()).copy(id = newId).toJson().encodeToByteArray()
+                            bytes = transform(NoteDocument.fromJson(bytes.decodeToString()).copy(id = newId)).toJson().encodeToByteArray()
                         }
                         writeEntry(zos, entry.name, bytes, stored = entry.method == ZipEntry.STORED)
                     }
@@ -1083,7 +1176,7 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
         val version = obj["formatVersion"]?.jsonPrimitive?.int ?: throw IOException("Bad manifest")
         if (version > NOTE_DOCUMENT_FORMAT_VERSION) throw IOException("Note format version $version is newer than this app supports")
         val containerVersion = obj["containerVersion"]?.jsonPrimitive?.int ?: 1
-        if (containerVersion > CONTAINER_VERSION) throw IOException("Container version $containerVersion is newer than this app supports")
+        if (containerVersion > EXPORT_CONTAINER_VERSION) throw IOException("Container version $containerVersion is newer than this app supports")
         val locked = containerVersion >= 2 && obj["locked"]?.jsonPrimitive?.content == "true"
         val key = if (locked) obj["wrappedKey"]?.jsonPrimitive?.content?.let { Base64.getDecoder().decode(it) } else null
         return ManifestInfo(
@@ -1091,10 +1184,10 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
         )
     }
 
-    private fun manifestBytes(noteId: String, wrappedKey: ByteArray?): ByteArray = buildJsonObject {
+    private fun manifestBytes(noteId: String, wrappedKey: ByteArray?, containerVersion: Int = CONTAINER_VERSION): ByteArray = buildJsonObject {
         put("format", FORMAT_NAME)
         put("formatVersion", NOTE_DOCUMENT_FORMAT_VERSION)
-        put("containerVersion", CONTAINER_VERSION)
+        put("containerVersion", containerVersion)
         put("noteId", noteId)
         if (wrappedKey != null) {
             put("locked", true)

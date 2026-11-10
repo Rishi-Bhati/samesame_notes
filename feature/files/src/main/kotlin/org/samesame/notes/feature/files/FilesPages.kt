@@ -154,15 +154,13 @@ internal fun FilesTrashScreen(viewModel: FilesViewModel, snackbar: SnackbarHostS
 
 /** Name search over the library; every result shows its folder path, tap opens the file. */
 @Composable
-internal fun FilesSearchScreen(viewModel: FilesViewModel, folders: List<FileFolder>, snackbar: SnackbarHostState, onBack: () -> Unit) {
+internal fun FilesSearchScreen(viewModel: FilesViewModel, folders: List<FileFolder>, snackbar: SnackbarHostState, onBack: () -> Unit, initialQuery: String = "") {
     val colors = SameSameTheme.colors
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var query by remember { mutableStateOf("") }
+    var query by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(initialQuery) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
     val results by remember(query) { if (query.isBlank()) emptyFlow() else viewModel.search(query) }.collectAsState(initial = emptyList())
-    val noApp = stringResource(R.string.feature_files_no_app)
     Box(Modifier.fillMaxSize().background(colors.background)) {
         Column(Modifier.fillMaxSize()) {
             SimpleTopBar(
@@ -196,9 +194,7 @@ internal fun FilesSearchScreen(viewModel: FilesViewModel, folders: List<FileFold
                     val path = FilesFormat.path(file.folderId, folders)
                     FileListItem(
                         file, { viewModel.contentUri(file) }, false, false,
-                        onClick = {
-                            if (!FilesIntents.launch(context, FilesIntents.view(file, viewModel.contentUri(file)))) scope.launch { snackbar.showSnackbar(noApp) }
-                        },
+                        onClick = { org.samesame.notes.feature.files.viewer.openLibraryFile(context, file.id) },
                         onLongClick = {},
                         secondLine = if (path.isEmpty()) FilesFormat.sizeAndDate(file) else stringResource(R.string.feature_files_search_in, path),
                     )
