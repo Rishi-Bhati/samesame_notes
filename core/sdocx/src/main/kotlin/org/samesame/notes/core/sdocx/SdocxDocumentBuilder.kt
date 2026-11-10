@@ -37,6 +37,8 @@ object SdocxDocumentBuilder {
         nowUs: Long,
         /** The note's stored reading position (it is no longer part of [document]). */
         lastViewedPageIndex: Int = 0,
+        /** Pictures in the body text, by inline object id (sizes in `.sdocx` page units). */
+        inlineImages: Map<String, SdocxImageSource> = emptyMap(),
         uuid: () -> String = { java.util.UUID.randomUUID().toString() },
     ): SdocxArchive {
         val pageSpecs = document.pages.ifEmpty { listOf(PageSpec(id = uuid())) }
@@ -47,8 +49,21 @@ object SdocxDocumentBuilder {
         val titleBox = SdocxTextCodec.textBox(
             uuid = uuid(), modifiedUs = nowUs, text = RichText.of(document.title), titled = true,
         )
+        // Pictures in the text become inline image objects (the form a real file proves); a
+        // placeholder for anything else is left out of the text.
+        val mediaAdder = SdocxImages.MediaAdder(
+            MediaRegistry(extended = true, formatVersion = SdocxFormat.WRITE_FORMAT_VERSION, entries = emptyList(), hasTerminator = true),
+            emptyMap(),
+        )
+        var imageTop = SdocxBodyObjects.FIRST_TOP
+        val prepared = SdocxBodyObjects.prepare(document.body, null) { objectId ->
+            val source = inlineImages[objectId] ?: return@prepare null
+            val rect = SdocxBodyObjects.placement(source, imageTop, PAGE_WIDTH_PX)
+            imageTop = rect.bottom + SdocxBodyObjects.GAP
+            SdocxImages.record(uuid(), nowUs, rect, mediaAdder.add(source.bytes, source.extension, nowUs), PAGE_WIDTH_PX)
+        }
         val bodyBox = SdocxTextCodec.textBox(
-            uuid = uuid(), modifiedUs = nowUs, text = document.body, titled = false,
+            uuid = uuid(), modifiedUs = nowUs, text = prepared.text, titled = false, objects = prepared.spans,
         )
 
         val notePropsRaw = LeWriter().apply {
@@ -146,8 +161,8 @@ object SdocxDocumentBuilder {
             note = note,
             pageIdInfo = PageIdInfo(ByteArray(32), pages.map { PageIdInfo.Entry(it.pageId, ByteArray(32)) }),
             pages = pages,
-            media = MediaRegistry(extended = true, formatVersion = SdocxFormat.WRITE_FORMAT_VERSION, entries = emptyList(), hasTerminator = true),
-            mediaFiles = emptyMap(),
+            media = mediaAdder.registry(),
+            mediaFiles = mediaAdder.files,
             extraEntries = emptyMap(),
         )
     }

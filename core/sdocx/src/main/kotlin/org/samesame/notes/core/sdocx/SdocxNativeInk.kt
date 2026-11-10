@@ -20,8 +20,9 @@ object SdocxNativeInk {
         pageInk: Map<String, List<SdocxInkSample>>,
         nowUs: Long,
         lastViewedPageIndex: Int = 0,
+        inlineImages: Map<String, SdocxImageSource> = emptyMap(),
         uuid: () -> String = { java.util.UUID.randomUUID().toString() },
-    ): SdocxArchive = apply(SdocxDocumentBuilder.toArchive(document, nowUs, lastViewedPageIndex, uuid), pageInk, nowUs, uuid)
+    ): SdocxArchive = apply(SdocxDocumentBuilder.toArchive(document, nowUs, lastViewedPageIndex, inlineImages, uuid), pageInk, nowUs, uuid)
 
     /** Adds [pageInk] to a freshly built [archive]. */
     fun apply(

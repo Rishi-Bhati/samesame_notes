@@ -62,8 +62,9 @@ object SdocxVoiceList {
             if (bytes == null || bytes.isEmpty()) continue // nothing playable to ship
             changed = true
             val ext = rec.media.substringAfterLast('.', "m4a").ifEmpty { "m4a" }
-            var fileName = "voice-${rec.id}.$ext"
-            while (!usedNames.add(fileName)) fileName = "voice-${rec.id}-$nextBind.$ext"
+            // Real files name their media `<bind number>@<name>`.
+            var fileName = "$nextBind@voice-${rec.id.take(8)}.$ext"
+            while (!usedNames.add(fileName)) fileName = "$nextBind@voice-${rec.id}-$nextBind.$ext"
             val bind = nextBind++
             media += MediaEntry(
                 bindNumber = bind,
@@ -166,7 +167,8 @@ object SdocxVoiceList {
             fileId = bind,
             name = rec.name.ifEmpty { "Voice %03d".format(index + 1) },
             playTime = rec.displayDuration.ifEmpty { formatPlayTime(duration) },
-            createdTime = rec.createdAtMs * US_PER_MS,
+            // Milliseconds, unlike every other time in the file (verified on a real recording).
+            createdTime = rec.createdAtMs,
             events = timeline.map { VoiceDataRecord.Event(it.action, toUs(it.timestampMs)) },
             recordingTime = duration,
         )
@@ -198,7 +200,8 @@ object SdocxVoiceList {
         val h = total / 3600
         val m = total % 3600 / 60
         val s = total % 60
-        return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s)
+        // Real files always write hours ("00:00:09").
+        return "%02d:%02d:%02d".format(h, m, s)
     }
 
     private fun hexSha256(bytes: ByteArray): String =

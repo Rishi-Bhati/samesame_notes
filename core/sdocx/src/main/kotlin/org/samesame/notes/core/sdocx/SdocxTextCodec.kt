@@ -52,14 +52,16 @@ internal object SdocxTextCodec {
         text: RichText,
         titled: Boolean,
         previous: TextBoxRecord? = null,
+        /** The body's object spans, already resolved against [text]; null keeps the source's by position. */
+        objects: List<TextCommon.ObjectSpan>? = null,
     ): ByteArray {
         if (previous != null) {
-            val tc = textCommon(text, previous.text, titled)
+            val tc = textCommon(text, previous.text, titled, objects)
             replaceTextCommon(previous.raw, tc, modifiedUs)?.let { return it }
         }
         val base = baseBlock(uuid, modifiedUs)
         val shapeBase = shapeBaseBlock()
-        val shape = shapeBlock(textCommon(text, previous?.text, titled), titled)
+        val shape = shapeBlock(textCommon(text, previous?.text, titled, objects), titled)
         val textBox = textBoxBlock()
         return base + shapeBase + shape + textBox
     }
@@ -193,7 +195,12 @@ internal object SdocxTextCodec {
      * records and a parsing-state record. Paragraph records address paragraphs by index
      * (`[i, i+1)`), spans address UTF-16 units with an exclusive end.
      */
-    fun textCommon(text: RichText, previous: TextCommon? = null, titled: Boolean = false): ByteArray {
+    fun textCommon(
+        text: RichText,
+        previous: TextCommon? = null,
+        titled: Boolean = false,
+        objects: List<TextCommon.ObjectSpan>? = null,
+    ): ByteArray {
         val units = text.text
         val w = LeWriter()
         w.i32(units.length)
@@ -243,8 +250,8 @@ internal object SdocxTextCodec {
             else -> w.u16(0)
         }
 
-        val tailFlags = previous?.tailFlags ?: 0
-        val objectSpans = preservedObjectSpans(previous, anchor, units)
+        val objectSpans = objects ?: preservedObjectSpans(previous, anchor, units)
+        val tailFlags = (previous?.tailFlags ?: 0) or (if (objectSpans.isNotEmpty()) TextCommon.TAIL_FLAG_OBJECT_SPANS else 0)
         w.i32(tailFlags)
         w.i32(previous?.reservedTail ?: 0)
         if (tailFlags and TextCommon.TAIL_FLAG_OBJECT_SPANS != 0) {

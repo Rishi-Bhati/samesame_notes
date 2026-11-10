@@ -277,19 +277,46 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
     }
 
     /**
-     * Content of one page. When the page has no native ink file yet, an imported `.sdocx` note is read
-     * from its `sdocx/raw/origin.sdocx` side channel and its strokes are surfaced through the ink model
-     * (view-side adapter, objects spec §4.3). A local ink file always wins once the page is edited.
+     * Content of one page. For a note imported from `.sdocx` the handwriting of the source file is
+     * surfaced through the ink model (objects spec §4.3) until the page has an ink file of its own
+     * that already contains it.
      */
     suspend fun readPage(noteId: String, pageId: String): PageContent = withContext(Dispatchers.IO) {
-        val dir = ensureWorking(noteId)
+        PageContent(pageId, pageElements(ensureWorking(noteId), pageId), 0)
+    }
+
+    /** True when the page has its own ink file, i.e. it was edited after the note was created or imported. */
+    suspend fun hasPageFile(noteId: String, pageId: String): Boolean = withContext(Dispatchers.IO) {
+        pageFile(ensureWorking(noteId), pageId).let { it.exists() && it.length() > 0L }
+    }
+
+    private fun pageElements(dir: File, pageId: String): List<PageElement> {
         val file = pageFile(dir, pageId)
-        val elements = if (!file.exists() || file.length() == 0L) {
-            sdocxPageElements(dir, pageId)
-        } else {
-            file.inputStream().buffered().use { PageLayerCodec.decode(it) }
-        }
-        PageContent(pageId, elements, 0)
+        val local = if (file.exists() && file.length() > 0L) file.inputStream().buffered().use { PageLayerCodec.decode(it) } else null
+        if (!File(dir, SdocxSideChannel.RAW_ARCHIVE_PATH).isFile) return local ?: emptyList()
+        if (local != null && surfacedMarker(dir, pageId).isFile) return local
+        val surfaced = sdocxPageElements(dir, pageId)
+        if (local == null) return surfaced
+        // The page was saved by a version that did not show the imported handwriting: its file holds
+        // only what was drawn here, so the source strokes go underneath instead of counting as deleted.
+        val ids = local.mapTo(HashSet()) { it.id }
+        return surfaced.filter { it.id !in ids } + local
+    }
+
+    /**
+     * Marks a page of an imported note whose ink file contains the surfaced source handwriting, so
+     * that from then on the file alone is the page (a stroke missing from it was deleted by the user).
+     * Written after the page file: a crash in between only shows a deleted source stroke again.
+     */
+    private fun markSurfaced(dir: File, pageId: String) {
+        if (!File(dir, SdocxSideChannel.RAW_ARCHIVE_PATH).isFile) return
+        val marker = surfacedMarker(dir, pageId)
+        if (!marker.isFile) writeFileAtomically(marker) { }
+    }
+
+    private fun surfacedMarker(dir: File, pageId: String): File {
+        require(isSafeId(pageId)) { "Bad page id" }
+        return File(File(File(dir, EXTRAS_DIR), "surfaced"), pageId)
     }
 
     /** Strokes of an imported `.sdocx` page, or empty when the note has no side channel / the page is not in it. */
@@ -298,7 +325,7 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
         if (!origin.isFile) return emptyList()
         val archive = runCatching { SdocxReader().read(origin) }.getOrNull() ?: return emptyList()
         val page = archive.pages.firstOrNull { it.pageId == pageId } ?: return emptyList()
-        return SdocxInkBridge.pageContent(archive, page).elements
+        return runCatching { SdocxInkBridge.pageElements(archive, page) }.getOrDefault(emptyList())
     }
 
     /** Read-only view of one note for [read]. */
@@ -334,11 +361,7 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
                 val dir = workingDir(noteId)
                 return@withContext block(object : NoteReader {
                     override fun document() = doc
-                    override fun page(pageId: String): PageContent {
-                        val file = pageFile(dir, pageId)
-                        val elements = if (!file.exists()) emptyList() else file.inputStream().buffered().use { PageLayerCodec.decode(it) }
-                        return PageContent(pageId, elements, 0)
-                    }
+                    override fun page(pageId: String): PageContent = PageContent(pageId, pageElements(dir, pageId), 0)
                     override fun media(path: String): ByteArray? {
                         val parts = path.split('/')
                         if (parts.size != 2 || parts[0] != "media" || !isSafeId(parts[1])) return null
@@ -375,8 +398,9 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
     }
 
     suspend fun writePage(noteId: String, content: PageContent) = withContext(Dispatchers.IO) {
-        val file = pageFile(ensureWorking(noteId), content.pageId)
-        writeFileAtomically(file) { PageLayerCodec.encode(content, it) }
+        val dir = ensureWorking(noteId)
+        writeFileAtomically(pageFile(dir, content.pageId)) { PageLayerCodec.encode(content, it) }
+        markSurfaced(dir, content.pageId)
         unpacked += noteId
         packIfLocked(noteId)
     }
@@ -475,6 +499,7 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
         val dir = ensureWorking(noteId)
         for (page in snapshot.dirtyPages) {
             writeFileAtomically(pageFile(dir, page.pageId)) { PageLayerCodec.encode(page, it) }
+            markSurfaced(dir, page.pageId)
         }
         beforeDocumentCommit?.invoke()
         writeFileAtomically(File(dir, DOCUMENT_FILE)) { it.write(doc.toJson().encodeToByteArray()) }

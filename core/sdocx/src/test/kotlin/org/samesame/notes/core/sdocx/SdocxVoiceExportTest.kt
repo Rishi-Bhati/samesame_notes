@@ -47,7 +47,7 @@ class SdocxVoiceExportTest {
         assertThat(back.map { it.elapsedMs }).containsExactly(18_000L, 75_000L).inOrder()
         assertThat(back.map { it.createdAtMs }).containsExactly(t0, t0 + 100_000).inOrder()
         assertThat(back[0].displayDuration).isEqualTo("00:18")
-        assertThat(back[1].displayDuration).isEqualTo("01:15")
+        assertThat(back[1].displayDuration).isEqualTo("00:01:15")
         assertThat(back[0].timeline).isEqualTo(recs[0].timeline)
         assertThat(back[1].timeline).containsExactly(
             VoiceTimelineEvent(1, t0 + 100_000), VoiceTimelineEvent(4, t0 + 175_000),
