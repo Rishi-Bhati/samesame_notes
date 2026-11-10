@@ -264,12 +264,35 @@ internal class DefaultNoteRepository @Inject constructor(
                     .filter { it.libraryFileId != null }
                     .mapNotNull { img -> documents.readMedia(id.value, img.media)?.let { img.media to org.samesame.notes.core.sdocx.SdocxLinkChannel.sha(it) } }
                     .toMap()
+                // Handwriting: only pages with an ink file of their own can differ from the source, so
+                // an untouched page is not even compared and keeps its bytes.
+                val pageStrokes = HashMap<String, List<org.samesame.notes.core.sdocx.SdocxPageStroke>>()
+                for (archivePage in original.pages) {
+                    if (!documents.hasPageFile(id.value, archivePage.pageId)) continue
+                    val content = documents.readPage(id.value, archivePage.pageId)
+                    pageStrokes[archivePage.pageId] =
+                        org.samesame.notes.core.document.sdocx.SdocxInkBridge.pageStrokes(original, archivePage, content)
+                }
+                // Pictures put into the text here; the ones that came with the file keep their records.
+                val scale = org.samesame.notes.core.sdocx.map.SdocxMapper.geometryScale(original)
+                val sourceIds = org.samesame.notes.core.sdocx.map.SdocxMapper.toNoteDocument(original, id.value)
+                    .inlineObjects.mapTo(HashSet()) { it.id }
+                val newImages = HashMap<String, org.samesame.notes.core.sdocx.SdocxImageSource>()
+                for (img in document.inlineObjects.filterIsInstance<org.samesame.notes.core.model.document.ImageObject>()) {
+                    if (img.id in sourceIds || !(img.widthPu > 0f) || !(img.heightPu > 0f)) continue
+                    val bytes = documents.readMedia(id.value, img.media)?.takeIf { it.isNotEmpty() } ?: continue
+                    newImages[img.id] = org.samesame.notes.core.sdocx.SdocxImageSource(
+                        bytes, extensionOf(img.media), (img.widthPu / scale).toDouble(), (img.heightPu / scale).toDouble(),
+                    )
+                }
                 SdocxExport.exportImported(
                     original, document, out,
                     sideChannel[org.samesame.notes.core.sdocx.SdocxSideChannel.RAW_ARCHIVE_PATH],
                     audio,
                     lastViewedPageIndex = lastViewedPageIndex,
                     imageSha = { imageSha[it] },
+                    pageStrokes = pageStrokes,
+                    newImages = newImages,
                 )
             } else {
                 val source = object : org.samesame.notes.core.export.ExportSource {

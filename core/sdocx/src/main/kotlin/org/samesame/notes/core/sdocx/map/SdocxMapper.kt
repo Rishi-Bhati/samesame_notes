@@ -105,24 +105,57 @@ object SdocxMapper {
         nowUs: Long,
         /** The note's stored page; null keeps the archive's own value (a scroll is not a document edit). */
         lastViewedPageIndex: Int? = null,
+        /** Pictures put into the body in SameSame, by inline object id (sizes in `.sdocx` page units). */
+        newImages: Map<String, org.samesame.notes.core.sdocx.SdocxImageSource> = emptyMap(),
         newUuid: () -> String = { java.util.UUID.randomUUID().toString() },
     ): SdocxArchive {
         val titleChanged = title(archive) != document.title
-        val bodyChanged = archive.note.body.text?.text.orEmpty() != document.body.text
-        if (!titleChanged && !bodyChanged) return archive
+        val bodyChanged = archive.note.body.text?.text.orEmpty() != document.body.text ||
+            bodyObjectIds(document.body) != bodyObjectIds(toNoteDocument(archive, document.id).body)
+        val pageIndex = lastViewedPageIndex?.coerceIn(0, maxOf(archive.pages.size - 1, 0))
+        val viewChanged = pageIndex != null && pageIndex != archive.endTag.lastViewedPageIndex
+        if (!titleChanged && !bodyChanged) {
+            // A reading position is stored in end_tag.bin, so an export must update it even when the
+            // note text did not change. It is not an edit: note modified time and docHash stay.
+            if (!viewChanged) return archive
+            return archive.withEndTag(
+                org.samesame.notes.core.sdocx.SdocxMirror.endTag(
+                    archive.note, archive.endTag,
+                    modifiedTimeUs = archive.note.modifiedTime,
+                    displayModifiedTimeUs = archive.endTag.displayModifiedTime,
+                    lastViewedPageIndex = pageIndex,
+                ),
+            )
+        }
 
+        // Rebuild only the changed text box. The previous record lets the codec carry spans and
+        // paragraphs it cannot model (font names, hyperlinks, timestamps, line spacing) across the
+        // edit by re-anchoring them on unchanged text (spec §12.2, §14.3).
         val titleBox = org.samesame.notes.core.sdocx.SdocxTextCodec.textBox(
             uuid = newUuid(), modifiedUs = nowUs, text = RichText.of(document.title), titled = true,
+            previous = archive.note.title,
         )
+        // Body objects: a placeholder keeps its source record, gets a new image record, or is dropped.
+        val mediaAdder = org.samesame.notes.core.sdocx.SdocxImages.MediaAdder(archive.media, archive.mediaFiles)
+        var imageTop = org.samesame.notes.core.sdocx.SdocxBodyObjects.FIRST_TOP
+        val prepared = org.samesame.notes.core.sdocx.SdocxBodyObjects.prepare(document.body, archive.note.body.text) { objectId ->
+            val source = newImages[objectId] ?: return@prepare null
+            val rect = org.samesame.notes.core.sdocx.SdocxBodyObjects.placement(source, imageTop, archive.note.width)
+            imageTop = rect.bottom + org.samesame.notes.core.sdocx.SdocxBodyObjects.GAP
+            val bind = mediaAdder.add(source.bytes, source.extension, nowUs)
+            org.samesame.notes.core.sdocx.SdocxImages.record(newUuid(), nowUs, rect, bind, archive.note.width)
+        }
         val bodyBox = org.samesame.notes.core.sdocx.SdocxTextCodec.textBox(
-            uuid = newUuid(), modifiedUs = nowUs, text = document.body, titled = false,
+            uuid = newUuid(), modifiedUs = nowUs, text = prepared.text, titled = false,
+            previous = archive.note.body, objects = prepared.spans,
         )
         val note = org.samesame.notes.core.sdocx.record.NoteRecord(
             propOffset = archive.note.propOffset,
             noteFlags = archive.note.noteFlags,
             propMask = archive.note.propMask,
             formatVersion = archive.note.formatVersion,
-            noteId = document.id,
+            // The sdocx noteId identifies the source note; a SameSame note id is not a replacement.
+            noteId = archive.note.noteId,
             fileRevision = archive.note.fileRevision + 1,
             createdTime = archive.note.createdTime,
             modifiedTime = nowUs,
@@ -140,47 +173,31 @@ object SdocxMapper {
             properties = archive.note.properties,
             docHash = archive.note.docHash,
         )
-        val endTag = org.samesame.notes.core.sdocx.record.EndTagRecord(
-            formatVersion = archive.endTag.formatVersion,
-            noteId = document.id,
-            modifiedTime = nowUs,
-            propertyFlags = archive.endTag.propertyFlags,
-            coverImage = archive.endTag.coverImage,
-            noteWidth = archive.endTag.noteWidth,
-            noteHeight = archive.endTag.noteHeight,
-            appName = archive.endTag.appName,
-            appMajorVersion = archive.endTag.appMajorVersion,
-            appMinorVersion = archive.endTag.appMinorVersion,
-            appPatchName = archive.endTag.appPatchName,
-            minFormatVersion = archive.endTag.minFormatVersion,
-            createdTime = archive.endTag.createdTime,
-            lastViewedPageIndex = (lastViewedPageIndex ?: archive.endTag.lastViewedPageIndex)
-                .coerceIn(0, maxOf(archive.pages.size - 1, 0)),
+        val endTag = org.samesame.notes.core.sdocx.SdocxMirror.endTag(
+            note, archive.endTag, modifiedTimeUs = nowUs, displayModifiedTimeUs = nowUs,
             // Keep the imported note's sdocx page mode: list and single both map to SameSame Pages on
             // import (see toNoteDocument), so deriving it from the layout would turn a LIST note into
-            // SINGLE on the first text edit.
-            pageMode = archive.endTag.pageMode,
-            documentType = archive.endTag.documentType,
-            ownerId = archive.endTag.ownerId,
-            reserved1 = archive.endTag.reserved1,
-            reserved2 = archive.endTag.reserved2,
-            displayCreatedTime = archive.endTag.displayCreatedTime,
-            displayModifiedTime = nowUs,
-            lastRecognizedDataModifiedTime = archive.endTag.lastRecognizedDataModifiedTime,
-            fixedFont = archive.endTag.fixedFont,
-            fixedTextDirection = archive.endTag.fixedTextDirection,
-            fixedBackgroundTheme = archive.endTag.fixedBackgroundTheme,
-            hasTail = archive.endTag.hasTail,
+            // SINGLE on the first text edit. SdocxMirror copies the source pageMode.
+            lastViewedPageIndex = (pageIndex ?: archive.endTag.lastViewedPageIndex),
         )
-        return SdocxArchive(
+        return archive.rebuilt(
             endTag = endTag,
             note = note,
-            pageIdInfo = archive.pageIdInfo,
-            pages = archive.pages,
-            media = archive.media,
-            mediaFiles = archive.mediaFiles,
-            extraEntries = archive.extraEntries,
+            media = if (bodyChanged && mediaAdder.changed) mediaAdder.registry() else archive.media,
+            mediaFiles = if (bodyChanged && mediaAdder.changed) mediaAdder.files else archive.mediaFiles,
         )
+    }
+
+    private fun bodyObjectIds(body: RichText): List<String?> {
+        val out = ArrayList<String?>()
+        var pos = 0
+        for (run in body.runs) {
+            for (i in 0 until run.length) {
+                if (pos + i < body.text.length && body.text[pos + i] == org.samesame.notes.core.model.richtext.OBJECT_CHAR) out += run.style.objectId
+            }
+            pos += run.length
+        }
+        return out
     }
 
     fun geometryScale(archive: SdocxArchive): Float =
@@ -188,7 +205,8 @@ object SdocxMapper {
 
     fun toNoteDocument(archive: SdocxArchive, noteId: String): NoteDocument {
         val title = title(archive)
-        val body = bodyRichText(archive.note.body.text)
+        val surfaced = org.samesame.notes.core.sdocx.SdocxBodyObjects.surface(archive, archive.note.body.text, geometryScale(archive))
+        val body = withObjectIds(bodyRichText(archive.note.body.text), surfaced)
         val pages = archive.pages.map { toPageSpec(it, archive) }
         // A .sdocx always stores an explicit page record list. Its `pageMode` (list / single) only
         // describes scrolling, not an endless canvas, so both modes map to fixed SameSame pages.
@@ -207,9 +225,33 @@ object SdocxMapper {
                 adjustForDarkMode = archive.note.adjustForDarkMode,
             ),
             body = body,
+            inlineObjects = surfaced.map { it.obj },
             recordings = mapRecordings(archive),
             pages = pages,
         )
+    }
+
+    /** Marks the placeholder character of every surfaced object with that object's id. */
+    private fun withObjectIds(
+        body: RichText,
+        surfaced: List<org.samesame.notes.core.sdocx.SdocxBodyObjects.Surfaced>,
+    ): RichText {
+        if (surfaced.isEmpty()) return body
+        val ids = surfaced.associate { it.charPos to it.obj.id }
+        val styles = ArrayList<CharStyle>(body.text.length)
+        for (run in body.runs) repeat(run.length) { if (styles.size < body.text.length) styles += run.style }
+        while (styles.size < body.text.length) styles += CharStyle()
+        for ((pos, id) in ids) {
+            if (pos in styles.indices && body.text[pos] == org.samesame.notes.core.model.richtext.OBJECT_CHAR) {
+                styles[pos] = styles[pos].copy(objectId = id)
+            }
+        }
+        val runs = ArrayList<TextRun>()
+        for (style in styles) {
+            val last = runs.lastOrNull()
+            if (last != null && last.style == style && style.objectId == null) runs[runs.lastIndex] = TextRun(last.length + 1, style) else runs += TextRun(1, style)
+        }
+        return RichText(body.text, runs, body.paragraphs)
     }
 
     fun normalizeBackgroundColor(color: Long?): Long? {
@@ -371,16 +413,12 @@ object SdocxMapper {
     private fun mapParagraphs(tc: TextCommon, length: Int): List<ParagraphStyle> {
         val count = tc.text.count { it == '\n' } + 1
         val paras = MutableList(count) { ParagraphStyle() }
-        fun paragraphIndexAt(offset: Int): Int {
-            val end = offset.coerceIn(0, length)
-            var k = 0
-            for (i in 0 until end) if (tc.text[i] == '\n') k++
-            return k
-        }
         for (record in tc.paragraphs) {
             val p = LeReader(record.raw, 12)
-            val s = record.start.coerceIn(0, length)
-            val e = record.end.coerceIn(0, length)
+            // Paragraph records address paragraphs by index, `[start, end)` (verified on a styled
+            // multi-paragraph file: the fourth paragraph's bullet record is [3, 4)).
+            val s = record.start
+            val e = maxOf(record.end, s + 1)
             val transform: ((ParagraphStyle) -> ParagraphStyle)? = when (record.kind) {
                 2 -> run {
                     val level = p.i32().coerceIn(0, Limits.MAX_INDENT_LEVEL)
@@ -409,9 +447,8 @@ object SdocxMapper {
                 else -> null
             }
             if (transform != null) {
-                for (off in s..e) {
-                    val idx = paragraphIndexAt(off).coerceIn(0, count - 1)
-                    paras[idx] = transform(paras[idx])
+                for (idx in s until e) {
+                    if (idx in 0 until count) paras[idx] = transform(paras[idx])
                 }
             }
         }

@@ -19,6 +19,8 @@ class TextCommon(
     val tailFlags: Int?,
     val reservedTail: Int?,
     val objectSpans: List<ObjectSpan>,
+    /** Bytes after the modelled tail (unknown extensions), kept verbatim. */
+    val tailExtra: ByteArray = ByteArray(0),
 ) {
     class SpanRecord(
         val kind: Int,

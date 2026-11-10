@@ -12,8 +12,11 @@ object SdocxFormat {
     const val MIN_SUPPORTED_VERSION = 2034
     const val MAX_SUPPORTED_VERSION = 4000
 
-    /** Version we write everywhere; stays in the "basic" mediaInfo form. */
-    const val WRITE_FORMAT_VERSION = 3001
+    /**
+     * Version written into new notes, pages and objects: the one the reference app writes today, so
+     * a new file has the same layout (extended media registry, full end tag) as the device fixtures.
+     */
+    const val WRITE_FORMAT_VERSION = 4000
 
     const val PAGE_ID_LENGTH = 36
 

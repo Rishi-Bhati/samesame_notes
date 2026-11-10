@@ -61,10 +61,31 @@ class SdocxReader {
                 !name.endsWith(".page") &&
                 !name.startsWith("media/")
         }
-        return SdocxArchive(endTag, note, pageIdInfo, pages, media, mediaFiles, extra)
+        return SdocxArchive(endTag, note, pageIdInfo, pages, media, mediaFiles, extra, trailingEndTag(bytes))
     }
 
     // ---- container ----
+
+    /**
+     * The end-tag copy after the ZIP end-of-central-directory record, when the file has one. A file
+     * without it (or with unreadable trailing bytes) still imports; the writer adds a fresh copy.
+     */
+    private fun trailingEndTag(bytes: ByteArray): EndTagRecord? {
+        var at = bytes.size - 22
+        val floor = maxOf(0, bytes.size - 22 - 0xFFFF - 4096)
+        while (at >= floor) {
+            if (bytes[at] == 0x50.toByte() && bytes[at + 1] == 0x4B.toByte() && bytes[at + 2] == 5.toByte() && bytes[at + 3] == 6.toByte()) {
+                val comment = (bytes[at + 20].toInt() and 0xFF) or ((bytes[at + 21].toInt() and 0xFF) shl 8)
+                val end = at + 22 + comment
+                if (end <= bytes.size) {
+                    if (end == bytes.size) return null
+                    return runCatching { parseEndTag(bytes.copyOfRange(end, bytes.size)) }.getOrNull()
+                }
+            }
+            at--
+        }
+        return null
+    }
 
     private fun unzip(bytes: ByteArray): LinkedHashMap<String, ByteArray> {
         val out = LinkedHashMap<String, ByteArray>()
@@ -127,7 +148,10 @@ class SdocxReader {
         }
         val r = LeReader(data)
         val bodyLen = r.u16()
-        val limit = (bodyLen - 22).coerceAtMost(data.size - 22)
+        // bodyLen counts everything after the u16, so the optional tail ends at data.size - 22
+        // (bodyLen - 20 from the start of the file). The old `bodyLen - 22` was two bytes short
+        // and made the fixed-font group unreadable.
+        val limit = (bodyLen + 2 - 22).coerceIn(2, data.size - 22)
         val formatVersion = r.i32()
         val noteId = r.str16() ?: ""
         val modifiedTime = r.i64()
@@ -166,10 +190,27 @@ class SdocxReader {
             displayModified = r.i64()
             lastRecognized = r.i64()
         }
+        var hasFixedFontGroup = false
+        var tailExtra = ByteArray(0)
         if (r.pos < limit) {
-            fixedFont = r.str16() ?: ""
-            fixedDir = r.i32()
-            fixedTheme = r.i32()
+            // The last group is all-or-nothing: accept it only when it ends exactly at the magic.
+            val groupStart = r.pos
+            val units = try {
+                val n = (data[groupStart].toInt() and 0xFF) or ((data[groupStart + 1].toInt() and 0xFF) shl 8)
+                if (n >= 0x8000) n - 0x10000 else n
+            } catch (_: IndexOutOfBoundsException) {
+                -1
+            }
+            val groupLen = if (units >= 0) 2 + units * 2 + 4 + 4 else -1
+            if (groupLen >= 0 && groupStart + groupLen == limit) {
+                fixedFont = r.str16() ?: ""
+                fixedDir = r.i32()
+                fixedTheme = r.i32()
+                hasFixedFontGroup = true
+            } else {
+                tailExtra = data.copyOfRange(groupStart, limit)
+                r.seek(limit)
+            }
         }
 
         return EndTagRecord(
@@ -199,6 +240,8 @@ class SdocxReader {
             fixedTextDirection = fixedDir,
             fixedBackgroundTheme = fixedTheme,
             hasTail = hasTail,
+            hasFixedFontGroup = hasFixedFontGroup,
+            tailExtra = tailExtra,
         )
     }
 
@@ -367,19 +410,8 @@ class SdocxReader {
     }
 
     private fun parseLayerOptional(raw: ByteArray, mask: Int): Pair<String?, Long?> {
-        var id: String? = null
-        var time: Long? = null
-        if (mask != 0) {
-            val r = LeReader(raw)
-            // bit 0 transparency is width-ambiguous; the writer never sets it.
-            if (mask and 0x1 != 0) r.i32()
-            if (mask and 0x2 != 0) r.i32() // layer background colour
-            if (mask and 0x4 != 0) r.str16() // layer name
-            if (mask and 0x8 != 0) id = r.str16()
-            if (mask and 0x10 != 0) time = r.i64()
-            if (mask and 0x20 != 0) r.i32() // thumbnail id
-        }
-        return id to time
+        val fields = LayerOptionalCodec.parse(raw, mask) ?: return null to null
+        return fields.layerId to fields.time
     }
 
     private fun parseObjectEntry(r: LeReader, depth: Int): ObjectEntry {
@@ -417,7 +449,8 @@ class SdocxReader {
         val count = r.u16()
         val entries = ArrayList<MediaEntry>(count)
         repeat(count) {
-            if (extended) r.i32() // entryLen
+            val entryLen = if (extended) r.i32() else null
+            val entryStart = r.pos
             val bindNumber = r.i32()
             val fileName = r.str16() ?: ""
             val hashBytes = r.bytes(64)
@@ -425,7 +458,18 @@ class SdocxReader {
             val refCount = r.u16()
             val modifiedTime = r.i64()
             val attached = if (extended) r.u8() == 1 else null
-            entries += MediaEntry(bindNumber, fileName, fileHash, refCount, modifiedTime, attached)
+            // Unknown extensions are part of the entry and must survive a rewrite (spec §8.1).
+            val extra = if (entryLen != null) {
+                val entryEnd = entryStart + entryLen
+                if (entryEnd in r.pos..data.size) {
+                    r.bytes(entryEnd - r.pos)
+                } else {
+                    ByteArray(0)
+                }
+            } else {
+                ByteArray(0)
+            }
+            entries += MediaEntry(bindNumber, fileName, fileHash, refCount, modifiedTime, attached, extra)
         }
         val hasTerminator = r.remaining >= 3 &&
             String(data, data.size - if (extended) 4 else 3, if (extended) 4 else 3, Charsets.US_ASCII)

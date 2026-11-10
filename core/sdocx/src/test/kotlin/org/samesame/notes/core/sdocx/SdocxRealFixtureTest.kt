@@ -21,6 +21,45 @@ class SdocxRealFixtureTest {
         return if (candidate.isFile) candidate.readBytes() else null
     }
 
+    /**
+     * Every device fixture in `SAMESAME_SDOCX_FIXTURE_DIR` must parse and re-export with identical
+     * ZIP entries. Whole-archive bytes are not compared because the reference app's ZIP metadata
+     * and entry order are not part of the format.
+     */
+    @Test
+    fun `device fixtures round trip every zip entry unchanged`() {
+        val dir = System.getenv("SAMESAME_SDOCX_FIXTURE_DIR")?.let(::File)
+        assumeTrue("SAMESAME_SDOCX_FIXTURE_DIR is not a directory", dir?.isDirectory == true)
+        val files = dir!!.listFiles { file -> file.isFile && file.extension == "sdocx" }
+            .orEmpty()
+            .sortedBy { it.name }
+        assumeTrue("no .sdocx fixtures in SAMESAME_SDOCX_FIXTURE_DIR", files.isNotEmpty())
+
+        for (file in files) {
+            val first = file.readBytes()
+            val archive = SdocxReader().read(first)
+            val second = SdocxWriter().writeToBytes(archive)
+            val before = zipEntries(first)
+            val after = zipEntries(second)
+            assertThat(after.keys).isEqualTo(before.keys)
+            for ((name, bytes) in before) {
+                assertThat(after.getValue(name)).isEqualTo(bytes)
+            }
+        }
+    }
+
+    private fun zipEntries(bytes: ByteArray): Map<String, ByteArray> {
+        val out = LinkedHashMap<String, ByteArray>()
+        java.util.zip.ZipInputStream(bytes.inputStream()).use { zip ->
+            while (true) {
+                val entry = zip.nextEntry ?: break
+                out[entry.name] = zip.readBytes()
+                zip.closeEntry()
+            }
+        }
+        return out
+    }
+
     @Test
     fun `coedit_empty fixture maps to its two page records with body Aa`() {
         val bytes = researchFixture("coedit_empty.sdocx")

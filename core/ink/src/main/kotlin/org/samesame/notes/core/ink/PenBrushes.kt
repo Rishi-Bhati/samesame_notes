@@ -31,6 +31,10 @@ object PenBrushes {
         )
     }
 
+    /** A brush of the family stored under [key] with exactly this colour (no forced opacity) and size. */
+    fun brushForKey(key: String, colorIntArgb: Int, size: Float): Brush =
+        Brush.createWithColorIntArgb(familyForKey(key), colorIntArgb, size, EPSILON)
+
     /** Recovers the preset that drew [stroke], or null for a brush this app didn't create. */
     fun penFor(stroke: Stroke): PenSettings? {
         val (type, pressure) = parseKey(stroke.brush.family.developerComment) ?: return null

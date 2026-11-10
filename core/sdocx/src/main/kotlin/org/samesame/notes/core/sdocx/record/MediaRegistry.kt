@@ -10,6 +10,8 @@ class MediaEntry(
     val modifiedTime: Long,
     /** Extended ("EOFX") form only; null in the basic form. */
     val isFileAttached: Boolean?,
+    /** Bytes after the modelled fields up to the extended `entryLen`, kept verbatim. */
+    val extra: ByteArray = ByteArray(0),
 )
 
 /**
