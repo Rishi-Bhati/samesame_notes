@@ -68,7 +68,38 @@ class ComposerViewModel @AssistedInject constructor(
     appSettings: AppSettingsRepository,
     private val clipboard: EditorClipboard,
     @param:ApplicationScope private val appScope: CoroutineScope,
+    private val files: org.samesame.notes.core.data.repository.FilesRepository,
 ) : ViewModel() {
+
+    /** The Files library as the editor sees it (file links, Show in note). */
+    val fileLinks: org.samesame.notes.feature.composer.files.NoteFileLinks = object : org.samesame.notes.feature.composer.files.NoteFileLinks {
+        override suspend fun resolve(ids: List<org.samesame.notes.core.model.files.FileId>) =
+            files.getFiles(ids).associateBy { it.id }
+
+        override fun contentUri(file: org.samesame.notes.core.model.files.LibraryFile) = files.contentUri(file)
+
+        override suspend fun readBytes(file: org.samesame.notes.core.model.files.LibraryFile, maxBytes: Long): ByteArray? =
+            withContext(Dispatchers.IO) {
+                if (file.isInTrash || file.sizeBytes > maxBytes) return@withContext null
+                runCatching {
+                    appContext.contentResolver.openInputStream(files.contentUri(file))?.use { input ->
+                        val out = java.io.ByteArrayOutputStream(file.sizeBytes.coerceIn(0, maxBytes).toInt())
+                        val buf = ByteArray(64 * 1024)
+                        var total = 0L
+                        while (true) {
+                            val n = input.read(buf)
+                            if (n < 0) break
+                            total += n
+                            if (total > maxBytes) return@use null
+                            out.write(buf, 0, n)
+                        }
+                        out.toByteArray()
+                    }
+                }.getOrNull()
+            }
+
+        override suspend fun restore(id: org.samesame.notes.core.model.files.FileId) = files.restore(listOf(id))
+    }
 
     @AssistedFactory
     interface Factory {

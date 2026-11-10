@@ -324,7 +324,7 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
     }
 
     fun insertObject(objectId: String) =
-        insertRich(RichText(OBJECT_CHAR.toString(), listOf(TextRun(1, currentCharStyle().copy(objectId = objectId)))))
+        insertRich(RichText(OBJECT_CHAR.toString(), listOf(TextRun(1, currentCharStyle().copy(objectId = objectId, link = null)))))
 
     // ---------------------------------------------------------------- typing shortcuts
 
