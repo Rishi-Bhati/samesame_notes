@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="feature_files_title">Files</string>
+    <plurals name="feature_files_summary_files">
+        <item quantity="one">%1$d file</item>
+        <item quantity="other">%1$d files</item>
+    </plurals>
+    <string name="feature_files_summary">%1$s, %2$s</string>
+    <string name="feature_files_back">Back</string>
+    <string name="feature_files_upload">Upload</string>
+    <string name="feature_files_search">Search</string>
+    <string name="feature_files_more_options">More options</string>
+    <string name="feature_files_menu_edit">Edit</string>
+    <string name="feature_files_menu_view">View</string>
+    <string name="feature_files_menu_create_folder">Create folder</string>
+    <string name="feature_files_menu_recycle_bin">Recycle bin</string>
+    <string name="feature_files_view_grid">Grid</string>
+    <string name="feature_files_view_list">List</string>
+    <string name="feature_files_sort_name">Name</string>
+    <string name="feature_files_sort_date">Date added</string>
+    <string name="feature_files_sort_size">Size</string>
+    <string name="feature_files_sort_type">Type</string>
+    <string name="feature_files_sort_direction">Sort direction</string>
+    <string name="feature_files_empty">No files</string>
+    <string name="feature_files_empty_hint">Tap Upload or share files to SameSame</string>
+    <string name="feature_files_empty_search">No results</string>
+    <string name="feature_files_search_hint">Search files</string>
+    <string name="feature_files_select_files">Select files</string>
+    <string name="feature_files_selected_count">%1$d selected</string>
+    <string name="feature_files_select_all">Select all</string>
+    <string name="feature_files_action_copy_link">Copy link</string>
+    <string name="feature_files_action_move">Move</string>
+    <string name="feature_files_action_share">Share</string>
+    <string name="feature_files_action_delete">Delete</string>
+    <string name="feature_files_action_more">More</string>
+    <string name="feature_files_action_restore">Restore</string>
+    <string name="feature_files_more_rename">Rename</string>
+    <string name="feature_files_more_add_favorite">Add to favorites</string>
+    <string name="feature_files_more_remove_favorite">Remove from favorites</string>
+    <string name="feature_files_more_info">Info</string>
+    <string name="feature_files_more_open_with">Open with</string>
+    <string name="feature_files_more_insert">Insert into note</string>
+    <string name="feature_files_cancel">Cancel</string>
+    <string name="feature_files_close">Close</string>
+    <string name="feature_files_ok">OK</string>
+    <string name="feature_files_save">Save</string>
+    <string name="feature_files_rename_title">Rename</string>
+    <string name="feature_files_rename_folder_title">Rename folder</string>
+    <string name="feature_files_create_folder_title">Create folder</string>
+    <string name="feature_files_create">Create</string>
+    <string name="feature_files_folder_default_name">Folder %1$d</string>
+    <string name="feature_files_select_folder">Select folder</string>
+    <string name="feature_files_root_folder">Files</string>
+    <string name="feature_files_move_here">Move here</string>
+    <string name="feature_files_delete_title">Move to Recycle bin</string>
+    <string name="feature_files_delete_message">The selected items will be moved to the Recycle bin. They are deleted for good after 30 days.</string>
+    <plurals name="feature_files_delete_used">
+        <item quantity="one">Used in %1$d note. Links will stop working until you restore it. Images already shown in notes stay.</item>
+        <item quantity="other">Used in %1$d notes. Links will stop working until you restore it. Images already shown in notes stay.</item>
+    </plurals>
+    <plurals name="feature_files_delete_forever_used">
+        <item quantity="one">Used in %1$d note. Links will stop working. Images already shown in notes stay.</item>
+        <item quantity="other">Used in %1$d notes. Links will stop working. Images already shown in notes stay.</item>
+    </plurals>
+    <string name="feature_files_delete_forever_title">Delete permanently</string>
+    <string name="feature_files_delete_forever_message">The selected items will be deleted for good.</string>
+    <string name="feature_files_empty_bin_title">Empty Recycle bin</string>
+    <string name="feature_files_empty_bin_message">Everything in the Recycle bin will be deleted for good.</string>
+    <string name="feature_files_empty_bin_action">Empty</string>
+    <string name="feature_files_bin_title">Recycle bin</string>
+    <string name="feature_files_bin_empty">Recycle bin is empty</string>
+    <string name="feature_files_bin_days">%1$d days left</string>
+    <string name="feature_files_bin_day">1 day left</string>
+    <string name="feature_files_info_title">Info</string>
+    <string name="feature_files_info_name">Name</string>
+    <string name="feature_files_info_type">Type</string>
+    <string name="feature_files_info_size">Size</string>
+    <string name="feature_files_info_added">Added</string>
+    <string name="feature_files_info_source">Source</string>
+    <string name="feature_files_info_location">Location</string>
+    <string name="feature_files_info_used_in">Used in %1$d notes</string>
+    <string name="feature_files_info_not_used">Not used in any note</string>
+    <string name="feature_files_info_in_bin">(in Recycle bin)</string>
+    <string name="feature_files_info_locked_note">Locked note</string>
+    <string name="feature_files_untitled_note">Untitled</string>
+    <string name="feature_files_info_locked_hint">Unlock this note in the notes list to open it.</string>
+    <string name="feature_files_duplicate_title">Already in this folder</string>
+    <string name="feature_files_duplicate_message">\"%1$s\" is already in this folder. Keep both?</string>
+    <string name="feature_files_duplicate_keep_both">Keep both</string>
+    <string name="feature_files_duplicate_skip">Skip</string>
+    <string name="feature_files_importing">Saving to Files</string>
+    <string name="feature_files_importing_count">%1$d of %2$d</string>
+    <string name="feature_files_no_app">No app can open this file</string>
+    <string name="feature_files_open_failed_share">Share</string>
+    <string name="feature_files_open_with_title">Open with</string>
+    <string name="feature_files_share_title">Share</string>
+    <plurals name="feature_files_toast_imported">
+        <item quantity="one">Saved %1$d file to Files</item>
+        <item quantity="other">Saved %1$d files to Files</item>
+    </plurals>
+    <plurals name="feature_files_toast_skipped">
+        <item quantity="one">%1$d file skipped</item>
+        <item quantity="other">%1$d files skipped</item>
+    </plurals>
+    <plurals name="feature_files_toast_trashed">
+        <item quantity="one">%1$d item moved to the Recycle bin</item>
+        <item quantity="other">%1$d items moved to the Recycle bin</item>
+    </plurals>
+    <plurals name="feature_files_toast_restored">
+        <item quantity="one">%1$d item restored</item>
+        <item quantity="other">%1$d items restored</item>
+    </plurals>
+    <plurals name="feature_files_toast_moved">
+        <item quantity="one">%1$d item moved</item>
+        <item quantity="other">%1$d items moved</item>
+    </plurals>
+    <plurals name="feature_files_toast_link_copied">
+        <item quantity="one">Link copied</item>
+        <item quantity="other">%1$d links copied</item>
+    </plurals>
+    <string name="feature_files_err_too_large">\"%1$s\" is too large</string>
+    <string name="feature_files_err_no_space">Not enough space for \"%1$s\"</string>
+    <string name="feature_files_err_unreadable">Couldn\'t read \"%1$s\"</string>
+    <string name="feature_files_err_ignored">Only the first 100 files were saved</string>
+    <string name="feature_files_err_folder_name">Can\'t use that folder name</string>
+    <string name="feature_files_err_too_deep">Can\'t move here. Path is too deep.</string>
+    <string name="feature_files_err_rename">Can\'t use that name</string>
+    <string name="feature_files_err_generic">Something went wrong</string>
+    <string name="feature_files_search_in">in %1$s</string>
+    <string name="feature_files_receive_title">Save to SameSame</string>
+    <string name="feature_files_receive_files">Files</string>
+    <string name="feature_files_receive_new_note">New note</string>
+    <string name="feature_files_receive_folder">Folder</string>
+    <string name="feature_files_receive_save">Save</string>
+    <string name="feature_files_receive_cannot_note">This file type can\'t be opened in a note. It will be saved to Files.</string>
+    <string name="feature_files_receive_saved_open">Open</string>
+    <plurals name="feature_files_receive_saved">
+        <item quantity="one">Saved %1$d file to Files</item>
+        <item quantity="other">Saved %1$d files to Files</item>
+    </plurals>
+    <string name="feature_files_receive_nothing">Nothing to save</string>
+    <string name="feature_files_receive_name">File name</string>
+    <string name="feature_files_receive_note_failed">Couldn\'t create a note from this file</string>
+    <string name="feature_files_receive_pick_folder">Choose folder</string>
+    <string name="feature_files_receive_done">Done</string>
+</resources>

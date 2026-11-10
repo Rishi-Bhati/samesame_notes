@@ -14,6 +14,8 @@ import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import org.samesame.notes.ComposerActivity
+import org.samesame.notes.feature.files.FilesKey
+import org.samesame.notes.feature.files.FilesRoute
 import org.samesame.notes.feature.notes.NotesKey
 import org.samesame.notes.feature.notes.NotesRoute
 import org.samesame.notes.feature.settings.SettingsKey
@@ -58,6 +60,13 @@ fun SameSameNavDisplay(
                 NotesRoute(
                     onOpenNote = { note -> context.startActivity(ComposerActivity.intent(context, note.value)) },
                     onOpenSettings = { backStack.add(SettingsKey) },
+                    onOpenFiles = { backStack.add(FilesKey) },
+                )
+            }
+            entry<FilesKey> {
+                FilesRoute(
+                    onBack = pop,
+                    onOpenNote = { id -> context.startActivity(ComposerActivity.intent(context, id.value)) },
                 )
             }
             entry<SettingsKey> { SettingsRoute(onBack = pop) }
