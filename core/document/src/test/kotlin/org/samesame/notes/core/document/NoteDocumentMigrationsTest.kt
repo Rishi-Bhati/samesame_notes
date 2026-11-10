@@ -81,7 +81,7 @@ class NoteDocumentMigrationsTest {
     fun newerVersionIsRejected() = runBlocking<Unit> {
         val root = tmp.newFolder("notes")
         File(root, "n1").mkdirs()
-        File(root, "n1/document.json").writeText("""{"formatVersion":8,"id":"n1","pages":[]}""")
+        File(root, "n1/document.json").writeText("""{"formatVersion":${NOTE_DOCUMENT_FORMAT_VERSION + 1},"id":"n1","pages":[]}""")
         assertThrows(IOException::class.java) { runBlocking { store(root).readDocument("n1") } }
         Unit
     }

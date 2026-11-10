@@ -10,7 +10,7 @@ object RichTextOps {
 
     /**
      * Inserts plain [text] at [offset]. Style: [style] if given, else the style of the character
-     * before the offset (after it at offset 0). `objectId` is never inherited, and U+FFFC in [text]
+     * before the offset (after it at offset 0) with the link rule of [typingStyleAt]. `objectId` is never inherited, and U+FFFC in [text]
      * is dropped (use [insertObject]). Each `\n` splits the paragraph; the new paragraphs inherit
      * the split paragraph's style (list kind kept, `checked` cleared).
      */
@@ -18,7 +18,7 @@ object RichTextOps {
         val clean = text.replace(OBJECT_CHAR.toString(), "")
         if (clean.isEmpty()) return normalise(rt)
         val at = offset.coerceIn(0, rt.length)
-        val base = (style ?: styleBefore(rt, at)).copy(objectId = null)
+        val base = (style ?: typingStyleAt(rt, at)).copy(objectId = null)
         val pIdx = paragraphIndexAt(rt, at)
         val inherited = rt.paragraphs.getOrElse(pIdx) { ParagraphStyle() }.copy(checked = false)
         val newlines = clean.count { it == '\n' }
@@ -33,7 +33,7 @@ object RichTextOps {
     /** Inserts a single inline object (U+FFFC with [objectId]) at [offset]. */
     fun insertObject(rt: RichText, offset: Int, objectId: String, style: CharStyle? = null): RichText {
         val at = offset.coerceIn(0, rt.length)
-        val base = (style ?: styleBefore(rt, at)).copy(objectId = objectId)
+        val base = (style ?: typingStyleAt(rt, at)).copy(objectId = objectId)
         val fragment = RichText(OBJECT_CHAR.toString(), listOf(TextRun(1, base)))
         return insertRich(rt, at, fragment)
     }
@@ -216,6 +216,35 @@ object RichTextOps {
         }
         val nl = rt.text.indexOf('\n', start)
         return start until (if (nl < 0) rt.text.length else nl)
+    }
+
+    /**
+     * The sticky-style rule for links: text typed at a caret takes the style of the character [before] it, but keeps that
+     * character's [CharStyle.link] only when the character [after] the caret has the same link (typing inside a link
+     * extends it; typing at either end of it, or after a link that ends the text, does not). [after] is null at the end
+     * of the text. Every other attribute is inherited as before.
+     */
+    fun typingStyle(before: CharStyle, after: CharStyle?): CharStyle =
+        if (before.link != null && after?.link != before.link) before.copy(link = null) else before
+
+    /** [styleBefore] with the link rule of [typingStyle]: the style text typed at [offset] gets. */
+    fun typingStyleAt(rt: RichText, offset: Int): CharStyle {
+        val before = styleBefore(rt, offset)
+        if (before.link == null) return before
+        // At offset 0 the "before" style is the first character's own: typing in front of a link never extends it.
+        if (offset <= 0) return before.copy(link = null)
+        return typingStyle(before, charStyleAt(rt, offset))
+    }
+
+    /** Style of the character at [offset] (objectId dropped), or null at or past the end. */
+    fun charStyleAt(rt: RichText, offset: Int): CharStyle? {
+        if (offset < 0 || offset >= rt.text.length) return null
+        var pos = 0
+        for (run in rt.runs) {
+            if (offset < pos + run.length) return run.style.copy(objectId = null)
+            pos += run.length
+        }
+        return null
     }
 
     /** Style of the character before [offset], or after it at 0; default when empty. */

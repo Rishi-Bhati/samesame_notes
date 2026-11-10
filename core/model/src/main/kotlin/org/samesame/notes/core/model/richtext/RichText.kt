@@ -43,6 +43,13 @@ data class CharStyle(
     val fontSize: Float? = null,
     /** Only on a U+FFFC character. */
     val objectId: String? = null,
+    /**
+     * Explicit hyperlink of the run (format v8): the run's text is the visible label, this is the URI, e.g. a library file
+     * link `samesame://file/<id>?n=<name>` ([org.samesame.notes.core.model.files.FileLinks]). Part of the merge key like
+     * every field, so two adjacent runs merge only when they link to the same URI. Typing at either end of a link does
+     * not extend it ([RichTextOps.typingStyle]).
+     */
+    val link: String? = null,
 )
 
 @Serializable

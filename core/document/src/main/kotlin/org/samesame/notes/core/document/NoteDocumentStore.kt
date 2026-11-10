@@ -243,27 +243,18 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
     private fun documentVersion(text: String): Int =
         (Json.parseToJsonElement(text) as JsonObject)["formatVersion"]?.jsonPrimitive?.int ?: 1
 
-    /** Reads a document of the current version or of v2-v6 (upgraded in memory); anything else is refused. */
-    private fun parseDocument(text: String, version: Int): NoteDocument = when (version) {
-        NOTE_DOCUMENT_FORMAT_VERSION -> NoteDocument.fromJson(text)
-        6 -> NoteDocumentMigrations.v6ToV7(NoteDocument.fromJson(text))
-        5 -> NoteDocumentMigrations.v6ToV7(NoteDocumentMigrations.v5ToV6(NoteDocument.fromJson(text)))
-        4 -> NoteDocumentMigrations.v6ToV7(
-            NoteDocumentMigrations.v5ToV6(NoteDocumentMigrations.v4ToV5(NoteDocument.fromJson(text))),
-        )
-        3 -> NoteDocumentMigrations.v6ToV7(
-            NoteDocumentMigrations.v5ToV6(
-                NoteDocumentMigrations.v4ToV5(NoteDocumentMigrations.v3ToV4(NoteDocument.fromJson(text))),
-            ),
-        )
-        2 -> NoteDocumentMigrations.v6ToV7(
-            NoteDocumentMigrations.v5ToV6(
-                NoteDocumentMigrations.v4ToV5(
-                    NoteDocumentMigrations.v3ToV4(NoteDocumentMigrations.v2ToV3(NoteDocument.fromJson(text))),
-                ),
-            ),
-        )
-        else -> throw IOException("Unsupported note format version $version")
+    /** Reads a document of the current version or of v2-v7 (upgraded in memory); anything else is refused. */
+    private fun parseDocument(text: String, version: Int): NoteDocument {
+        if (version == NOTE_DOCUMENT_FORMAT_VERSION) return NoteDocument.fromJson(text)
+        if (version !in 2 until NOTE_DOCUMENT_FORMAT_VERSION) throw IOException("Unsupported note format version $version")
+        // Each step upgrades one version; an old document runs through every later step in order.
+        var doc = NoteDocument.fromJson(text)
+        if (version <= 2) doc = NoteDocumentMigrations.v2ToV3(doc)
+        if (version <= 3) doc = NoteDocumentMigrations.v3ToV4(doc)
+        if (version <= 4) doc = NoteDocumentMigrations.v4ToV5(doc)
+        if (version <= 5) doc = NoteDocumentMigrations.v5ToV6(doc)
+        if (version <= 6) doc = NoteDocumentMigrations.v6ToV7(doc)
+        return NoteDocumentMigrations.v7ToV8(doc)
     }
 
     suspend fun writeDocument(document: NoteDocument) = withContext(Dispatchers.IO) {

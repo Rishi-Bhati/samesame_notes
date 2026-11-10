@@ -26,6 +26,13 @@ object NoteDocumentMigrations {
     fun legacyViewState(text: String): ViewState? =
         runCatching { NoteJson.decodeFromString(LegacyDocumentViewState.serializer(), text).viewState }.getOrNull()
 
+    /**
+     * v7 -> v8 only adds the defaulted `CharStyle.link` (explicit link runs) and `ImageObject.libraryFileId` ("Show in
+     * note" images), both null in a v7 document, so every v7 note reads as the same value with the current version.
+     * Floating objects in the page files carry no document version and read the new field as null the same way.
+     */
+    fun v7ToV8(v7: NoteDocument): NoteDocument = v7.copy(formatVersion = NOTE_DOCUMENT_FORMAT_VERSION)
+
     /** v6 -> v7 removed the document's `viewState` field; everything else is the same document. */
     fun v6ToV7(v6: NoteDocument): NoteDocument = v6.copy(formatVersion = NOTE_DOCUMENT_FORMAT_VERSION)
 
