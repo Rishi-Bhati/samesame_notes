@@ -307,6 +307,15 @@ private fun FilesGrid(
     LaunchedEffect(gridState) {
         androidx.compose.runtime.snapshotFlow { gridState.canScrollForward || gridState.canScrollBackward }.collect(onScrollable)
     }
+    // "Open in Files": bring the revealed file into view once (the folder row and the sort row come before the files).
+    LaunchedEffect(state.reveal, state.files) {
+        val id = state.reveal ?: return@LaunchedEffect
+        val index = state.files.indexOfFirst { it.id == id }
+        if (index >= 0) {
+            gridState.scrollToItem(index + (if (state.subFolders.isNotEmpty()) 1 else 0) + 1)
+            viewModel.revealShown()
+        }
+    }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val gap = 14.dp
         val side = 16.dp

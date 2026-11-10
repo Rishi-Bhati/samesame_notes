@@ -50,6 +50,8 @@ data class FilesUiState(
     val viewMode: FilesViewMode = FilesViewMode.Grid,
     val selection: FilesSelection = FilesSelection(),
     val summary: FilesSummary = FilesSummary(),
+    /** A file the screen was asked to show ("Open in Files"): it is selected, and the list scrolls to it once. */
+    val reveal: FileId? = null,
 ) {
     val selecting: Boolean get() = selection.active
     val isEmpty: Boolean get() = subFolders.isEmpty() && files.isEmpty()
@@ -70,7 +72,7 @@ sealed interface FilesEvent {
     data class Failure(val kind: FailureKind) : FilesEvent
 }
 
-enum class FailureKind { FolderName, TooDeep, Rename, Generic }
+enum class FailureKind { FolderName, TooDeep, Rename, Generic, NotFound }
 
 /** What the Move picker is about to do. */
 data class FilesImportUi(val progress: ImportProgress?, val duplicates: List<ImportResult.Duplicate> = emptyList())
@@ -81,12 +83,13 @@ class FilesViewModel @Inject constructor(
     private val prefs: FilesPreferences,
 ) : ViewModel() {
 
-    private data class Local(val folderId: FileFolderId?, val sort: FileSort, val viewMode: FilesViewMode, val selection: FilesSelection)
+    private data class Local(val folderId: FileFolderId?, val sort: FileSort, val viewMode: FilesViewMode, val selection: FilesSelection, val reveal: FileId?)
 
     private val currentFolder = MutableStateFlow<FileFolderId?>(null)
     private val sort = MutableStateFlow(prefs.sort)
     private val viewMode = MutableStateFlow(prefs.viewMode)
     private val selection = MutableStateFlow(FilesSelection())
+    private val reveal = MutableStateFlow<FileId?>(null)
 
     private val folders: Flow<List<FileFolder>> = repo.observeFolders()
 
@@ -94,7 +97,7 @@ class FilesViewModel @Inject constructor(
         combine(currentFolder, sort) { f, s -> f to s }.flatMapLatest { (f, s) -> repo.observeFiles(f, s) },
         folders,
         repo.observeSummary(),
-        combine(currentFolder, sort, viewMode, selection, ::Local),
+        combine(currentFolder, sort, viewMode, selection, reveal, ::Local),
     ) { files, all, summary, local ->
         val open = local.folderId?.takeIf { id -> all.any { it.id == id } }
         FilesUiState(
@@ -108,6 +111,7 @@ class FilesViewModel @Inject constructor(
             viewMode = local.viewMode,
             selection = local.selection.retain(files, all),
             summary = summary,
+            reveal = local.reveal,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FilesUiState())
 
@@ -146,6 +150,23 @@ class FilesViewModel @Inject constructor(
         openFolder(open.path.dropLast(1).lastOrNull()?.id)
         return true
     }
+
+    /**
+     * "Open in Files": opens the folder of [id] with the file selected, so it stands out and its actions are at hand.
+     * A file that is gone or in the Recycle bin is reported instead.
+     */
+    fun reveal(id: FileId) {
+        viewModelScope.launch {
+            val file = repo.getFile(id)
+            if (file == null || file.isInTrash) { fail(FailureKind.NotFound); return@launch }
+            currentFolder.value = file.folderId
+            selection.value = FilesSelection(active = true, files = setOf(file.id))
+            reveal.value = file.id
+        }
+    }
+
+    /** The list has scrolled to the revealed file. */
+    fun revealShown() { reveal.value = null }
 
     // ---- Selection ----
 

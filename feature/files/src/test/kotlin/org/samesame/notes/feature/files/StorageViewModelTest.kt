@@ -66,3 +66,39 @@ class StorageViewModelTest {
         assertThat(vm.uiState.value.fileCount).isEqualTo(4)
     }
 }
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class FilesRevealTest {
+    @Before fun setUp() = Dispatchers.setMain(UnconfinedTestDispatcher())
+    @After fun tearDown() = Dispatchers.resetMain()
+
+    @Test fun revealOpensTheFolderAndSelectsTheFile() = runTest {
+        val repo = FakeFilesRepo().apply {
+            folders.value = listOf(org.samesame.notes.core.model.files.FileFolder(org.samesame.notes.core.model.files.FileFolderId("a"), null, "a", null, 0, 0, 0, 0, 0))
+            files.value = listOf(libraryFile("x"), libraryFile("y", folder = "a"), libraryFile("gone", trashedAt = 1L))
+        }
+        val vm = FilesViewModel(repo, org.samesame.notes.feature.files.viewer.FakePrefs())
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect {} }
+        val id = org.samesame.notes.core.model.files.FileId("y")
+        vm.reveal(id)
+        val s = vm.uiState.value
+        assertThat(s.folderId?.value).isEqualTo("a")
+        assertThat(s.selection.files).containsExactly(id)
+        assertThat(s.reveal).isEqualTo(id)
+        vm.revealShown()
+        assertThat(vm.uiState.value.reveal).isNull()
+        assertThat(vm.uiState.value.selecting).isTrue()
+    }
+
+    @Test fun aMissingOrBinnedFileIsReported() = runTest {
+        val repo = FakeFilesRepo().apply { files.value = listOf(libraryFile("gone", trashedAt = 1L)) }
+        val vm = FilesViewModel(repo, org.samesame.notes.feature.files.viewer.FakePrefs())
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect {} }
+        vm.reveal(org.samesame.notes.core.model.files.FileId("gone"))
+        vm.reveal(org.samesame.notes.core.model.files.FileId("nope"))
+        val events = ArrayList<FilesEvent>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.events.collect { events += it } }
+        assertThat(events).containsExactly(FilesEvent.Failure(FailureKind.NotFound), FilesEvent.Failure(FailureKind.NotFound))
+        assertThat(vm.uiState.value.selecting).isFalse()
+    }
+}

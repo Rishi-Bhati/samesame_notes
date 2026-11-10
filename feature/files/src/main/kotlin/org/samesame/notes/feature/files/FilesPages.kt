@@ -154,10 +154,10 @@ internal fun FilesTrashScreen(viewModel: FilesViewModel, snackbar: SnackbarHostS
 
 /** Name search over the library; every result shows its folder path, tap opens the file. */
 @Composable
-internal fun FilesSearchScreen(viewModel: FilesViewModel, folders: List<FileFolder>, snackbar: SnackbarHostState, onBack: () -> Unit) {
+internal fun FilesSearchScreen(viewModel: FilesViewModel, folders: List<FileFolder>, snackbar: SnackbarHostState, onBack: () -> Unit, initialQuery: String = "") {
     val colors = SameSameTheme.colors
     val context = LocalContext.current
-    var query by remember { mutableStateOf("") }
+    var query by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(initialQuery) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
     val results by remember(query) { if (query.isBlank()) emptyFlow() else viewModel.search(query) }.collectAsState(initial = emptyList())
