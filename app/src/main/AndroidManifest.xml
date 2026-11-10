@@ -63,6 +63,13 @@
             </intent-filter>
         </activity>
 
+        <!-- The viewers of library files: started by class name through openLibraryFile, never from outside. -->
+        <activity
+            android:name=".FileViewerActivity"
+            android:exported="false"
+            android:theme="@style/Theme.SameSame.Receive"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation" />
+
         <activity
             android:name=".ComposerActivity"
             android:exported="false"

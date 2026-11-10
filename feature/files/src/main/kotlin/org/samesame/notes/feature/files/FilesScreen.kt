@@ -59,6 +59,7 @@ import org.samesame.notes.core.designsystem.theme.SameSameTheme
 import org.samesame.notes.core.model.NoteId
 import org.samesame.notes.core.model.files.FileSortField
 import org.samesame.notes.core.model.files.LibraryFile
+import org.samesame.notes.feature.files.viewer.openLibraryFile
 
 private enum class Menu { None, Main, View }
 private enum class Dialog { None, RenameFile, RenameFolder, CreateFolder, Delete, Info }
@@ -92,7 +93,8 @@ internal fun FilesScreen(
         val intent = FilesIntents.send(files, files.map(viewModel::contentUri))
         FilesIntents.launch(context, android.content.Intent.createChooser(intent, null))
     }
-    fun open(file: LibraryFile) {
+    fun open(file: LibraryFile) { openLibraryFile(context, file.id) }
+    fun openWith(file: LibraryFile) {
         val uri = viewModel.contentUri(file)
         if (!FilesIntents.launch(context, FilesIntents.view(file, uri))) {
             scope.launch {
@@ -238,7 +240,7 @@ internal fun FilesScreen(
                 }
                 if (singleFile) {
                     AppMenuItem(stringResource(R.string.feature_files_more_info), { moreMenu = false; infoFile = filesSelected.first(); dialog = Dialog.Info })
-                    AppMenuItem(stringResource(R.string.feature_files_more_open_with), { moreMenu = false; open(filesSelected.first()) })
+                    AppMenuItem(stringResource(R.string.feature_files_more_open_with), { moreMenu = false; openWith(filesSelected.first()) })
                 }
             }
         }

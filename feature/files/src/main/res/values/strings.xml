@@ -143,4 +143,8 @@
     <string name="feature_files_receive_note_failed">Couldn\'t create a note from this file</string>
     <string name="feature_files_receive_pick_folder">Choose folder</string>
     <string name="feature_files_receive_done">Done</string>
+    <string name="feature_files_viewer_not_found">File not found</string>
+    <string name="feature_files_viewer_in_bin">This file is in the Recycle bin</string>
+    <string name="feature_files_viewer_image_failed">Can\'t show this image</string>
+    <string name="feature_files_viewer_position">%1$d of %2$d</string>
 </resources>
