@@ -21,7 +21,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import org.samesame.notes.core.model.NoteId
 
-private enum class FilesPage { Files, Trash, Search, Move }
+private enum class FilesPage { Files, Trash, Search, Move, Storage }
 
 @Composable
 fun FilesRoute(
@@ -50,6 +50,7 @@ fun FilesRoute(
                 state = state, viewModel = viewModel, snackbar = snackbar, onBack = onBack,
                 onOpenSearch = { page = FilesPage.Search },
                 onOpenTrash = { page = FilesPage.Trash },
+                onOpenStorage = { page = FilesPage.Storage },
                 onMove = { page = FilesPage.Move },
                 onOpenNote = onOpenNote,
             )
@@ -63,6 +64,10 @@ fun FilesRoute(
                     viewModel = viewModel, folders = state.allFolders, snackbar = snackbar,
                     onBack = { page = FilesPage.Files },
                 )
+            }
+            FilesPage.Storage -> {
+                BackHandler { page = FilesPage.Files }
+                StorageScreen(contentUriOf = viewModel::contentUri, onBack = { page = FilesPage.Files })
             }
             FilesPage.Move -> {
                 BackHandler { page = FilesPage.Files }

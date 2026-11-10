@@ -166,4 +166,18 @@
     <string name="feature_files_viewer_audio_pause">Pause</string>
     <string name="feature_files_viewer_audio_rewind">Back 10 seconds</string>
     <string name="feature_files_viewer_audio_forward">Forward 10 seconds</string>
+    <string name="feature_files_storage_title">Storage</string>
+    <string name="feature_files_storage_free">%1$s free on device</string>
+    <string name="feature_files_storage_largest">Largest files</string>
+    <string name="feature_files_storage_low_title">Storage is almost full</string>
+    <string name="feature_files_storage_low_message">Less than %1$s is free, so new files can\'t be saved. Clear some space, then try again.</string>
+    <string name="feature_files_category_images">Images</string>
+    <string name="feature_files_category_pdf">PDF</string>
+    <string name="feature_files_category_text">Text</string>
+    <string name="feature_files_category_markdown">Markdown</string>
+    <string name="feature_files_category_audio">Audio</string>
+    <string name="feature_files_category_video">Video</string>
+    <string name="feature_files_category_archives">Archives</string>
+    <string name="feature_files_category_documents">Documents</string>
+    <string name="feature_files_category_other">Other</string>
 </resources>

@@ -73,6 +73,7 @@ internal fun FilesScreen(
     onBack: () -> Unit,
     onOpenSearch: () -> Unit,
     onOpenTrash: () -> Unit,
+    onOpenStorage: () -> Unit,
     onMove: () -> Unit,
     onOpenNote: (NoteId) -> Unit,
 ) {
@@ -174,6 +175,7 @@ internal fun FilesScreen(
                                 AppMenuItem(stringResource(R.string.feature_files_menu_view), { menu = Menu.View })
                                 AppMenuItem(stringResource(R.string.feature_files_menu_create_folder), { menu = Menu.None; dialog = Dialog.CreateFolder })
                                 AppMenuItem(stringResource(R.string.feature_files_menu_recycle_bin), { menu = Menu.None; onOpenTrash() })
+                                AppMenuItem(stringResource(R.string.feature_files_storage_title), { menu = Menu.None; onOpenStorage() })
                             }
                         }
                     }
