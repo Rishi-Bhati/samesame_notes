@@ -27,6 +27,8 @@ and keeps notes, folders, favourites, locked notes and voice recordings.
 
 ### Fixes
 
+- The "Try again in N seconds" message after too many wrong passwords now counts down live instead of staying frozen.
+- Manage folders: long-press a folder to create a subfolder inside it; folders are listed as a tree.
 - Drawer rows for Favourites and Locked notes after All notes, each with a count and shown only when the count is
   above zero.
 - Cut in the view state, next to Copy, for text selected in a note you are reading.
