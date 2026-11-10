@@ -28,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -137,10 +138,11 @@ internal fun ExportNotesPage(viewModel: BulkTransferViewModel, onBack: () -> Uni
     LaunchedEffect(selectable) { viewModel.retain(selectable) }
     var chooseFormat by rememberSaveable { mutableStateOf(false) }
     var format by rememberSaveable { mutableStateOf<ExportFormat?>(null) }
+    var includeFiles by remember { mutableStateOf(true) }
     val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
         val f = format
         format = null
-        if (tree != null && f != null) viewModel.export(selection.ordered(selectable), f, tree)
+        if (tree != null && f != null) viewModel.export(selection.ordered(selectable), f, tree, includeFiles)
     }
     val count = selection.selected.size
     val colors = SameSameTheme.colors
@@ -180,9 +182,12 @@ internal fun ExportNotesPage(viewModel: BulkTransferViewModel, onBack: () -> Uni
         }
     }
     if (chooseFormat) {
+        val linkedBytes by produceState(0L, selection) { value = viewModel.linkedFilesBytes(selection.ordered(selectable)) }
         SaveAsFileDialog(
             onDismiss = { chooseFormat = false },
             onConfirm = { f -> chooseFormat = false; format = f; folderPicker.launch(null) },
+            linkedFilesBytes = linkedBytes,
+            onIncludeLinkedFilesChange = { includeFiles = it },
         )
     }
 }

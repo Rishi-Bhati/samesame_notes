@@ -67,7 +67,12 @@ fun SaveAsFileDialog(
     onConfirm: (ExportFormat) -> Unit,
     /** The rows offered, in [SaveFormats] order (a page selection leaves out the whole-note containers). */
     formats: Set<ExportFormat> = SaveFormats.mapTo(LinkedHashSet()) { it.first },
+    /** Size of the library files the notes link to; above 0 the .ssnote choice offers "Include linked files (size)". */
+    linkedFilesBytes: Long = 0L,
+    /** Called with the checkbox state (default on) whenever it changes. */
+    onIncludeLinkedFilesChange: (Boolean) -> Unit = {},
 ) {
+    var includeFiles by remember { mutableStateOf(true) }
     val rows = SaveFormats.filter { it.first in formats }
     var selected by remember { mutableStateOf(rows.firstOrNull()?.first ?: ExportFormat.SSNOTE) }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -97,6 +102,18 @@ fun SaveAsFileDialog(
                             Text(stringResource(label), color = MaterialTheme.colorScheme.onSurface, fontSize = 17.sp, modifier = Modifier.weight(1f))
                             if (selected == format) Icon(AppIcons.Check, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurface)
                         }
+                    }
+                }
+                if (selected == ExportFormat.SSNOTE && linkedFilesBytes > 0) {
+                    val size = android.text.format.Formatter.formatShortFileSize(androidx.compose.ui.platform.LocalContext.current, linkedFilesBytes)
+                    Row(
+                        Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 12.dp)
+                            .clickable(role = Role.Checkbox) { includeFiles = !includeFiles; onIncludeLinkedFilesChange(includeFiles) }
+                            .padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(stringResource(R.string.feature_share_include_linked_files, size), color = MaterialTheme.colorScheme.onSurface, fontSize = 17.sp, modifier = Modifier.weight(1f))
+                        if (includeFiles) Icon(AppIcons.Check, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurface)
                     }
                 }
                 DialogActions(onDismiss, { onConfirm(selected) }, Modifier.padding(top = 4.dp))

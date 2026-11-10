@@ -48,7 +48,7 @@ class NoteTransferService internal constructor(
         onProgress: (done: Int, total: Int, title: String) -> Unit = { _, _, _ -> },
     ): TransferBatch = withContext(Dispatchers.IO) {
         clear()
-        val dir = File(root, System.currentTimeMillis().toString()).also { it.mkdirs() }
+        val dir = File(root, uniqueRunName("")).also { it.mkdirs() }
         val taken = HashSet<String>()
         val items = ArrayList<TransferItem>()
         var skipped = 0
@@ -92,7 +92,7 @@ class NoteTransferService internal constructor(
         deliver: suspend (TransferItem) -> Unit,
     ): BulkExportResult = withContext(Dispatchers.IO) {
         clear()
-        val dir = File(root, "bulk-" + System.currentTimeMillis()).also { it.mkdirs() }
+        val dir = File(root, uniqueRunName("bulk-")).also { it.mkdirs() }
         val taken = HashSet<String>()
         var exported = 0
         var skipped = 0
@@ -135,6 +135,16 @@ class NoteTransferService internal constructor(
             }
         }
     }
+
+    /** Run folder name: the time plus a counter, so two runs in the same millisecond never share (and wipe) a folder. */
+    private fun uniqueRunName(prefix: String) = prefix + System.currentTimeMillis() + "-" + runCounter.incrementAndGet()
+
+    /** Combined size of the library files the [ids] notes link to (for "Include linked files (12 MB)"). */
+    suspend fun linkedFilesBytes(ids: List<NoteId>): Long = withContext(Dispatchers.IO) {
+        ids.sumOf { runCatching { notes.linkedFilesBytes(it) }.getOrDefault(0L) }
+    }
+
+    private val runCounter = java.util.concurrent.atomic.AtomicLong()
 
     /** Deletes everything this service left in the cache. */
     /** Deletes earlier share/save output (a pending camera capture stays, see [ShareCache]). */
