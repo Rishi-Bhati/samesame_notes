@@ -35,9 +35,9 @@ class NoteDocumentTest {
         assertThat(NoteDocument.fromJson(doc.toJson())).isEqualTo(doc)
     }
 
-    @Test fun `defaults are written and version is 7`() {
+    @Test fun `defaults are written and version is 8`() {
         val json = NoteDocument(id = "n", pages = listOf(PageSpec("p"))).toJson()
-        assertThat(json).contains("\"formatVersion\":7")
+        assertThat(json).contains("\"formatVersion\":8")
         assertThat(json).contains("\"size\":null")
         assertThat(json).contains("\"recordings\":[]")
         // v7 moved the reading position out of the document: it must never be written there again.

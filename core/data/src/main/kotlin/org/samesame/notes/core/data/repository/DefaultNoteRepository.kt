@@ -62,7 +62,12 @@ internal class DefaultNoteRepository @Inject constructor(
     private val shareCache: org.samesame.notes.core.data.transfer.ShareCache,
     /** Rendered first pages on disk; null in tests that don't need one. */
     private val previewCache: PreviewDiskCache? = null,
+    /** Files backlinks (`file_refs`), rebuilt on every save; null in tests that don't need them. */
+    private val fileRefs: DefaultFilesRepository? = null,
 ) : NoteRepository {
+
+    /** The backlinks last written per note, so an autosave that didn't change them doesn't rewrite the rows. */
+    private val lastFileRefs = java.util.concurrent.ConcurrentHashMap<String, Map<org.samesame.notes.core.model.files.FileId, Map<org.samesame.notes.core.model.files.FileRefKind, Int>>>()
 
     override fun observeNotes(filter: NoteFilter, sort: SortOrder): Flow<List<Note>> {
         val rows = when (filter) {
@@ -456,6 +461,21 @@ internal class DefaultNoteRepository @Inject constructor(
         val row = noteDao.get(id.value) ?: return@withLock
         documents.commit(id.value, snapshot)
         val doc = snapshot.document
+        // Backlinks for Files (locked notes too: they can only change while unlocked, and list by their visible title).
+        // The note is already on disk: a failure here only leaves the Info sheet's usage list stale.
+        val refsSink = fileRefs
+        if (refsSink != null) {
+            runCatching {
+                val refs = org.samesame.notes.core.model.files.NoteFileRefs.of(doc)
+                if (lastFileRefs[id.value] != refs) {
+                    refsSink.replaceNoteRefs(id, refs)
+                    lastFileRefs[id.value] = refs
+                }
+            }.onFailure {
+                if (it is kotlinx.coroutines.CancellationException) throw it
+                log.log(Level.WARNING, "File backlinks not updated", it)
+            }
+        }
         val plain = doc.body.plainText()
         val now = clock.now()
         if (row.isLocked) {

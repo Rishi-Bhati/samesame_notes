@@ -76,4 +76,8 @@ object Limits {
     const val MAX_FILE_NAME_BYTES = 255
     /** Characters (code points) of a Files folder name. */
     const val MAX_FILE_FOLDER_NAME_LENGTH = 50
+    /** "Show in note" copies the picture into the note; a bigger file is pasted as a link instead. */
+    const val MAX_SHOW_IN_NOTE_BYTES = 64L * 1024 * 1024
+    /** Files pasted or inserted at once (the reference's paste/share cap). */
+    const val MAX_FILES_PER_PASTE = 100
 }
