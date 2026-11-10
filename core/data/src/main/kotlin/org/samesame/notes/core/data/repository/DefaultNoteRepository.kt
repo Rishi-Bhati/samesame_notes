@@ -260,11 +260,16 @@ internal class DefaultNoteRepository @Inject constructor(
                 // Only recordings made in SameSame (no sdocx source id) need their audio shipped.
                 val audio = document.recordings.filter { it.sourceFileId == null }
                     .mapNotNull { r -> documents.readMedia(id.value, r.media)?.let { r.id to it } }.toMap()
+                val imageSha = document.inlineObjects.filterIsInstance<org.samesame.notes.core.model.document.ImageObject>()
+                    .filter { it.libraryFileId != null }
+                    .mapNotNull { img -> documents.readMedia(id.value, img.media)?.let { img.media to org.samesame.notes.core.sdocx.SdocxLinkChannel.sha(it) } }
+                    .toMap()
                 SdocxExport.exportImported(
                     original, document, out,
                     sideChannel[org.samesame.notes.core.sdocx.SdocxSideChannel.RAW_ARCHIVE_PATH],
                     audio,
                     lastViewedPageIndex = lastViewedPageIndex,
+                    imageSha = { imageSha[it] },
                 )
             } else {
                 val source = object : org.samesame.notes.core.export.ExportSource {
@@ -310,7 +315,16 @@ internal class DefaultNoteRepository @Inject constructor(
         }
 
         val id = UUID.randomUUID().toString()
-        val bundle = org.samesame.notes.core.sdocx.map.SdocxMapper.toImportBundle(archive, id)
+        val rawBundle = org.samesame.notes.core.sdocx.map.SdocxMapper.toImportBundle(archive, id)
+        // Link runs and library ids written by SameSame's own export come back where their label text is unchanged.
+        val bundle = archive.extraEntries[org.samesame.notes.core.sdocx.SdocxLinkChannel.ENTRY]?.let { entry ->
+            val shaOf = { media: String -> rawBundle.media[media]?.let(org.samesame.notes.core.sdocx.SdocxLinkChannel::sha) }
+            org.samesame.notes.core.sdocx.map.SdocxMapper.ImportBundle(
+                document = org.samesame.notes.core.sdocx.SdocxLinkChannel.apply(rawBundle.document, entry, shaOf),
+                title = rawBundle.title, lock = rawBundle.lock, viewState = rawBundle.viewState,
+                media = rawBundle.media, extraEntries = rawBundle.extraEntries,
+            )
+        } ?: rawBundle
         try {
             documents.writeSdocxImport(bundle, archive, bytes)
         } catch (e: Exception) {
@@ -340,6 +354,7 @@ internal class DefaultNoteRepository @Inject constructor(
             ),
         )
         searchDao.replace(NoteSearchEntity(noteId = id, title = bundle.title, body = plain, inkText = ""))
+        fileRefs?.let { runCatching { it.replaceNoteRefs(NoteId(id), org.samesame.notes.core.model.files.NoteFileRefs.of(bundle.document)) } }
         bundle.viewState?.let {
             viewStateDao.upsert(NoteViewStateEntity(id, it.pageIndex, it.offsetInPage, it.zoom))
         }
