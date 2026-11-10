@@ -501,7 +501,7 @@ class BodyTextEngine(
                 drawHint(canvas, decorations.hint)
             }
             drawBodyText(canvas, slice.firstLine, slice.lastLine, decorations.links)
-            if (decorations.links) drawLinks(canvas)
+            drawLinks(canvas)
         }
         canvas.restoreToCount(save)
     }
@@ -652,23 +652,52 @@ class BodyTextEngine(
     }
 
     private var linkVersion = -1L
+    private var linkDetected = false
     private var linkCache: List<TextLink> = emptyList()
 
-    /** Links in the body text, recomputed only when the text changed. */
-    fun links(): List<TextLink> {
-        if (linkVersion != body.layoutVersion) {
-            linkCache = LinkDetector.find(body.editable)
+    /**
+     * Links in the body text, recomputed only when the text or its styles changed: the stored link runs
+     * (`CharStyle.link`, always), raw library file links (always) and, when [detected] ("Show links in notes"), web
+     * addresses, e-mail, phone numbers, dates and times. A stored link wins over a detected one it overlaps.
+     */
+    fun links(detected: Boolean = true): List<TextLink> {
+        if (linkVersion != body.layoutVersion || linkDetected != detected) {
+            val explicit = explicitLinks()
+            val derived = if (detected) LinkDetector.find(body.editable) else LinkDetector.findFileLinks(body.editable)
+            linkCache = if (explicit.isEmpty()) derived
+            else (explicit + derived.filter { d -> explicit.none { d.start < it.end && d.end > it.start } }).sortedBy { it.start }
             linkVersion = body.layoutVersion
+            linkDetected = detected
         }
         return linkCache
     }
 
-    /** The link under a document point, or null. */
-    fun linkAt(x: Float, y: Float): TextLink? {
-        val list = links()
+    /** The stored link runs of the body ([TextLink.explicit]). */
+    private fun explicitLinks(): List<TextLink> {
+        val text = body.editable
+        val spans = text.getSpans(0, text.length, org.samesame.notes.core.richtext.spans.CharStyleSpan::class.java)
+        if (spans.isEmpty()) return emptyList()
+        val runs = ArrayList<Triple<Int, Int, String>>()
+        for (sp in spans) {
+            val uri = sp.style.link ?: continue
+            runs += Triple(text.getSpanStart(sp), text.getSpanEnd(sp), uri)
+        }
+        return LinkDetector.joinLinkRuns(runs)
+    }
+
+    /** The link under a document point, or null ([detected] as in [links]). */
+    fun linkAt(x: Float, y: Float, detected: Boolean = true): TextLink? {
+        val list = links(detected)
         if (list.isEmpty() || body.length == 0) return null
         val o = hitTest(x, y)
         return list.firstOrNull { o >= it.start && o < it.end }
+    }
+
+    /** The stored link that holds the whole range `[start, end)` (a caret counts when it is inside or at an edge), or null. */
+    fun storedLinkCovering(start: Int, end: Int): TextLink? {
+        val s = minOf(start, end)
+        val e = maxOf(start, end)
+        return links(detected = false).firstOrNull { it.explicit && s >= it.start && e <= it.end && (e > s || s in it.start..it.end) }
     }
 
     private val checkedPath = Path()
@@ -723,8 +752,9 @@ class BodyTextEngine(
                     }
                 }
             }
-            if (withLinks) {
-                for (l in links()) {
+            run {
+                // Stored link runs and raw file links are always drawn; detected links only with "Show links".
+                for (l in links(withLinks)) {
                     val a = layout.getLineForOffset(l.start)
                     val b = layout.getLineForOffset(l.end)
                     for (line in a..b) {

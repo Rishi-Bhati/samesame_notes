@@ -1,8 +1,15 @@
 package org.samesame.notes.core.richtext
 
-/** A link-like run in body text: web address, e-mail, phone number, date or time. [start] inclusive, [end] exclusive. */
-data class TextLink(val start: Int, val end: Int, val kind: Kind, val target: String) {
-    enum class Kind { Url, Email, Phone, Date, Time }
+import org.samesame.notes.core.model.files.FileLinks
+import org.samesame.notes.core.model.richtext.RichText
+
+/**
+ * A link-like run in body text: web address, e-mail, phone number, date, time or library file. [start] inclusive, [end]
+ * exclusive. [explicit] is true for a stored link run (`CharStyle.link`, format v8): its text is a label and [target]
+ * the URI; detected links ([LinkDetector.find]) are derived from the text itself.
+ */
+data class TextLink(val start: Int, val end: Int, val kind: Kind, val target: String, val explicit: Boolean = false) {
+    enum class Kind { Url, Email, Phone, Date, Time, FileLink }
 }
 
 /**
@@ -36,6 +43,9 @@ object LinkDetector {
         fun add(s: Int, e: Int, kind: TextLink.Kind, target: String) {
             if (e > s && !overlaps(s, e)) found += TextLink(s, e, kind, target)
         }
+
+        // First, so the digits of a file id are never taken for a phone number or a date.
+        found += findFileLinks(text)
 
         for (m in url.findAll(text)) {
             var end = m.range.last + 1
@@ -77,6 +87,56 @@ object LinkDetector {
             add(s, e, TextLink.Kind.Phone, "tel:" + m.value.filter { it.isDigit() || it == '+' })
         }
         return found.sortedBy { it.start }
+    }
+
+    /**
+     * Raw library file links (`samesame://file/<id>...`) typed or pasted as plain text, so they stay tappable without
+     * the paste interception. Trailing sentence punctuation is not part of the link. Found whatever the "Show links"
+     * setting: they are the app's own links, not smart detection.
+     */
+    fun findFileLinks(text: CharSequence): List<TextLink> {
+        if (!text.contains("://")) return emptyList()
+        val out = ArrayList<TextLink>()
+        for (m in FileLinks.PATTERN.findAll(text)) {
+            var end = m.range.last + 1
+            while (end > m.range.first && text[end - 1] in TRAILING) end--
+            out += TextLink(m.range.first, end, TextLink.Kind.FileLink, text.substring(m.range.first, end))
+        }
+        return out
+    }
+
+    /** The kind a stored link URI ([TextLink.explicit]) opens as. */
+    fun kindOfUri(uri: String): TextLink.Kind = when {
+        FileLinks.parse(uri) != null -> TextLink.Kind.FileLink
+        uri.startsWith("mailto:", ignoreCase = true) -> TextLink.Kind.Email
+        uri.startsWith("tel:", ignoreCase = true) -> TextLink.Kind.Phone
+        else -> TextLink.Kind.Url
+    }
+
+    /**
+     * Joins character ranges `[start, end)` carrying a link URI (one per styled run, in text order) into links: adjacent
+     * runs with the same URI (a link whose label is partly bold, say) are one link.
+     */
+    fun joinLinkRuns(runs: List<Triple<Int, Int, String>>): List<TextLink> {
+        val out = ArrayList<TextLink>()
+        for ((s, e, uri) in runs.sortedBy { it.first }) {
+            if (e <= s) continue
+            val last = out.lastOrNull()
+            if (last != null && last.target == uri && last.end == s) out[out.lastIndex] = last.copy(end = e)
+            else out += TextLink(s, e, kindOfUri(uri), uri, explicit = true)
+        }
+        return out
+    }
+
+    /** The stored link runs of [rt] (`CharStyle.link`), joined as by [joinLinkRuns]. */
+    fun explicitLinks(rt: RichText): List<TextLink> {
+        val runs = ArrayList<Triple<Int, Int, String>>()
+        var pos = 0
+        for (run in rt.runs) {
+            run.style.link?.let { runs += Triple(pos, pos + run.length, it) }
+            pos += run.length
+        }
+        return joinLinkRuns(runs)
     }
 
     /** `12/03/2026`, `3-11-26` and `2026.11.03` are dates; `1/2` alone is not. */

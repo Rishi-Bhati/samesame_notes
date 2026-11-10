@@ -105,4 +105,8 @@
         <item quantity="one">%d failed.</item>
         <item quantity="other">%d failed.</item>
     </plurals>
+    <string name="feature_settings_file_paste">When pasting a file link</string>
+    <string name="feature_settings_file_paste_ask">Ask</string>
+    <string name="feature_settings_file_paste_link">Always paste as link</string>
+    <string name="feature_settings_file_paste_show">Always show in note</string>
 </resources>

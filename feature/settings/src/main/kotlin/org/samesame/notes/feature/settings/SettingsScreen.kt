@@ -185,6 +185,15 @@ internal fun SettingsRow(
 private val ThemeChoices = listOf(ThemeMode.Light, ThemeMode.Dark, ThemeMode.System)
 
 @Composable
+private fun filePasteLabel(mode: org.samesame.notes.core.model.FilePasteMode): String = stringResource(
+    when (mode) {
+        org.samesame.notes.core.model.FilePasteMode.Ask -> R.string.feature_settings_file_paste_ask
+        org.samesame.notes.core.model.FilePasteMode.AlwaysLink -> R.string.feature_settings_file_paste_link
+        org.samesame.notes.core.model.FilePasteMode.AlwaysShowInNote -> R.string.feature_settings_file_paste_show
+    },
+)
+
+@Composable
 private fun themeLabel(mode: ThemeMode): String = stringResource(
     when (mode) {
         ThemeMode.Light -> R.string.feature_settings_theme_light
@@ -203,6 +212,7 @@ private fun MainPage(
 ) {
     val hasLockPassword by hiltViewModel<LockViewModel>().hasPassword.collectAsStateWithLifecycle(initialValue = false)
     var themeMenu by rememberSaveable { mutableStateOf(false) }
+    var filePasteMenu by rememberSaveable { mutableStateOf(false) }
     SettingsScaffold(stringResource(R.string.feature_settings_title), onBack) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding()) {
             SectionHeader(stringResource(R.string.feature_settings_general))
@@ -243,6 +253,24 @@ private fun MainPage(
             SectionHeader(stringResource(R.string.feature_settings_advanced))
             GroupCard {
                 SettingsRow(stringResource(R.string.feature_settings_show_links), checked = settings.showLinks, onChecked = { v -> update { it.copy(showLinks = v) } })
+                RowDivider()
+                // Files (0.2.0): what pasting a link to a picture of the Files library does.
+                Box {
+                    SettingsRow(
+                        stringResource(R.string.feature_settings_file_paste),
+                        summary = filePasteLabel(settings.filePasteMode),
+                        onClick = { filePasteMenu = true },
+                    )
+                    AppDropdownMenu(expanded = filePasteMenu, onDismissRequest = { filePasteMenu = false }, offset = DpOffset(0.dp, 0.dp)) {
+                        org.samesame.notes.core.model.FilePasteMode.entries.forEach { mode ->
+                            AppMenuItem(
+                                filePasteLabel(mode),
+                                { filePasteMenu = false; update { it.copy(filePasteMode = mode) } },
+                                checked = settings.filePasteMode == mode,
+                            )
+                        }
+                    }
+                }
                 RowDivider()
                 SettingsRow(
                     stringResource(R.string.feature_settings_web_previews), summary = stringResource(R.string.feature_settings_web_previews_summary),

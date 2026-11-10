@@ -45,6 +45,7 @@ private object SettingsKeys {
     val newBackground = longPreferencesKey("new_note_background")
     val newPdfPageSize = stringPreferencesKey("new_note_pdf_page_size")
     val themeMode = stringPreferencesKey("theme_mode")
+    val filePasteMode = stringPreferencesKey("file_paste_mode")
 }
 
 /**
@@ -79,6 +80,7 @@ internal fun Preferences.toAppSettings(): AppSettings {
         toolbarZoomLock = this[SettingsKeys.toolbarZoomLock] ?: d.toolbarZoomLock,
         adjustColourInDarkMode = this[SettingsKeys.adjustDark] ?: d.adjustColourInDarkMode,
         themeMode = enumOrDefault(this[SettingsKeys.themeMode], d.themeMode),
+        filePasteMode = enumOrDefault(this[SettingsKeys.filePasteMode], d.filePasteMode),
         newNote = NewNoteStyle(
             pageMode = enumOrDefault(this[SettingsKeys.newPageMode], d.newNote.pageMode),
             ratio = enumOrDefault(this[SettingsKeys.newRatio], d.newNote.ratio),
@@ -100,6 +102,7 @@ internal fun MutablePreferences.writeAppSettings(s: AppSettings) {
     this[SettingsKeys.toolbarZoomLock] = s.toolbarZoomLock
     this[SettingsKeys.adjustDark] = s.adjustColourInDarkMode
     this[SettingsKeys.themeMode] = s.themeMode.name
+    this[SettingsKeys.filePasteMode] = s.filePasteMode.name
     this[SettingsKeys.newPageMode] = s.newNote.pageMode.name
     this[SettingsKeys.newRatio] = s.newNote.ratio.name
     this[SettingsKeys.newTemplate] = s.newNote.template.name
