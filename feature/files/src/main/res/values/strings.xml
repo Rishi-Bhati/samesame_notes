@@ -180,4 +180,5 @@
     <string name="feature_files_category_archives">Archives</string>
     <string name="feature_files_category_documents">Documents</string>
     <string name="feature_files_category_other">Other</string>
+    <string name="feature_files_picker_insert">Insert</string>
 </resources>
