@@ -25,6 +25,6 @@ object TextExport {
     }
 
     fun renderBody(body: RichText): String = body.toParagraphs().joinToString("\n") { p ->
-        listMarkerPrefix(p.style, p.number) + p.plain
+        listMarkerPrefix(p.style, p.number) + p.plainWithLinks
     }
 }

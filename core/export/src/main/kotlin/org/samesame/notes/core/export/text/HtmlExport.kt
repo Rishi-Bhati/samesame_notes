@@ -105,7 +105,9 @@ object HtmlExport {
         val deco = listOfNotNull("underline".takeIf { s.underline }, "line-through".takeIf { s.strikethrough })
         if (deco.isNotEmpty()) css.append("text-decoration:").append(deco.joinToString(" ")).append(';')
         val text = escape(span.text)
-        return if (css.isEmpty()) text else "<span style=\"$css\">$text</span>"
+        val styled = if (css.isEmpty()) text else "<span style=\"$css\">$text</span>"
+        val link = s.link
+        return if (link.isNullOrEmpty()) styled else "<a href=\"${escape(link)}\">$styled</a>"
     }
 
     private fun trim(f: Float): String = "%.3f".format(java.util.Locale.ROOT, f).trimEnd('0').trimEnd('.')

@@ -14,6 +14,14 @@ data class Span(val text: String, val style: CharStyle) {
 /** One `\n`-separated paragraph with its derived list number (1-based, only for Numbered). */
 data class Para(val style: ParagraphStyle, val spans: List<Span>, val number: Int?) {
     val plain: String get() = spans.filterNot { it.isObject }.joinToString("") { it.text }
+
+    /** Like [plain], but every link run is followed by its URI: `label <uri>`. */
+    val plainWithLinks: String
+        get() = spans.filterNot { it.isObject }.joinToString("") { span ->
+            val uri = span.style.link
+            if (uri.isNullOrEmpty() || span.text.isBlank() || span.text.trim() == uri) span.text
+            else span.text.trimEnd() + " <" + uri + ">" + span.text.substring(span.text.trimEnd().length)
+        }
 }
 
 /** Splits a [RichText] into paragraphs of uniformly styled spans and numbers the Numbered lists. */
