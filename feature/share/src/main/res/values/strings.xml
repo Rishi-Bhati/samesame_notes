@@ -2,6 +2,7 @@
 <resources>
     <string name="feature_share_share">Share</string>
     <string name="feature_share_chooser_title">Share via</string>
+    <string name="feature_share_include_linked_files">Include linked files (%1$s)</string>
     <string name="feature_share_save_as_file">Save as file</string>
     <string name="feature_share_cancel">Cancel</string>
     <string name="feature_share_done">Done</string>

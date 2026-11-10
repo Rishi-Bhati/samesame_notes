@@ -116,6 +116,9 @@ interface NoteRepository {
         out: java.io.OutputStream,
     ): org.samesame.notes.core.export.ExportTarget
 
+    /** Total size of the distinct library files [id] links to (what "Include linked files" would add to a `.ssnote`); 0 for none. */
+    suspend fun linkedFilesBytes(id: NoteId): Long = 0L
+
     /** Imports a `.ssnote` stream as a new catalog entry (new id on collision). Throws IOException if invalid. */
     suspend fun importNote(input: java.io.InputStream, folderId: FolderId? = null): NoteId
 
