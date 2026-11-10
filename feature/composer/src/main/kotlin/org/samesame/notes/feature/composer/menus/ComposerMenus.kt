@@ -81,6 +81,8 @@ internal fun InsertMenu(
     onVoice: (() -> Unit)? = null,
     onDrawing: (() -> Unit)? = null,
     onTextBox: (() -> Unit)? = null,
+    /** Insert > From Files (Files library picker); the row is shown only when the app provides the picker. */
+    onFromFiles: (() -> Unit)? = null,
 ) {
     MenuSurface(modifier.width(300.dp)) {
         Column(Modifier.padding(top = 16.dp, bottom = 2.dp)) {
@@ -98,6 +100,7 @@ internal fun InsertMenu(
             PlainMenuRow(AppIcons.Mic, R.string.feature_composer_menu_voice, enabled = onVoice != null, onClick = onVoice ?: {})
             PlainMenuRow(AppIcons.Palette, R.string.feature_composer_menu_drawing, enabled = onDrawing != null, onClick = onDrawing ?: {})
             PlainMenuRow(AppIcons.TextBox, R.string.feature_composer_menu_textbox, enabled = onTextBox != null, onClick = onTextBox ?: {})
+            if (onFromFiles != null) PlainMenuRow(AppIcons.Folder, R.string.feature_composer_files_from_files, enabled = true, onClick = onFromFiles)
         }
     }
 }

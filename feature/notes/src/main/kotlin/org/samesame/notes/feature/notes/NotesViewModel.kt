@@ -28,6 +28,7 @@ import org.samesame.notes.core.data.repository.NoteRepository
 import org.samesame.notes.core.data.repository.UserPreferencesRepository
 import org.samesame.notes.core.model.Folder
 import org.samesame.notes.core.model.FolderId
+import org.samesame.notes.core.model.Limits
 import org.samesame.notes.core.model.Note
 import org.samesame.notes.core.model.NoteFilter
 import org.samesame.notes.core.model.NoteId
@@ -361,6 +362,13 @@ class NotesViewModel @Inject constructor(
     suspend fun createFolderIn(name: String, color: Long?, parent: FolderId?): FolderId? =
         runCatching { folders.createFolder(name, parent, color) }.getOrNull()
 
+    /** Creates a folder under an explicit [parent] (null = top level), for Manage folders: the bottom "Create folder"
+     * row (null) and the selected row's "Create subfolder" (its id). An unknown parent or a too-deep child is refused
+     * by the repository and does nothing, like [createFolder]. */
+    fun createFolderUnder(name: String, color: Long?, parent: FolderId?) = viewModelScope.launch {
+        runCatching { folders.createFolder(name, parent, color) }
+    }
+
     /** Moves the selected notes into [folderId] (null = top level, "Folders"), then leaves selection mode. */
     fun moveSelectionTo(folderId: FolderId?) = withSelection { notes.moveToFolder(it, folderId) }
 
@@ -573,6 +581,34 @@ internal fun parentFilterOf(folders: List<Folder>, filter: NoteFilter): NoteFilt
     if (filter !is NoteFilter.InFolder) return filter
     val parentId = folders.firstOrNull { it.id == filter.folderId }?.parentId
     return if (parentId != null) NoteFilter.InFolder(parentId) else NoteFilter.All
+}
+
+/**
+ * Whether a new folder can be created under a parent at [parentDepth] (top-level = 0). Mirrors
+ * [FolderRepository.createFolder], which refuses when `parentDepth + 1` reaches [Limits.MAX_FOLDER_DEPTH]:
+ * parent depth 48 creates (child 49), 49 refuses. The list UI checks this before opening the dialog so a
+ * too-deep tap can toast instead of offering a name field the repository would then refuse.
+ */
+internal fun canCreateSubfolder(parentDepth: Int): Boolean = parentDepth + 1 < Limits.MAX_FOLDER_DEPTH
+
+/**
+ * Folders in tree display order for Manage/Select-folder: a parent, then its children (depth-first), siblings
+ * keeping the repository order. Folders whose parent is not in [folders] (e.g. a restored orphan, though restore
+ * re-parents those) are treated as top-level. Every folder appears once, each directly under its parent so a
+ * new subfolder is visible indented right below it.
+ */
+internal fun orderedFolders(folders: List<Folder>): List<Folder> {
+    if (folders.size < 2) return folders
+    val ids = folders.mapTo(HashSet()) { it.id }
+    val childrenByParent = folders.groupBy { it.parentId?.takeIf { parent -> parent in ids } }
+    val out = ArrayList<Folder>(folders.size)
+    fun visit(folder: Folder) {
+        out += folder
+        childrenByParent[folder.id].orEmpty().forEach(::visit)
+    }
+    // Roots are the null-key group (missing-parent folders group there too).
+    childrenByParent[null].orEmpty().forEach(::visit)
+    return out
 }
 
 // ---- saved instance state (activity recreation / process death) ------------------------------------------------

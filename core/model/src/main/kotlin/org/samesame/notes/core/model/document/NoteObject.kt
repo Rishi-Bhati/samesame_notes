@@ -34,6 +34,11 @@ data class ImageObject(
     val widthPu: Float,
     val heightPu: Float,
     val crop: RectPu? = null,
+    /**
+     * The library file this image was shown from (format v8, "Show in note"): the picture itself is a copy in the bundle
+     * ([media]), this only records where it came from (Open in Files, Show as link, backlinks). Null for every other image.
+     */
+    val libraryFileId: String? = null,
 ) : NoteObject
 
 @Serializable @SerialName("textbox")

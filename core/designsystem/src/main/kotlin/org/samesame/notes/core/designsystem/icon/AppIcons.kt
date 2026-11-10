@@ -284,4 +284,17 @@ object AppIcons {
 
     val PdfAdd: ImageVector
         @Composable get() = ImageVector.vectorResource(R.drawable.ic_oui_add_pdf_new)
+
+    /** Files (drawer row, empty state). */
+    val Document: ImageVector
+        @Composable get() = ImageVector.vectorResource(R.drawable.ic_oui_document)
+
+    val Upload: ImageVector
+        @Composable get() = ImageVector.vectorResource(R.drawable.ic_oui_upload)
+
+    val Info: ImageVector
+        @Composable get() = ImageVector.vectorResource(R.drawable.ic_oui_info_outline)
+
+    val CreateFolder: ImageVector
+        @Composable get() = ImageVector.vectorResource(R.drawable.ic_oui_create_folder)
 }

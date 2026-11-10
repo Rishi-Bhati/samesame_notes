@@ -330,6 +330,7 @@ fun ComposerRoute(
             voiceNotices = viewModel.voiceNotices,
             voiceFile = viewModel::voiceFile,
             newDrawingSession = viewModel::newDrawingSession,
+            fileLinks = viewModel.fileLinks,
         )
         EditorTrace.end(traced)
     }
@@ -421,6 +422,8 @@ internal fun ComposerEditor(
     voiceFile: suspend (String) -> File? = { null },
     /** Builds the in-memory session of the drawing sheet; null leaves Insert > Drawing disabled. */
     newDrawingSession: ((kotlinx.coroutines.CoroutineScope, List<org.samesame.notes.core.ink.page.PageElement>) -> EditorSession)? = null,
+    /** The Files library (link taps, paste of file links, Show in note); null leaves file links inert. */
+    fileLinks: org.samesame.notes.feature.composer.files.NoteFileLinks? = null,
 ) {
     var lockedSaveNotice by rememberSaveable { mutableStateOf(false) }
     var unlockFlow by rememberSaveable { mutableStateOf(false) }
@@ -482,6 +485,16 @@ internal fun ComposerEditor(
     val preparedText = remember(session) { (session.body as? BodyTextBinding)?.prepared }
     val textState = rememberRichTextEditorState(body, layout, preparedText)
     textState.sensitive = locked
+    val snackbar = remember { SnackbarHostState() }
+    // ---- Files links (F-3): paste hook, chooser, link taps and menus, Insert > From Files
+    val fileLinkScope = rememberCoroutineScope()
+    val fileLinkController = fileLinks?.let {
+        org.samesame.notes.feature.composer.files.rememberFileLinkController(
+            it, androidx.compose.ui.platform.LocalView.current, fileLinkScope, session, body, textState, snackbar,
+        )
+    }
+    val filesNavigation = org.samesame.notes.feature.composer.files.LocalLibraryFilesNavigation.current
+    val filePicker = org.samesame.notes.feature.composer.files.LocalLibraryFilePicker.current
     // ---- text box editing: while a box is edited the toolbar, panels and Undo/Redo target its own body
     var editor by remember(session) { mutableStateOf<TextBoxEditor?>(null) }
     val latestEditor by rememberUpdatedState(editor)
@@ -567,6 +580,12 @@ internal fun ComposerEditor(
     }
     SideEffect {
         textState.showLinks = settings.showLinks
+        textState.onPasteFileLinks = fileLinkController?.let { c -> { targets -> c.paste(targets) } }
+        fileLinkController?.let { c ->
+            c.pasteMode = settings.filePasteMode
+            c.locked = locked
+            c.navigation = filesNavigation
+        }
         textState.onLinkClick = { link ->
             runCatching {
                 val intent = when (link.kind) {
@@ -602,6 +621,11 @@ internal fun ComposerEditor(
                     TextLink.Kind.Url -> android.content.Intent(
                         android.content.Intent.ACTION_VIEW, android.net.Uri.parse(link.target),
                     ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    // A library file: resolved and opened (or explained) by the Files controller.
+                    TextLink.Kind.FileLink -> {
+                        fileLinkController?.open(link)
+                        null
+                    }
                 }
                 if (intent != null) appContext.startActivity(intent)
             }
@@ -710,6 +734,12 @@ internal fun ComposerEditor(
         }
     }
     var textCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    SideEffect {
+        fileLinkController?.anchorRect = {
+            val origin = textCoords?.takeIf { it.isAttached }?.localToRoot(Offset.Zero) ?: Offset.Zero
+            textState.selectionRectInView().translate(origin)
+        }
+    }
     // The canvas area in the root box's coordinates; read by the selection pill in its layout phase only.
     val canvasBounds = remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
     // Keep the caret of an edited text box on screen while typing / when the keyboard resizes the canvas.
@@ -869,8 +899,7 @@ internal fun ComposerEditor(
         onStop()
     }
 
-    // ---- save errors
-    val snackbar = remember { SnackbarHostState() }
+    // ---- save errors (the snackbar host is created with the text layer: the file links report through it too)
     val saveFailed = stringResource(R.string.feature_composer_save_failed)
     val lockedSaveFailed = stringResource(R.string.feature_composer_locked_save_failed)
     val pdfFailed = stringResource(R.string.feature_composer_pdf_failed)
@@ -1585,6 +1614,10 @@ internal fun ComposerEditor(
             if (sel.collapsed) return@extras emptyList()
             val t = session.chrome.value.toolbar
             val slice = body.slice(sel.min, sel.max)
+            // A selected file link (edit mode) gets its own rows; a picture shown from Files adds Show as link / Open in Files.
+            val editable = t.mode == EditorMode.Text
+            if (editable) fileLinkController?.linkRows()?.takeIf { it.isNotEmpty() }?.let { return@extras it }
+            val pictureRows = if (editable) fileLinkController?.pictureRows().orEmpty() else emptyList()
             when (AnchorToText.selectionMenu(t.mode == EditorMode.Reading && t.viewMode, t.mode == EditorMode.Text, slice)) {
                 AnchorToText.SelectionMenu.ReadOnly -> {
                     val text = slice.plainText()
@@ -1596,7 +1629,7 @@ internal fun ComposerEditor(
                 // A selection that holds inline (anchored) objects, alone or among text: the reference's object menu for
                 // an inline object is Remove anchor (+ Delete / Cut / Copy).
                 AnchorToText.SelectionMenu.InlineObjects ->
-                    listOf(
+                    pictureRows + listOf(
                         ExtendedTextToolbar.Extra(removeAnchorLabel) { removeAnchorFromTextSelection() },
                         ExtendedTextToolbar.Extra(deleteLabel) { deleteTextSelection() },
                     )
@@ -2293,6 +2326,12 @@ internal fun ComposerEditor(
                             openDrawingSheet()
                         }
                     },
+                    onFromFiles = if (fileLinkController == null || filePicker == null) null else {
+                        {
+                            closeMenu()
+                            fileLinkController.pickerOpen = true
+                        }
+                    },
                 )
             }
             Menu.Overflow -> MotionPopup(tb.menu == Menu.Overflow, PopupMotion.EditorMenu, menuAnchor) { if (tb.mode == EditorMode.Reading) {
@@ -2458,6 +2497,7 @@ internal fun ComposerEditor(
         }
 
         // ---- WP-J2 dialogs -------------------------------------------------------------------
+        fileLinkController?.let { org.samesame.notes.feature.composer.files.FileLinkDialogs(it) }
         if (lockedSaveNotice) {
             // Locked notes are never exported: "you need to unlock it first".
             org.samesame.notes.core.designsystem.component.AppDialog(

@@ -65,7 +65,8 @@ internal fun ManageFoldersScreen(
     onBack: () -> Unit,
     onOpenFolder: (FolderId) -> Unit,
     onOpenRoot: () -> Unit,
-    onCreateFolder: (name: String, color: Long?) -> Unit,
+    /** Create under [parent] (null = top level): the bottom row (null) and "Create subfolder" for the selected folder. */
+    onCreateFolder: (name: String, color: Long?, parent: FolderId?) -> Unit,
     onRenameFolder: (FolderId, String) -> Unit = { _, _ -> },
     /** Trashes the folders; the count is the locked notes inside them (more than zero: verify identity first). */
     onTrashFolders: (List<FolderId>, lockedCount: Int) -> Unit = { _, _ -> },
@@ -73,13 +74,17 @@ internal fun ManageFoldersScreen(
     lockedNotesIn: suspend (List<FolderId>) -> Int = { 0 },
 ) {
     val colors = SameSameTheme.colors
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val tooDeep = stringResource(R.string.feature_notes_subfolder_too_deep)
     var creating by remember { mutableStateOf(false) }
-    // Edit mode (ref #16 "Edit" action): tapping a folder selects it; the bottom bar deletes or renames.
+    // Edit mode (ref #16 "Edit" action): tapping a folder selects it; the bottom bar creates a subfolder, deletes or renames.
     var editing by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<Set<FolderId>>(emptySet()) }
     var renaming by remember { mutableStateOf<Folder?>(null) }
+    var subfolderParent by remember { mutableStateOf<Folder?>(null) }
     var confirmTrash by remember { mutableStateOf(false) }
     val selectedFolders = folders.filter { it.id in selected }
+    val displayed = orderedFolders(folders)
     fun leaveEdit() { editing = false; selected = emptySet() }
     Column(Modifier.fillMaxSize().background(colors.background)) {
         SimpleTopBar(
@@ -109,7 +114,7 @@ internal fun ManageFoldersScreen(
                 label = stringResource(R.string.feature_notes_folders), count = rootFolderCount, onClick = onOpenRoot,
             )
             RowDivider()
-            folders.forEach { folder ->
+            displayed.forEach { folder ->
                 ManageRow(
                     icon = {
                         Icon(AppIcons.Folder, null, tint = folder.color?.let { Color(it.toInt()) } ?: colors.iconMuted, modifier = Modifier.size(24.dp))
@@ -132,6 +137,17 @@ internal fun ManageFoldersScreen(
             androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
             BottomActionBar(
                 listOf(
+                    BottomBarItem(
+                        AppIcons.Add, stringResource(R.string.feature_notes_create_subfolder),
+                        {
+                            selectedFolders.singleOrNull()?.let { folder ->
+                                // At MAX_FOLDER_DEPTH the menu item stays visible but refuses with a toast, like the reference.
+                                if (canCreateSubfolder(folder.depth)) subfolderParent = folder
+                                else android.widget.Toast.makeText(context, tooDeep, android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        selectedFolders.size == 1,
+                    ),
                     BottomBarItem(
                         AppIcons.EditSquare, stringResource(R.string.feature_notes_rename_folder),
                         { selectedFolders.singleOrNull()?.let { renaming = it } },
@@ -185,7 +201,15 @@ internal fun ManageFoldersScreen(
         CreateFolderDialog(
             defaultName = stringResource(R.string.feature_notes_folder_default_name, folders.size + 1),
             onDismiss = { creating = false },
-            onCreate = { name, color -> creating = false; onCreateFolder(name, color) },
+            onCreate = { name, color -> creating = false; onCreateFolder(name, color, null) },
+        )
+    }
+    subfolderParent?.let { parent ->
+        CreateFolderDialog(
+            defaultName = stringResource(R.string.feature_notes_folder_default_name, folders.size + 1),
+            onDismiss = { subfolderParent = null },
+            onCreate = { name, color -> subfolderParent = null; onCreateFolder(name, color, parent.id) },
+            title = stringResource(R.string.feature_notes_create_subfolder),
         )
     }
 }

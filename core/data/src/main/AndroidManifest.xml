@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!--
+          Files library blobs, read-only, granted per intent (Share, Open with, viewers). Blobs are shared and nameless,
+          so this is our own provider instead of FileProvider: content://<applicationId>.files/f/<fileId>/<name>.
+        -->
+        <provider
+            android:name="org.samesame.notes.core.data.files.AppLibraryContentProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+    </application>
+</manifest>

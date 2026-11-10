@@ -60,7 +60,7 @@ internal fun MoveFolderScreen(
                 label = stringResource(R.string.feature_notes_folders), count = rootFolderCount, onClick = { onPick(null) },
             )
             RowDivider()
-            folders.forEach { folder ->
+            orderedFolders(folders).forEach { folder ->
                 ManageRow(
                     icon = { Icon(AppIcons.Folder, null, tint = folder.color?.let { Color(it.toInt()) } ?: colors.iconMuted, modifier = Modifier.size(24.dp)) },
                     label = folder.name, count = folder.noteCount, onClick = { onPick(folder.id) },

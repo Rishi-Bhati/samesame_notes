@@ -111,9 +111,12 @@ private enum class Page { Notes, ManageFolders, Search, SearchSettings, Move }
 fun NotesRoute(
     onOpenNote: (NoteId) -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenFiles: () -> Unit = {},
     viewModel: NotesViewModel = hiltViewModel(),
+    drawerFiles: DrawerFilesViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val filesCount by drawerFiles.fileCount.collectAsStateWithLifecycle()
     var page by rememberSaveable { mutableStateOf(Page.Notes) }
     when (page) {
         Page.Notes -> NotesScreen(
@@ -121,6 +124,8 @@ fun NotesRoute(
             viewModel = viewModel,
             onOpenNote = onOpenNote,
             onOpenSettings = onOpenSettings,
+            filesCount = filesCount,
+            onOpenFiles = onOpenFiles,
             onOpenSearch = { page = Page.Search },
             onManageFolders = { page = Page.ManageFolders },
             onMove = { page = Page.Move },
@@ -148,7 +153,7 @@ fun NotesRoute(
                     onBack = { page = Page.Notes },
                     onOpenFolder = { viewModel.selectFilter(NoteFilter.InFolder(it)); page = Page.Notes },
                     onOpenRoot = { viewModel.selectFilter(NoteFilter.Uncategorized); page = Page.Notes },
-                    onCreateFolder = viewModel::createFolder,
+                    onCreateFolder = viewModel::createFolderUnder,
                     onRenameFolder = { id, name -> viewModel.renameFolder(id, name) },
                     onTrashFolders = { ids, lockedCount ->
                         if (lockedCount > 0) verifyTrash = ids.map { it.value } else viewModel.trashFolders(ids)
@@ -223,6 +228,8 @@ internal fun NotesScreen(
     viewModel: NotesViewModel,
     onOpenNote: (NoteId) -> Unit,
     onOpenSettings: () -> Unit,
+    filesCount: Int = 0,
+    onOpenFiles: () -> Unit = {},
     onOpenSearch: () -> Unit,
     onManageFolders: () -> Unit,
     onMove: () -> Unit,
@@ -366,6 +373,8 @@ internal fun NotesScreen(
                     onShowFolderCards = viewModel::setShowFolderCards,
                     onManageFolders = onManageFolders,
                     onOpenSettings = onOpenSettings,
+                    filesCount = filesCount,
+                    onOpenFiles = { close { onOpenFiles() } },
                 )
             },
         ) {

@@ -12,6 +12,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -21,6 +22,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.samesame.notes.core.designsystem.component.AppDialog
@@ -80,6 +82,20 @@ fun LockAuthFlow(
     val bioNegative = stringResource(R.string.feature_lock_use_password)
 
     fun failed(message: String) { error = message; attempt++; busy = false }
+
+    // Opening the page mid-lockout: show the live countdown straight away.
+    LaunchedEffect(Unit) {
+        val remaining = viewModel.lockoutRemainingMs()
+        if (remaining > 0) throttledMs = remaining
+    }
+
+    // While throttled, tick the message down every second from the stored remaining time.
+    LockoutCountdownEffect(
+        active = throttledMs > 0,
+        readRemainingMs = { viewModel.lockoutRemainingMs() },
+        onTick = { throttledMs = it },
+        onExpired = { throttledMs = 0; error = null },
+    )
 
     LaunchedEffect(hasPassword) {
         val has = hasPassword ?: return@LaunchedEffect
@@ -212,12 +228,66 @@ fun LockAuthFlow(
     }
 }
 
+/** Ceil seconds to display for a lockout of [remainingMs]; 0 when not locked. */
+internal fun lockoutSeconds(remainingMs: Long): Int =
+    if (remainingMs <= 0) 0 else (((remainingMs + 999) / 1000).toInt()).coerceAtLeast(1)
+
+/** Ceil minutes to display for a lockout of [seconds]; used only when seconds >= 60. */
+internal fun lockoutMinutes(seconds: Int): Int = if (seconds <= 0) 0 else (seconds + 59) / 60
+
+/**
+ * Delay until the displayed countdown next changes, aligned to the next whole second
+ * (1..1000 ms); 0 when not locked.
+ */
+internal fun nextLockoutTickDelayMs(remainingMs: Long): Long =
+    if (remainingMs <= 0) 0L else {
+        val rest = remainingMs % 1000
+        if (rest == 0L) 1000L else rest
+    }
+
 /** "Too many incorrect attempts. Try again in N seconds/minutes." for a lockout of [remainingMs]. */
 @Composable
 internal fun lockoutMessage(remainingMs: Long): String {
-    val seconds = ((remainingMs + 999) / 1000).toInt().coerceAtLeast(1)
-    return if (seconds < 60) pluralStringResource(R.plurals.feature_lock_try_again_seconds, seconds, seconds)
-    else ((seconds + 59) / 60).let { pluralStringResource(R.plurals.feature_lock_try_again_minutes, it, it) }
+    val seconds = lockoutSeconds(remainingMs)
+    if (seconds < 60) return pluralStringResource(R.plurals.feature_lock_try_again_seconds, seconds, seconds)
+    val minutes = lockoutMinutes(seconds)
+    return pluralStringResource(R.plurals.feature_lock_try_again_minutes, minutes, minutes)
+}
+
+/**
+ * While [active], re-read the lockout remaining time ([readRemainingMs] — the source of truth, so a restart still
+ * counts down from the right number) about every second, aligned to the next whole second, reporting each fresh value
+ * via [onTick] (the caller stores it so [lockoutMessage] ticks), and call [onExpired] once the lockout reaches 0.
+ * Shared by the unlock and change-password flows.
+ */
+@Composable
+internal fun LockoutCountdownEffect(
+    active: Boolean,
+    readRemainingMs: () -> Long,
+    onTick: (Long) -> Unit,
+    onExpired: () -> Unit,
+) {
+    val latestRead by rememberUpdatedState(readRemainingMs)
+    val latestOnTick by rememberUpdatedState(onTick)
+    val latestOnExpired by rememberUpdatedState(onExpired)
+    LaunchedEffect(active) {
+        if (!active) return@LaunchedEffect
+        var remaining = latestRead()
+        if (remaining <= 0) {
+            latestOnExpired()
+            return@LaunchedEffect
+        }
+        latestOnTick(remaining)
+        while (true) {
+            delay(nextLockoutTickDelayMs(remaining))
+            remaining = latestRead()
+            if (remaining <= 0) {
+                latestOnExpired()
+                break
+            }
+            latestOnTick(remaining)
+        }
+    }
 }
 
 /** Runs the one-time biometric enrolment prompt, then [then] regardless of the outcome (the password stays valid). */
@@ -290,6 +360,20 @@ fun ChangePasswordFlow(onDone: () -> Unit, modifier: Modifier = Modifier, viewMo
     var throttledMs by remember { mutableStateOf(0L) }
     val throttled = if (throttledMs > 0) lockoutMessage(throttledMs) else null
     val finish = { old = ""; new = ""; onDone() }
+
+    // Opening the page mid-lockout: show the live countdown straight away.
+    LaunchedEffect(Unit) {
+        val remaining = viewModel.lockoutRemainingMs()
+        if (remaining > 0) throttledMs = remaining
+    }
+
+    // While throttled, tick the message down every second from the stored remaining time.
+    LockoutCountdownEffect(
+        active = throttledMs > 0,
+        readRemainingMs = { viewModel.lockoutRemainingMs() },
+        onTick = { throttledMs = it },
+        onExpired = { throttledMs = 0; error = null },
+    )
 
     when (step) {
         ChangeStep.Old -> LockPasswordPage(

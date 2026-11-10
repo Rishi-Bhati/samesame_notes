@@ -18,7 +18,17 @@ data class AppSettings(
     val adjustColourInDarkMode: Boolean = true,
     /** Light, Dark or follow the system; [ThemeMode.System] by default. */
     val themeMode: ThemeMode = ThemeMode.System,
+    /** "When pasting a file link": what pasting a link to a picture of the Files library does; [FilePasteMode.Ask] by default. */
+    val filePasteMode: FilePasteMode = FilePasteMode.Ask,
 )
+
+/** Settings > "When pasting a file link" (Files). Only links to pictures ask; other files always paste as links. */
+enum class FilePasteMode {
+    /** Show the "Paste as link" / "Show in note" menu at the caret. */
+    Ask,
+    AlwaysLink,
+    AlwaysShowInNote,
+}
 
 /** The app's colour theme, chosen in Settings. */
 enum class ThemeMode {

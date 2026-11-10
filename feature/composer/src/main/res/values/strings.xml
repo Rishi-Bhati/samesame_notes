@@ -287,4 +287,23 @@
     <string name="feature_composer_folders">Folders</string>
     <string name="feature_composer_last_modified">Last modified: %s</string>
     <string name="feature_composer_created">Created: %s</string>
+    <!-- Files links (F-3) -->
+    <string name="feature_composer_files_paste_as_link">Paste as link</string>
+    <string name="feature_composer_files_show_in_note">Show in note</string>
+    <string name="feature_composer_files_show_images">Show images</string>
+    <string name="feature_composer_files_from_files">From Files</string>
+    <string name="feature_composer_files_open">Open</string>
+    <string name="feature_composer_files_copy_link">Copy link</string>
+    <string name="feature_composer_files_edit_label">Edit label</string>
+    <string name="feature_composer_files_remove_link">Remove link</string>
+    <string name="feature_composer_files_show_as_link">Show as link</string>
+    <string name="feature_composer_files_open_in_files">Open in Files</string>
+    <string name="feature_composer_files_in_trash">This file is in the Recycle bin.</string>
+    <string name="feature_composer_files_restore">Restore</string>
+    <string name="feature_composer_files_not_found">File not found: %1$s</string>
+    <string name="feature_composer_files_search">Search Files for %1$s</string>
+    <string name="feature_composer_files_no_app">No app can open this file</string>
+    <string name="feature_composer_files_show_failed">The picture can\'t be shown in the note, so it was pasted as a link.</string>
+    <string name="feature_composer_files_locked_tip">This file is also kept in Files, which isn\'t locked. Delete it there if it\'s private.</string>
+    <string name="feature_composer_files_ok">OK</string>
 </resources>

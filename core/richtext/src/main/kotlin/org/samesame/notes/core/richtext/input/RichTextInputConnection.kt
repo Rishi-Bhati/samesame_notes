@@ -16,6 +16,12 @@ interface InputHost {
     fun copy()
     fun paste()
 
+    /**
+     * A whole text the keyboard committed in one go (a clipboard chip): true when the host took it as a paste (library
+     * file links, see `RichTextEditorState.onPasteFileLinks`), false to insert it as typed text.
+     */
+    fun pasteText(text: String): Boolean = false
+
     /** Called after every IME call that may have changed text, selection or composition. */
     fun onImeChanged()
 }
@@ -58,6 +64,8 @@ class RichTextInputConnection(
         val t = text?.toString().orEmpty().replace(OBJECT_CHAR.toString(), "")
         if (t == "\n" && body.composition == null) {
             body.insertNewline()
+            true
+        } else if (body.composition == null && t.length > MIN_LINK_LENGTH && host.pasteText(t)) {
             true
         } else {
             // Plain string: IME styling must not leak into the body.
@@ -138,6 +146,9 @@ class RichTextInputConnection(
     }
 
     companion object {
+        /** Shorter commits can't be a file link (`samesame://file/` + a 36-character id), so they skip the paste check. */
+        private const val MIN_LINK_LENGTH = 50
+
         /** Fills [outAttrs] for a multi-line rich text body. */
         fun configure(outAttrs: EditorInfo, body: BodyText) {
             outAttrs.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or

@@ -131,6 +131,8 @@
     <string name="feature_notes_manage_folders">Manage folders</string>
     <string name="feature_notes_show_folders">Show folders</string>
     <string name="feature_notes_create_folder">Create folder</string>
+    <string name="feature_notes_create_subfolder">Create subfolder</string>
+    <string name="feature_notes_subfolder_too_deep">Can\'t add a subfolder here - this folder is nested too deeply.</string>
     <string name="feature_notes_folder_default_name">Folder %1$d</string>
     <string name="feature_notes_folder_colour">Colour</string>
     <string name="feature_notes_folder_add">Add</string>
@@ -154,4 +156,5 @@
     <string name="feature_notes_search_clear_all">Clear all</string>
     <string name="feature_notes_search_clear_history">Clear search history</string>
     <string name="feature_notes_search_delete_recent">Clear</string>
+    <string name="feature_notes_files">Files</string>
 </resources>

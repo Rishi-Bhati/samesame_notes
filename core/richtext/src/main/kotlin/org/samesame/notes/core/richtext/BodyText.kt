@@ -24,6 +24,7 @@ import org.samesame.notes.core.richtext.edit.ParagraphRules
 import org.samesame.notes.core.richtext.edit.TextEditEvent
 import org.samesame.notes.core.richtext.edit.TextSelection
 import org.samesame.notes.core.richtext.edit.InlineMarker
+import org.samesame.notes.core.richtext.edit.LinkTyping
 import org.samesame.notes.core.richtext.edit.TypingShortcuts
 import org.samesame.notes.core.richtext.spans.CharStyleSpan
 import org.samesame.notes.core.richtext.spans.InlineObjectSpan
@@ -168,7 +169,7 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
     /** Style the toolbar should show: the typing style at a caret, else the first selected character's. */
     fun currentCharStyle(): CharStyle {
         val sel = selection
-        return if (sel.collapsed) typingStyle ?: styleBefore(sel.min) else RichTextBridge.charStyleAt(editable, sel.min)
+        return if (sel.collapsed) typingStyle ?: typingStyleAt(sel.min) else RichTextBridge.charStyleAt(editable, sel.min)
     }
 
     fun currentParagraphStyle(): ParagraphStyle = paragraphStyleAt(selection.min)
@@ -323,7 +324,7 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
     }
 
     fun insertObject(objectId: String) =
-        insertRich(RichText(OBJECT_CHAR.toString(), listOf(TextRun(1, currentCharStyle().copy(objectId = objectId)))))
+        insertRich(RichText(OBJECT_CHAR.toString(), listOf(TextRun(1, currentCharStyle().copy(objectId = objectId, link = null)))))
 
     // ---------------------------------------------------------------- typing shortcuts
 
@@ -599,6 +600,14 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
     private fun styleBefore(offset: Int): CharStyle =
         if (length == 0) CharStyle() else RichTextBridge.charStyleAt(editable, if (offset <= 0) 0 else minOf(offset, length) - 1)
 
+    /** [styleBefore] with the link rule (`RichTextOps.typingStyle`): text typed at [offset] doesn't extend a link it ends. */
+    private fun typingStyleAt(offset: Int): CharStyle {
+        val before = styleBefore(offset)
+        if (before.link == null) return before
+        if (offset <= 0) return before.copy(link = null)
+        return RichTextOps.typingStyle(before, if (offset < length) RichTextBridge.charStyleAt(editable, offset) else null)
+    }
+
     private fun rebuildParagraphSpans(first: Int, count: Int, startOffset: Int) {
         var pStart = startOffset
         for (i in first until minOf(first + count, paragraphs.size)) {
@@ -649,12 +658,17 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
         val firstParagraph: Int,
         val removedNewlines: Int,
         val style: CharStyle,
+        /** How many of the inserted characters keep [style]'s link; the rest get the style without it. */
+        val linked: Int,
     )
 
     private fun onBefore(start: Int, count: Int, after: Int) {
-        val style = typingStyle
-            ?: if (count > 0) RichTextBridge.charStyleAt(editable, start) else styleBefore(start)
-        raw = RawChange(start, count, after, paragraphIndexAt(start), countNewlines(start, start + count), style.copy(objectId = null))
+        val style = (typingStyle ?: if (count > 0) RichTextBridge.charStyleAt(editable, start) else typingStyleAt(start))
+            .copy(objectId = null)
+        val link = style.link
+        val endStyle = if (link == null || start + count >= length) null else RichTextBridge.charStyleAt(editable, start + count)
+        val linked = LinkTyping.linkedLength(link, count, after, linkContinues = link != null && endStyle?.link == link)
+        raw = RawChange(start, count, after, paragraphIndexAt(start), countNewlines(start, start + count), style, linked)
         if (suppressRecording == 0) {
             accumulator.before(start, count, after, selection, composition != null || imeComposing)?.let(::completeEdit)
         }
@@ -666,7 +680,11 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
         val insertedNewlines = countNewlines(c.start, c.start + c.inserted)
         paragraphs = ParagraphRules.applyReplace(paragraphs, c.firstParagraph, c.removedNewlines, insertedNewlines).toMutableList()
         if (!applyingExact && c.inserted > 0) {
-            RichTextBridge.setStyle(editable, c.start, c.start + c.inserted, c.style, env)
+            val linkedEnd = c.start + c.linked.coerceIn(0, c.inserted)
+            if (linkedEnd > c.start) RichTextBridge.setStyle(editable, c.start, linkedEnd, c.style, env)
+            if (linkedEnd < c.start + c.inserted) {
+                RichTextBridge.setStyle(editable, linkedEnd, c.start + c.inserted, c.style.copy(link = null), env)
+            }
         }
         RichTextBridge.mergeCharStylesAt(editable, c.start, env)
         var pStart = c.start

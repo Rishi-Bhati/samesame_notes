@@ -23,28 +23,43 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- content:// only: file:// URIs would be read with this app's own permissions, and no browser link is needed. -->
+        </activity>
+
+        <!--
+            Everything shared to SameSame or opened with it lands here: the "Save to SameSame" sheet. SEND, SEND_MULTIPLE
+            and VIEW for every type (owner decision 2026-11-08). content:// only: a file:// URI would be read with this
+            app's own permissions.
+        -->
+        <activity
+            android:name=".ShareReceiveActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.SameSame.Receive"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <!-- Note files opened by a provider that reports no usable type. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="content" android:host="*" android:pathPattern=".*\\.sdocx" />
                 <data android:scheme="content" android:host="*" android:pathPattern=".*\\.ssnote" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <action android:name="android.intent.action.SEND" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="application/octet-stream" />
-                <data android:mimeType="application/sdoc" />
-                <data android:mimeType="application/pdf" />
-            </intent-filter>
-            <!-- Several note files / PDFs shared at once: each is imported as its own note. -->
-            <intent-filter>
-                <action android:name="android.intent.action.SEND_MULTIPLE" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="application/octet-stream" />
-                <data android:mimeType="application/sdoc" />
-                <data android:mimeType="application/pdf" />
             </intent-filter>
         </activity>
 

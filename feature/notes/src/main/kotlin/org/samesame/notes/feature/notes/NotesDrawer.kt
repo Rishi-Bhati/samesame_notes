@@ -59,6 +59,9 @@ internal fun NotesDrawer(
     onShowFolderCards: (Boolean) -> Unit,
     onManageFolders: () -> Unit,
     onOpenSettings: () -> Unit,
+    /** Files in the library; null hides the number. */
+    filesCount: Int? = null,
+    onOpenFiles: () -> Unit = {},
 ) {
     val colors = SameSameTheme.colors
     Box(
@@ -95,6 +98,7 @@ internal fun NotesDrawer(
                 selected == NoteFilter.Uncategorized || selected is NoteFilter.InFolder, onSelectFolders,
             )
             ShowFoldersRow(checked = showFolderCards, onCheckedChange = onShowFolderCards)
+            DrawerRow(AppIcons.Document, stringResource(R.string.feature_notes_files), filesCount?.takeIf { it > 0 }, false, onOpenFiles)
             Spacer(Modifier.height(12.dp))
             AppPillButton(
                 stringResource(R.string.feature_notes_manage_folders), onManageFolders,

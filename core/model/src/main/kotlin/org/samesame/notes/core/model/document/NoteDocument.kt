@@ -17,9 +17,11 @@ import org.samesame.notes.core.model.richtext.RichText
  * (Insert > Drawing; its strokes are a `media/<sha256>.drw` payload); v6 added [PageSpec.size] (per-page size, imported
  * PDF pages keep their own shape); v7 moved the reading position out of the document into the per-note view-state
  * store, so reading and scrolling never rewrite a note (a v6 document's field is still read for the migration, see
- * NoteDocumentMigrations.v2ToV3 / v3ToV4 / v4ToV5 / v5ToV6 / v6ToV7).
+ * NoteDocumentMigrations.v2ToV3 / v3ToV4 / v4ToV5 / v5ToV6 / v6ToV7); v8 added explicit link runs
+ * ([org.samesame.notes.core.model.richtext.CharStyle.link]) and [ImageObject.libraryFileId] (Files: links and "Show in
+ * note"), both defaulted to null, so a v7 document reads as the same v8 value (NoteDocumentMigrations.v7ToV8).
  */
-const val NOTE_DOCUMENT_FORMAT_VERSION = 7
+const val NOTE_DOCUMENT_FORMAT_VERSION = 8
 
 /** Shared JSON configuration for document structures (defaults are written, unknown keys ignored). */
 val NoteJson: Json = Json {

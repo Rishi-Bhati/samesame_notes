@@ -42,6 +42,9 @@ annotation class ApplicationScope
 internal abstract class DataModule {
     @Binds abstract fun noteRepository(impl: DefaultNoteRepository): NoteRepository
     @Binds abstract fun folderRepository(impl: DefaultFolderRepository): FolderRepository
+    @Binds abstract fun filesRepository(impl: org.samesame.notes.core.data.repository.DefaultFilesRepository): org.samesame.notes.core.data.repository.FilesRepository
+    /** The Files content provider resolves ids through the same (singleton) repository. */
+    @Binds abstract fun libraryFileLookup(impl: org.samesame.notes.core.data.repository.DefaultFilesRepository): org.samesame.notes.core.files.provider.LibraryFileLookup
     @Binds abstract fun userPreferences(impl: DataStoreUserPreferencesRepository): UserPreferencesRepository
 
     @Binds abstract fun searchHistory(impl: DataStoreSearchHistoryRepository): SearchHistoryRepository
@@ -85,6 +88,10 @@ internal abstract class DataModule {
             org.samesame.notes.core.data.repository.PreviewDiskCache(context.cacheDir)
 
         @Provides fun clock(): Clock = Clock.System
+
+        /** `files/library/`: excluded from cloud backup (25 MB quota), included in device transfer (data_extraction_rules). */
+        @Provides @Singleton fun blobStore(@ApplicationContext context: Context): org.samesame.notes.core.files.BlobStore =
+            org.samesame.notes.core.files.BlobStore(java.io.File(context.filesDir, "library"))
 
         @Provides
         @Singleton
