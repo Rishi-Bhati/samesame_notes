@@ -12,7 +12,9 @@ import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import org.samesame.notes.core.document.legacy.NoteDocumentV1
+import org.samesame.notes.core.document.sdocx.SdocxInkBridge
 import org.samesame.notes.core.ink.page.PageContent
+import org.samesame.notes.core.ink.page.PageElement
 import org.samesame.notes.core.ink.page.PageLayerCodec
 import org.samesame.notes.core.model.PageMode
 import org.samesame.notes.core.security.LockCrypto
@@ -47,6 +49,8 @@ import org.samesame.notes.core.model.Limits
 import org.samesame.notes.core.model.io.InputTooLargeException
 import org.samesame.notes.core.model.io.LimitedInputStream
 import org.samesame.notes.core.model.io.readBytesLimited
+import org.samesame.notes.core.sdocx.SdocxReader
+import org.samesame.notes.core.sdocx.SdocxSideChannel
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -264,15 +268,29 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
         packIfLocked(document.id)
     }
 
-    /** Empty content when the page has no file yet (or the file holds no bytes: a page that was never written). */
+    /**
+     * Content of one page. When the page has no native ink file yet, an imported `.sdocx` note is read
+     * from its `sdocx/raw/origin.sdocx` side channel and its strokes are surfaced through the ink model
+     * (view-side adapter, objects spec §4.3). A local ink file always wins once the page is edited.
+     */
     suspend fun readPage(noteId: String, pageId: String): PageContent = withContext(Dispatchers.IO) {
-        val file = pageFile(ensureWorking(noteId), pageId)
+        val dir = ensureWorking(noteId)
+        val file = pageFile(dir, pageId)
         val elements = if (!file.exists() || file.length() == 0L) {
-            emptyList()
+            sdocxPageElements(dir, pageId)
         } else {
             file.inputStream().buffered().use { PageLayerCodec.decode(it) }
         }
         PageContent(pageId, elements, 0)
+    }
+
+    /** Strokes of an imported `.sdocx` page, or empty when the note has no side channel / the page is not in it. */
+    private fun sdocxPageElements(dir: File, pageId: String): List<PageElement> {
+        val origin = File(dir, SdocxSideChannel.RAW_ARCHIVE_PATH)
+        if (!origin.isFile) return emptyList()
+        val archive = runCatching { SdocxReader().read(origin) }.getOrNull() ?: return emptyList()
+        val page = archive.pages.firstOrNull { it.pageId == pageId } ?: return emptyList()
+        return SdocxInkBridge.pageContent(archive, page).elements
     }
 
     /** Read-only view of one note for [read]. */
