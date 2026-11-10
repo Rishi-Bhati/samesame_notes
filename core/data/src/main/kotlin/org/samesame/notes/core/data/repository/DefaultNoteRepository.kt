@@ -244,7 +244,9 @@ internal class DefaultNoteRepository @Inject constructor(
         // Locked notes are never exported (the container also refuses).
         if (documents.isLocked(id.value)) throw org.samesame.notes.core.document.NoteLockedException(id.value)
         if (format == org.samesame.notes.core.export.ExportFormat.SSNOTE) {
-            exportNote(id, out)
+            val sources = if (options.includeLinkedFiles) linkedSources(id) else emptyList()
+            if (sources.isEmpty()) exportNote(id, out)
+            else lockFor(id.value).withLock { documents.exportWithFiles(id.value, out, sources) }
             return org.samesame.notes.core.export.expectedTarget(format, options, false, 1)
         }
         if (format == org.samesame.notes.core.export.ExportFormat.SDOCX) {
@@ -415,8 +417,27 @@ internal class DefaultNoteRepository @Inject constructor(
         return NoteId(id)
     }
 
+    /** The library files [id] links to or shows inline, ready to bundle into a v3 `.ssnote`. Empty without Files support. */
+    private suspend fun linkedSources(id: NoteId): List<org.samesame.notes.core.document.LinkedFileSource> {
+        val files = fileRefs ?: return emptyList()
+        val refs = org.samesame.notes.core.model.files.NoteFileRefs.of(currentDocument(id.value)).keys
+        return if (refs.isEmpty()) emptyList() else files.linkedFileSources(refs)
+    }
+
+    override suspend fun linkedFilesBytes(id: NoteId): Long {
+        if (documents.isLocked(id.value)) return 0L
+        val files = fileRefs ?: return 0L
+        val refs = org.samesame.notes.core.model.files.NoteFileRefs.of(currentDocument(id.value)).keys
+        return if (refs.isEmpty()) 0L else files.linkedFilesBytes(refs)
+    }
+
     override suspend fun importNote(input: java.io.InputStream, folderId: FolderId?): NoteId {
-        val (doc, legacyViewState) = documents.importWithLegacyViewState(input)
+        val restorer = fileRefs?.let { files ->
+            org.samesame.notes.core.document.LinkedFilesRestorer { title, entries, open -> files.restoreBundled(title, entries, open) }
+        }
+        val imported = documents.importContainer(input, restorer)
+        val doc = imported.document
+        val legacyViewState = imported.legacyViewState
         val plain = doc.body.plainText()
         val now = clock.now()
         noteDao.upsert(
@@ -437,6 +458,7 @@ internal class DefaultNoteRepository @Inject constructor(
             ),
         )
         searchDao.replace(NoteSearchEntity(noteId = doc.id, title = doc.title, body = plain, inkText = ""))
+        fileRefs?.let { runCatching { it.replaceNoteRefs(NoteId(doc.id), org.samesame.notes.core.model.files.NoteFileRefs.of(doc)) } }
         legacyViewState?.let {
             viewStateDao.upsert(NoteViewStateEntity(doc.id, it.pageIndex, it.offsetInPage, it.zoom))
         }

@@ -16,6 +16,8 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.samesame.notes.core.data.Clock
 import org.samesame.notes.core.database.dao.LibraryDao
+import org.samesame.notes.core.document.LinkedFileEntry
+import org.samesame.notes.core.document.LinkedFileSource
 import org.samesame.notes.core.database.entity.FileFolderEntity
 import org.samesame.notes.core.database.entity.FileRefEntity
 import org.samesame.notes.core.database.entity.LibraryFileEntity
@@ -250,11 +252,11 @@ class DefaultFilesRepository @Inject internal constructor(
     }
 
     /** Inserts the row for a committed blob; on failure removes the blob again if nothing else uses it. */
-    private suspend fun insertLocked(p: PendingImport, uniqueName: Boolean): LibraryFile {
+    private suspend fun insertLocked(p: PendingImport, uniqueName: Boolean, id: String = UUID.randomUUID().toString()): LibraryFile {
         val name = if (uniqueName) FileNames.unique(p.displayName, dao.liveNamesIn(p.folderId?.value)) else p.displayName
         val now = clock.now()
         val row = LibraryFileEntity(
-            id = UUID.randomUUID().toString(), folderId = p.folderId?.value, displayName = name, ext = FileNames.extensionOf(name),
+            id = id, folderId = p.folderId?.value, displayName = name, ext = FileNames.extensionOf(name),
             mimeType = p.mimeType, category = p.category, sizeBytes = p.sizeBytes, sha256 = p.sha256, sourceApp = p.sourceApp,
             createdAt = now, modifiedAt = now, sortIndex = dao.maxFileSortIndex(p.folderId?.value) + SORT_STEP,
         )
@@ -352,6 +354,95 @@ class DefaultFilesRepository @Inject internal constructor(
         }
     }
 
+    // ---------------------------------------------------------------- bundles in .ssnote containers (v3)
+
+    /** The files among [ids] that exist and whose content is stored, ready to be bundled into an exported note. */
+    internal suspend fun linkedFileSources(ids: Collection<FileId>): List<LinkedFileSource> = withContext(Dispatchers.IO) {
+        val rows = ids.map(FileId::value).distinct().chunked(CHUNK).flatMap { dao.files(it) }.filter { blobs.exists(it.sha256) }
+        val folders = dao.allFolders().associateBy { it.id }
+        rows.map { row ->
+            val path = ArrayList<String>()
+            var cur = row.folderId?.let(folders::get)
+            while (cur != null && path.size <= Limits.MAX_FOLDER_DEPTH) {
+                path += cur.name
+                cur = cur.parentId?.let(folders::get)
+            }
+            val blob = blobs.file(row.sha256)
+            LinkedFileSource(
+                LinkedFileEntry(row.id, row.displayName, row.mimeType, row.sizeBytes, row.sha256, path.reversed()),
+            ) { blob.inputStream() }
+        }
+    }
+
+    /** Total size of the distinct contents [linkedFileSources] would bundle (for the "Include linked files (12 MB)" label). */
+    internal suspend fun linkedFilesBytes(ids: Collection<FileId>): Long =
+        linkedFileSources(ids).distinctBy { it.entry.sha256 }.sumOf { it.entry.size }
+
+    /**
+     * Puts the files of an imported v3 container into Files under `Imported/<note title>`:
+     * - an id not in the library: the file is added with its **original id**, so the note's links work again;
+     * - an id already used by a file with the same content: nothing to add (a missing blob is stored again);
+     * - an id used by a file with different content: the file gets a new id, returned in the result so the caller can
+     *   rewrite the note's links.
+     * A file whose content does not match its recorded sha-256, or that cannot be read, is skipped.
+     */
+    internal suspend fun restoreBundled(
+        noteTitle: String,
+        files: List<LinkedFileEntry>,
+        open: (LinkedFileEntry) -> InputStream,
+    ): Map<String, String> = withContext(Dispatchers.IO) {
+        val remap = LinkedHashMap<String, String>()
+        var folderId: FileFolderId? = null
+        suspend fun target(): FileFolderId {
+            folderId?.let { return it }
+            val root = folderNamed(IMPORTED_FOLDER, null)
+            val sub = folderNamed(FileNames.sanitizeFolderName(noteTitle.ifBlank { "Note" }), root)
+            return sub.also { folderId = it }
+        }
+        for (e in files) {
+            try {
+                val wellFormed = FileId(e.id).isWellFormed
+                if (!wellFormed) continue
+                val id = e.id.lowercase()
+                val existing = dao.file(id)
+                if (existing != null && existing.sha256 == e.sha256 && blobs.exists(e.sha256)) continue
+                val staged = blobs.stage(open(e), e.size)
+                try {
+                    if (staged.sha256 != e.sha256) { blobs.discard(staged); continue }
+                    val rawName = FileNames.sanitize(e.name)
+                    val sniff = MimeSniffer.sniff(staged.head, FileNames.extensionOf(rawName), e.mime.ifBlank { null })
+                    val name = FileNames.withExtension(rawName, sniff.suggestedExt)
+                    commitLock.withLock {
+                        blobs.commit(staged)
+                        if (existing != null && existing.sha256 == e.sha256) return@withLock // blob healed, row already there
+                        val folder = target()
+                        val pending = PendingImport(
+                            folderId = folder, displayName = name, ext = FileNames.extensionOf(name), mimeType = sniff.mimeType,
+                            category = MimeSniffer.categoryOf(sniff.mimeType, FileNames.extensionOf(name)), sizeBytes = staged.sizeBytes,
+                            sha256 = staged.sha256, sourceApp = null,
+                        )
+                        if (existing == null) insertLocked(pending, uniqueName = true, id = id)
+                        else remap[id] = insertLocked(pending, uniqueName = true).id.value
+                    }
+                } catch (t: Throwable) {
+                    blobs.discard(staged)
+                    throw t
+                }
+            } catch (c: kotlinx.coroutines.CancellationException) {
+                throw c
+            } catch (t: Exception) {
+                log.log(Level.WARNING, "Could not restore bundled file ${e.id}", t)
+            }
+        }
+        remap
+    }
+
+    /** A live folder called [name] under [parent], created when missing. */
+    private suspend fun folderNamed(name: String, parent: FileFolderId?): FileFolderId {
+        val existing = dao.allFolders().firstOrNull { it.trashedAt == null && it.parentId == parent?.value && it.name == name }
+        return existing?.let { FileFolderId(it.id) } ?: createFolder(name, parent)
+    }
+
     // ---------------------------------------------------------------- sharing, backlinks
 
     override fun contentUri(file: LibraryFile): Uri = LibraryProviderContract.uriFor(context, file.id, file.displayName)
@@ -408,6 +499,7 @@ class DefaultFilesRepository @Inject internal constructor(
         /** Gap between neighbours' sortIndex (custom order, full version, renumbers when gaps run out). */
         const val SORT_STEP = 1024L
         const val CHUNK = 500
+        const val IMPORTED_FOLDER = "Imported"
         private val log: Logger = Logger.getLogger(DefaultFilesRepository::class.java.name)
 
         /** [rootIds] and every folder below them. */
