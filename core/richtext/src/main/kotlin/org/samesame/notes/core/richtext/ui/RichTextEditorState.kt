@@ -154,8 +154,23 @@ class RichTextEditorState(
     /** "Show links in notes": underline links and open them on tap. */
     var showLinks by mutableStateOf(true)
 
-    /** Called when a link is tapped (with [showLinks] on); the host opens it. */
+    /**
+     * Called when a link is tapped: a detected link (with [showLinks] on) in edit mode, or any link in the view state and
+     * reading mode ([onReadTap]); the host opens it. A stored link run ([TextLink.explicit]) in edit mode places the
+     * caret instead; a second tap on it, or a long press, selects the whole link and shows the floating menu, whose
+     * extra rows the host adds for [linkInSelection].
+     */
     var onLinkClick: ((TextLink) -> Unit)? = null
+
+    /**
+     * Paste interception (Files): called instead of inserting when the pasted text is only library file links
+     * (`samesame://file/...`, whitespace between them), from the toolbar Paste, the keyboard's paste and a keyboard
+     * clipboard chip. The host inserts link runs or images over the current selection. Null pastes the text as is.
+     */
+    var onPasteFileLinks: ((List<org.samesame.notes.core.model.files.FileLinks.Target>) -> Unit)? = null
+
+    /** The stored link the selection lies in (a caret inside one, or a selection within one), or null. */
+    fun linkInSelection(): TextLink? = body.selection.let { engine.storedLinkCovering(it.min, it.max) }
 
     /** In-note search hits (offsets, `[first, last]`), painted by [decorations]; empty when no search is open. */
     var searchMatches by mutableStateOf<List<IntRange>>(emptyList())
@@ -221,6 +236,7 @@ class RichTextEditorState(
         override fun cut() = this@RichTextEditorState.cut()
         override fun copy() = this@RichTextEditorState.copy()
         override fun paste() = this@RichTextEditorState.paste()
+        override fun pasteText(text: String): Boolean = interceptFileLinks(text)
         override fun onImeChanged() = Unit
     }
 
@@ -314,11 +330,21 @@ class RichTextEditorState(
             body.toggleChecked(it)
             return
         }
-        if (showLinks) {
-            val link = engine.linkAt(d.x, d.y)
+        val link = engine.linkAt(d.x, d.y, detected = showLinks)
+        if (link != null && !link.explicit && link.kind != TextLink.Kind.FileLink) {
             val open = onLinkClick
-            if (link != null && open != null) {
+            if (open != null) {
                 open(link)
+                return
+            }
+        }
+        if (link != null && link.explicit) {
+            // Edit mode: the first tap on a stored link places the caret; a tap while the caret is already in it (or the
+            // link is selected) selects the whole link and shows the menu (Open, Copy link, Edit label, ...).
+            val sel = body.selection
+            if (isFocused && handlesVisible && sel.min >= link.start && sel.max <= link.end) {
+                selectRange(link.start, link.end)
+                lastTapOffset = -1
                 return
             }
         }
@@ -335,11 +361,13 @@ class RichTextEditorState(
         requestInput()
     }
 
-    /** Reading mode tap: only links react (no caret, no keyboard, no checkbox toggling). True when a link was opened. */
+    /**
+     * Reading mode / view state tap: only links react (no caret, no keyboard, no checkbox toggling). Stored link runs and
+     * file links always react; detected links only with [showLinks]. True when a link was opened.
+     */
     fun onReadTap(p: Offset): Boolean {
-        if (!showLinks) return false
         val d = toDoc(p)
-        val link = engine.linkAt(d.x, d.y) ?: return false
+        val link = engine.linkAt(d.x, d.y, detected = showLinks) ?: return false
         val open = onLinkClick ?: return false
         open(link)
         return true
@@ -355,6 +383,17 @@ class RichTextEditorState(
 
     fun onLongPress(p: Offset) {
         if (!acceptsGestures) return
+        val d = toDoc(p)
+        val link = engine.linkAt(d.x, d.y, detected = false)?.takeIf { it.explicit }
+        if (link != null) {
+            // A long press on a stored link selects the whole link (its menu rows come from the host).
+            body.setSelection(link.start, link.end)
+            handlesVisible = true
+            toolbarVisible = true
+            longPressAnchor = link.start until link.end
+            requestInput()
+            return
+        }
         selectWordAt(p)
         longPressAnchor = body.selection.let { it.min until it.max }
     }
@@ -475,9 +514,23 @@ class RichTextEditorState(
         val clip = clipboard.primaryClip
         val text = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString() ?: return
         val rich = RichClipboard.richFor(text)
-        if (rich != null) body.insertRich(rich) else body.commitText(text)
+        when {
+            // An in-app copy keeps its runs (a copied link run stays a link).
+            rich != null -> body.insertRich(rich)
+            interceptFileLinks(text) -> Unit
+            else -> body.commitText(text)
+        }
         toolbarVisible = false
         handlesVisible = false
+    }
+
+    /** Hands [text] to [onPasteFileLinks] when it is only file links; true when it was handled. */
+    private fun interceptFileLinks(text: String): Boolean {
+        val handler = onPasteFileLinks ?: return false
+        if (!text.contains(org.samesame.notes.core.model.files.FileLinks.SCHEME, ignoreCase = true)) return false
+        val targets = org.samesame.notes.core.model.files.FileLinks.parseLinksOnly(text) ?: return false
+        handler(targets)
+        return true
     }
 
     /**
