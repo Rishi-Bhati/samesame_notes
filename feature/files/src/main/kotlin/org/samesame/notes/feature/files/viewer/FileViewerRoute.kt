@@ -136,27 +136,32 @@ fun FileViewerRoute(
             val image = s.kind == ViewerKind.Image
             DisposableEffect(image) { onDarkChrome(image); onDispose { onDarkChrome(false) } }
 
-            val bar: @Composable (BarSlots, ChromeColors) -> Unit = { slots, chrome ->
+            val uri = remember(file.id, file.displayName) { viewModel.contentUri(file) }
+            // Share and the menu every viewer has; a viewer's own rows go on top.
+            val actions: @Composable (BarSlots, ChromeColors) -> Unit = { slots, chrome ->
                 var menu by remember { mutableStateOf(false) }
+                ChromeIconButton(AppIcons.Share, stringResource(R.string.feature_files_action_share), chrome, { share(file) })
+                Box {
+                    IconButton(onClick = { menu = true }, modifier = Modifier.padding(end = 4.8.dp).size(width = 32.dp, height = 40.dp)) {
+                        Icon(AppIcons.More, stringResource(R.string.feature_files_more_options), tint = chrome.content)
+                    }
+                    AppDropdownMenu(expanded = menu, onDismissRequest = { menu = false }, offset = DpOffset((-1.7).dp, (-46.1).dp)) {
+                        slots.menu { menu = false }
+                        AppMenuItem(stringResource(R.string.feature_files_more_open_with), { menu = false; openWith(file) })
+                        AppMenuItem(stringResource(R.string.feature_files_action_copy_link), { menu = false; copyLink(file) })
+                        AppMenuItem(stringResource(R.string.feature_files_more_rename), { menu = false; dialog = ViewerDialog.Rename })
+                        AppMenuItem(stringResource(R.string.feature_files_action_delete), {
+                            menu = false
+                            scope.launch { deleteUsed = viewModel.usageCount(file.id); dialog = ViewerDialog.Delete }
+                        })
+                        AppMenuItem(stringResource(R.string.feature_files_more_info), { menu = false; dialog = ViewerDialog.Info })
+                    }
+                }
+            }
+            val bar: @Composable (BarSlots, ChromeColors) -> Unit = { slots, chrome ->
                 ViewerTopBar(file.displayName, slots.subtitle, chrome, onBack = onClose) {
                     slots.actions(this)
-                    ChromeIconButton(AppIcons.Share, stringResource(R.string.feature_files_action_share), chrome, { share(file) })
-                    Box {
-                        IconButton(onClick = { menu = true }, modifier = Modifier.padding(end = 4.8.dp).size(width = 32.dp, height = 40.dp)) {
-                            Icon(AppIcons.More, stringResource(R.string.feature_files_more_options), tint = chrome.content)
-                        }
-                        AppDropdownMenu(expanded = menu, onDismissRequest = { menu = false }, offset = DpOffset((-1.7).dp, (-46.1).dp)) {
-                            slots.menu { menu = false }
-                            AppMenuItem(stringResource(R.string.feature_files_more_open_with), { menu = false; openWith(file) })
-                            AppMenuItem(stringResource(R.string.feature_files_action_copy_link), { menu = false; copyLink(file) })
-                            AppMenuItem(stringResource(R.string.feature_files_more_rename), { menu = false; dialog = ViewerDialog.Rename })
-                            AppMenuItem(stringResource(R.string.feature_files_action_delete), {
-                                menu = false
-                                scope.launch { deleteUsed = viewModel.usageCount(file.id); dialog = ViewerDialog.Delete }
-                            })
-                            AppMenuItem(stringResource(R.string.feature_files_more_info), { menu = false; dialog = ViewerDialog.Info })
-                        }
-                    }
+                    actions(slots, chrome)
                 }
             }
 
@@ -184,14 +189,26 @@ fun FileViewerRoute(
                     }
                     onClose()
                 }
-                // The other viewers arrive with their own commits; until then the system handles the file.
-                else -> LaunchedEffect(file.id) {
-                    if (!handedOff) {
-                        handedOff = true
-                        if (!FilesIntents.launchView(context, file, viewModel.contentUri(file))) toast(R.string.feature_files_no_app)
-                    }
-                    onClose()
+                ViewerKind.Pdf -> {
+                    BackHandler(onBack = onClose)
+                    PdfViewer(
+                        file = file, uri = uri, bar = bar,
+                        onPageCount = { viewModel.learned(file, pageCount = it) },
+                        onOpenWith = { openWith(file) },
+                        onAnnotate = { viewModel.annotateAsNote(file) { context.contentResolver.openInputStream(uri) ?: throw java.io.FileNotFoundException() } },
+                    )
                 }
+                ViewerKind.Text -> {
+                    BackHandler(onBack = onClose)
+                    TextViewer(file = file, uri = uri, bar = bar, onOpenWith = { openWith(file) })
+                }
+                ViewerKind.Audio -> AudioSheet(
+                    file = file, uri = uri,
+                    actions = { chrome -> actions(BarSlots(), chrome) },
+                    onDuration = { viewModel.learned(file, durationMs = it) },
+                    onOpenWith = { openWith(file) },
+                    onClose = onClose,
+                )
             }
 
             when (dialog) {
