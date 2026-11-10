@@ -10,8 +10,8 @@ android {
 
     defaultConfig {
         applicationId = "org.samesame.notes"
-        versionCode = 3
-        versionName = "0.1.2-alpha"
+        versionCode = 4
+        versionName = "0.2.0-alpha"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

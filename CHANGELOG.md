@@ -15,7 +15,15 @@ and keeps notes, folders, favourites, locked notes and voice recordings.
 
 ### Files
 
-- Files library: details to come.
+- Files, a new screen opened from the drawer: import any file as a local copy (nothing is uploaded), organise files in
+  folders, grid or list view, sort, search, rename, move, share, a Recycle bin and a Storage page.
+- SameSame notes appears in Share and Open with for every file type. A file that can't go into a note is saved to Files.
+- Built-in viewers for images, PDFs (read-only), text files and audio. Other types open in another app.
+- Copy link on any file. Pasting a link into a note asks "Paste as link" or "Show in note" for pictures; the choice can
+  be fixed in Settings. Tapping a link opens the file; a file's Info lists the notes that use it.
+- Insert > From Files in the editor, and Open in Files / Search Files from a link.
+- Exports keep file links (txt, md, HTML, docx, pptx, PDF). A SameSame note file can include its linked files and
+  restores them on import.
 
 ### Fixes
 

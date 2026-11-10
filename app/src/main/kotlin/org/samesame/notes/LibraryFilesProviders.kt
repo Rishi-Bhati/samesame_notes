@@ -7,9 +7,11 @@ import androidx.compose.ui.platform.LocalContext
 import org.samesame.notes.core.model.files.FileId
 import org.samesame.notes.feature.composer.files.LibraryFilePickerSheet
 import org.samesame.notes.feature.composer.files.LibraryFilesNavigation
+import org.samesame.notes.feature.composer.files.LocalLibraryFileOpener
 import org.samesame.notes.feature.composer.files.LocalLibraryFilePicker
 import org.samesame.notes.feature.composer.files.LocalLibraryFilesNavigation
 import org.samesame.notes.feature.files.picker.FilePickerSheet
+import org.samesame.notes.feature.files.viewer.openLibraryFile
 
 private val FilesPicker: LibraryFilePickerSheet = { onPicked, onDismiss -> FilePickerSheet(onPicked = onPicked, onDismiss = onDismiss) }
 
@@ -27,9 +29,11 @@ fun ProvideLibraryFiles(content: @Composable () -> Unit) {
             override fun searchFiles(query: String) { context.startActivity(FilesActivity.search(context, query)) }
         }
     }
+    val opener = remember(context) { { id: FileId -> openLibraryFile(context, id); Unit } }
     CompositionLocalProvider(
         LocalLibraryFilePicker provides FilesPicker,
         LocalLibraryFilesNavigation provides navigation,
+        LocalLibraryFileOpener provides opener,
         content = content,
     )
 }
