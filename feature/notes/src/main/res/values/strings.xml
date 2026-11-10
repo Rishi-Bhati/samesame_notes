@@ -156,4 +156,5 @@
     <string name="feature_notes_search_clear_all">Clear all</string>
     <string name="feature_notes_search_clear_history">Clear search history</string>
     <string name="feature_notes_search_delete_recent">Clear</string>
+    <string name="feature_notes_files">Files</string>
 </resources>

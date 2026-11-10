@@ -45,6 +45,7 @@ dependencies {
     implementation(projects.feature.notes)
     implementation(projects.feature.composer)
     implementation(projects.feature.settings)
+    implementation(projects.feature.files)
     implementation(projects.feature.share)
 
     implementation(libs.androidx.activity.compose)
