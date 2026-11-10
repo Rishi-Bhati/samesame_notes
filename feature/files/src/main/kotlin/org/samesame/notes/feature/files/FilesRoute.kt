@@ -20,18 +20,36 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import org.samesame.notes.core.model.NoteId
+import org.samesame.notes.core.model.files.FileId
 
-private enum class FilesPage { Files, Trash, Search, Move }
+private enum class FilesPage { Files, Trash, Search, Move, Storage }
+
+/** Where the Files screen starts when another screen sends the user to it. */
+sealed interface FilesTarget {
+    /** The folder of this file, with the file selected ("Open in Files"). */
+    data class File(val id: FileId) : FilesTarget
+    /** The search page with [query] filled in ("Search Files for ..."). */
+    data class Search(val query: String) : FilesTarget
+}
 
 @Composable
 fun FilesRoute(
     onBack: () -> Unit,
     onOpenNote: (NoteId) -> Unit,
+    initialTarget: FilesTarget? = null,
     viewModel: FilesViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val importUi by viewModel.importUi.collectAsStateWithLifecycle()
-    var page by rememberSaveable { mutableStateOf(FilesPage.Files) }
+    var page by rememberSaveable { mutableStateOf(if (initialTarget is FilesTarget.Search) FilesPage.Search else FilesPage.Files) }
+    // The target is applied once; a recreated screen keeps where the user went from there.
+    var targetApplied by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(initialTarget) {
+        if (!targetApplied) {
+            targetApplied = true
+            if (initialTarget is FilesTarget.File) viewModel.reveal(initialTarget.id)
+        }
+    }
     val snackbar = remember { SnackbarHostState() }
     val context = LocalContext.current
     val resources = androidx.compose.ui.platform.LocalResources.current
@@ -50,6 +68,7 @@ fun FilesRoute(
                 state = state, viewModel = viewModel, snackbar = snackbar, onBack = onBack,
                 onOpenSearch = { page = FilesPage.Search },
                 onOpenTrash = { page = FilesPage.Trash },
+                onOpenStorage = { page = FilesPage.Storage },
                 onMove = { page = FilesPage.Move },
                 onOpenNote = onOpenNote,
             )
@@ -61,8 +80,13 @@ fun FilesRoute(
                 BackHandler { page = FilesPage.Files }
                 FilesSearchScreen(
                     viewModel = viewModel, folders = state.allFolders, snackbar = snackbar,
+                    initialQuery = (initialTarget as? FilesTarget.Search)?.query.orEmpty(),
                     onBack = { page = FilesPage.Files },
                 )
+            }
+            FilesPage.Storage -> {
+                BackHandler { page = FilesPage.Files }
+                StorageScreen(contentUriOf = viewModel::contentUri, onBack = { page = FilesPage.Files })
             }
             FilesPage.Move -> {
                 BackHandler { page = FilesPage.Files }
@@ -114,6 +138,7 @@ internal fun eventText(resources: android.content.res.Resources, event: FilesEve
             FailureKind.TooDeep -> R.string.feature_files_err_too_deep
             FailureKind.Rename -> R.string.feature_files_err_rename
             FailureKind.Generic -> R.string.feature_files_err_generic
+            FailureKind.NotFound -> R.string.feature_files_viewer_not_found
         },
     )
 }

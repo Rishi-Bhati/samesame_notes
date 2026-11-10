@@ -4,7 +4,7 @@
     <style name="Theme.SameSame" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/samesame_window_background</item>
     </style>
-    <!-- The share/Open-with receiver: a transparent window with the save sheet over it. -->
+    <!-- The share/Open-with receiver and the file viewers: a transparent window the screen draws its sheet or page over. -->
     <style name="Theme.SameSame.Receive" parent="Theme.SameSame">
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>

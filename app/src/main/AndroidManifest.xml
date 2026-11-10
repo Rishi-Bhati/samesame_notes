@@ -63,6 +63,21 @@
             </intent-filter>
         </activity>
 
+        <!-- The viewers of library files: started by class name through openLibraryFile, never from outside. -->
+        <activity
+            android:name=".FileViewerActivity"
+            android:exported="false"
+            android:theme="@style/Theme.SameSame.Receive"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation" />
+
+        <!-- The Files screen opened from a note (Open in Files, Search Files): on top of the editor's activity. -->
+        <activity
+            android:name=".FilesActivity"
+            android:exported="false"
+            android:theme="@style/Theme.SameSame"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation"
+            android:windowSoftInputMode="adjustResize" />
+
         <activity
             android:name=".ComposerActivity"
             android:exported="false"

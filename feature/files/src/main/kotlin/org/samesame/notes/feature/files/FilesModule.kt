@@ -9,4 +9,5 @@ import dagger.hilt.components.SingletonComponent
 @InstallIn(SingletonComponent::class)
 abstract class FilesModule {
     @Binds abstract fun filesPreferences(impl: SharedFilesPreferences): FilesPreferences
+    @Binds abstract fun freeSpace(impl: DeviceFreeSpace): FreeSpace
 }
