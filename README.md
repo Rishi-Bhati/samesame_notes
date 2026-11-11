@@ -37,7 +37,16 @@ SameSame notes is not affiliated with, endorsed by or sponsored by Samsung Elect
 | Licence | MIT OR Apache-2.0, at your option |
 | Downloads | Released alpha builds are on the [GitHub Releases](https://github.com/Rishi-Bhati/samesame_notes/releases) page. |
 
-<!-- Screenshots: add images of the home screen, the editor and dark theme here once alpha builds are published. Do not add placeholder images. -->
+## Preview
+
+[![Watch the 45-second demo of SameSame notes](branding/promo/poster.jpg)](branding/promo/SameSame-notes-promo.mp4)
+
+<p align="center">
+  <img src="branding/promo/screenshots/home.jpg" width="200" alt="The notes home screen in the light theme">
+  <img src="branding/promo/screenshots/handwriting.jpg" width="200" alt="A handwritten note">
+  <img src="branding/promo/screenshots/typing.jpg" width="200" alt="A note with a checklist and bullet list typed with Markdown shortcuts">
+  <img src="branding/promo/screenshots/dark.jpg" width="200" alt="The notes home screen in the dark theme">
+</p>
 
 ## Features
 
