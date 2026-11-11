@@ -122,11 +122,13 @@ internal class ScrollEstimateHolder {
     }
 
     /**
-     * Remembers the advances of the laid-out [rows] and returns everything known. The last laid-out row is not
-     * recorded: its advance is its own height (the next row's top is unknown), without the gap.
+     * Remembers the advances of the laid-out [rows] and returns everything known (the live map, not a copy: the caller
+     * runs every scroll frame). The last laid-out row only has its own height (the next row's top is unknown, so no
+     * gap): it is recorded only when nothing better is known, and replaced once it is no longer the last.
      */
     fun advancesWith(rows: List<GridRow>): Map<Int, Float> {
         for (i in 0 until rows.size - 1) known[rows[i].index] = rows[i].advance
+        rows.lastOrNull()?.let { if (it.index !in known) known[it.index] = it.advance }
         return known
     }
 }
@@ -156,14 +158,18 @@ internal fun lazyScrollMetrics(
     // LazyGrid item offsets are relative to the viewport, so a scrolled row has a negative top: -top is the scroll.
     val offset = (-first.top).toFloat().coerceIn(0f, advance)
     val estimate = (if (estimatedRowAdvance > 0f) estimatedRowAdvance else measuredRowAdvance(rows, headers)).coerceAtLeast(1f)
-    val advances = HashMap<Int, Float>(knownAdvances.size + rows.size)
-    advances.putAll(knownAdvances)
-    // The last laid-out row only has its own height as advance; keep a better value measured earlier.
-    rows.forEachIndexed { i, row -> if (i < rows.size - 1 || row.index !in advances) advances[row.index] = row.advance }
-    val headerKnown = advances.filterKeys { it < headers }.values
-    val headerEstimate = if (headerKnown.isEmpty()) 0f else headerKnown.average().toFloat()
-    val content = contentExtent(total, headers, advances, estimate, headerEstimate)
-    val above = startOfRow(first.index, headers, advances, estimate, headerEstimate)
+    val advances = withLaidOutRows(knownAdvances, rows)
+    var headerSum = 0f
+    var headerSeen = 0
+    for (r in 0 until headers) advances[r]?.let { headerSum += it; headerSeen++ }
+    val headerEstimate = if (headerSeen == 0) 0f else headerSum / headerSeen
+    // One pass over the rows (this runs every scroll frame): start of the first visible row and the whole extent.
+    var content = 0f
+    var above = 0f
+    for (r in 0 until total) {
+        if (r == first.index) above = content
+        content += advanceOf(r, headers, advances, estimate, headerEstimate)
+    }
     val position = above + offset
     val maxScroll = (content - viewportExtent).coerceAtLeast(0f)
     val scroll = if (maxScroll <= 0f) 0f else (position / maxScroll).coerceIn(0f, 1f)
@@ -195,8 +201,24 @@ private fun startOfRow(row: Int, headers: Int, advances: Map<Int, Float>, estima
     return sum
 }
 
-private fun contentExtent(total: Int, headers: Int, advances: Map<Int, Float>, estimate: Float, headerEstimate: Float): Float =
-    startOfRow(total, headers, advances, estimate, headerEstimate)
+/**
+ * [known] with the laid-out [rows] applied (rows take precedence; the last laid-out row only has its own height, so a
+ * better value measured earlier is kept). Returns [known] itself, no copy, when it already says the same (the holder's
+ * map does: this runs every scroll frame), else a copy.
+ */
+internal fun withLaidOutRows(known: Map<Int, Float>, rows: List<GridRow>): Map<Int, Float> {
+    var copy: HashMap<Int, Float>? = null
+    rows.forEachIndexed { i, row ->
+        val current = copy ?: known
+        val old = current[row.index]
+        val wants = i < rows.size - 1 || old == null
+        if (wants && old != row.advance) {
+            val target = copy ?: HashMap(known).also { copy = it }
+            target[row.index] = row.advance
+        }
+    }
+    return copy ?: known
+}
 
 /** Item index and within-item offset to scroll to for a bar [fraction] (0..1): the inverse of [lazyScrollMetrics]. */
 internal fun lazyScrollTarget(metrics: LazyScrollMetrics, fraction: Float): Pair<Int, Int> {

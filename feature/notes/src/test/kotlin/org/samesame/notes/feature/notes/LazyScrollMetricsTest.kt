@@ -242,10 +242,24 @@ class LazyScrollMetricsTest {
         val holder = ScrollEstimateHolder()
         holder.estimateFor(40, 2, 0, 100f)
         val known = holder.advancesWith(listOf(GridRow(0, 0, 100f), GridRow(1, 100, 110f), GridRow(2, 210, 90f)))
-        assertThat(known).containsExactly(0, 100f, 1, 110f)
+        // the last laid-out row is recorded with its own height until a better one is seen
+        assertThat(known).containsExactly(0, 100f, 1, 110f, 2, 90f)
         holder.estimateFor(40, 2, 0, 240f)
-        assertThat(holder.advancesWith(emptyList())).hasSize(2)
+        assertThat(holder.advancesWith(emptyList())).hasSize(3)
         holder.estimateFor(39, 2, 0, 105f)
         assertThat(holder.advancesWith(emptyList())).isEmpty()
+    }
+
+    @Test fun `laid-out rows are applied without copying when the known map already agrees`() {
+        val known = mapOf(0 to 100f, 1 to 110f, 2 to 90f)
+        val same = withLaidOutRows(known, listOf(GridRow(0, 0, 100f), GridRow(1, 100, 110f), GridRow(2, 210, 90f)))
+        assertThat(same).isSameInstanceAs(known)
+    }
+
+    @Test fun `laid-out rows win over known ones except a better value for the last row`() {
+        val known = mapOf(0 to 100f, 2 to 120f)
+        val merged = withLaidOutRows(known, listOf(GridRow(0, 0, 105f), GridRow(1, 105, 110f), GridRow(2, 215, 90f)))
+        assertThat(merged).containsExactly(0, 105f, 1, 110f, 2, 120f)
+        assertThat(known).containsExactly(0, 100f, 2, 120f)
     }
 }
