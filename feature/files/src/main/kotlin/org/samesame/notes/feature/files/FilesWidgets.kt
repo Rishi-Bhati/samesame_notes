@@ -29,6 +29,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import kotlinx.coroutines.ensureActive
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -78,6 +79,10 @@ private val thumbCache = object : android.util.LruCache<String, Bitmap>(24 * 102
 }
 private val failedThumbs: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
+/** Decodes run two at a time: a fling past a hundred images must not start a hundred decodes at once. */
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+private val thumbDispatcher = kotlinx.coroutines.Dispatchers.IO.limitedParallelism(2)
+
 /** Decodes a small preview of a renderable image through its provider URI (bounded; null when it can't be read). */
 @Composable
 internal fun rememberThumbnail(file: LibraryFile, uriOf: () -> Uri, maxPx: Int): Bitmap? {
@@ -87,7 +92,10 @@ internal fun rememberThumbnail(file: LibraryFile, uriOf: () -> Uri, maxPx: Int):
     var bitmap by remember(key) { mutableStateOf(thumbCache.get(key)) }
     LaunchedEffect(key) {
         if (bitmap != null || key in failedThumbs) return@LaunchedEffect
-        val decoded = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val decoded = kotlinx.coroutines.withContext(thumbDispatcher) {
+            // A card scrolled away while it waited for its turn is skipped (its effect was cancelled).
+            coroutineContext.ensureActive()
+            thumbCache.get(key)?.let { return@withContext it }
             runCatching { decodeBounded(context, uriOf(), maxPx) }.getOrNull()
         }
         if (decoded != null) { thumbCache.put(key, decoded); bitmap = decoded } else failedThumbs += key
@@ -144,6 +152,8 @@ internal fun FileGridItem(
     daysLeft: Int? = null,
 ) {
     val colors = SameSameTheme.colors
+    // Formatted once per file, not on every recomposition of the card (date/number formatters are costly while flinging).
+    val sizeAndDate = remember(file.sizeBytes, file.createdAt) { FilesFormat.sizeAndDate(file) }
     Column(modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick), horizontalAlignment = Alignment.CenterHorizontally) {
         Box {
             FileThumb(
@@ -165,7 +175,7 @@ internal fun FileGridItem(
             maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 10.dp),
         )
         Text(
-            FilesFormat.sizeAndDate(file), style = SameSameText.CardDate, color = colors.textSecondary,
+            sizeAndDate, style = SameSameText.CardDate, color = colors.textSecondary,
             textAlign = TextAlign.Center, maxLines = 1, modifier = Modifier.padding(top = 2.dp),
         )
     }
@@ -185,7 +195,7 @@ internal fun FileListItem(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
-    secondLine: String = FilesFormat.sizeAndDate(file),
+    secondLine: String = remember(file.sizeBytes, file.createdAt) { FilesFormat.sizeAndDate(file) },
 ) {
     val colors = SameSameTheme.colors
     Row(
