@@ -551,7 +551,7 @@ class BodyTextEngine(
      * Selection, caret and search changes do not bump it.
      */
     fun staticVersion(decorations: TextDecorations): Long =
-        staticTracker.update(body.layoutVersion, drawRevision, layout, decorations.links, decorations.hint.takeIf { body.length == 0 })
+        staticTracker.update(body.layoutVersion, drawRevision + body.drawVersion, layout, decorations.links, decorations.hint.takeIf { body.length == 0 })
 
     // ---------------------------------------------------------------- cached highlight paths
 
