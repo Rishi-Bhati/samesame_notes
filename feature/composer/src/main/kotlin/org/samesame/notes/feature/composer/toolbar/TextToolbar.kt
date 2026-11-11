@@ -48,7 +48,6 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.layout.boundsInRoot
-import org.samesame.notes.feature.composer.panels.GlideScrollPad
 import org.samesame.notes.core.designsystem.theme.SameSameTheme
 import org.samesame.notes.feature.composer.R
 import org.samesame.notes.feature.composer.panels.ComposerPreviews
@@ -181,7 +180,7 @@ fun TextToolbar(
                         .onGloballyPositioned { fontSizeCoords.value = it }
                         .pointerInput(fontSizeHold) {
                             val longPressMs = viewConfiguration.longPressTimeoutMillis
-                            val stepPx = GlideScrollPad.STEP_DP.dp.toPx()
+                            val pxPerDp = density
                             coroutineScope {
                                 // A light tick per step of the glide's highlight (not when it appears or hides).
                                 launch {
@@ -223,15 +222,15 @@ fun TextToolbar(
                                     }
                                     // Glide: the popup is (or becomes) open and this same pointer drives it until it lifts
                                     // (Compose keeps sending it to this node outside its bounds). The highlight starts on the
-                                    // applied row and moves one row per step of vertical travel from the press point
-                                    // (GlideScrollPad); release applies it, see FontSizeHoldGesture.release.
+                                    // applied row and travels at a speed set by the finger's distance from the popup's
+                                    // centre (GlideJoystick); release applies it, see FontSizeHoldGesture.release.
                                     val sizes = TextSizeCatalog.menuSizes(currentFontSize.value.toFloat())
                                     holdOpen.value()
                                     var release = FontSizeHoldGesture.Release.Cancel
                                     var picked: FontSizePick? = null
                                     var leftButton = false
                                     val toRoot = { p: Offset -> fontSizeCoords.value?.localToRoot(p) ?: p }
-                                    fontSizeHold.startGlide(toRoot(down.position).y, stepPx)
+                                    fontSizeHold.startGlide(toRoot(down.position).y, pxPerDp)
                                     try {
                                         while (true) {
                                             val event = awaitPointerEvent()

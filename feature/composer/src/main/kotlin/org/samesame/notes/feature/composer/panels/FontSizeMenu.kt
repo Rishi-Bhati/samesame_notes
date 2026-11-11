@@ -24,11 +24,14 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -37,7 +40,6 @@ import androidx.compose.ui.unit.sp
 import org.samesame.notes.core.designsystem.theme.SameSameTheme
 import org.samesame.notes.feature.composer.R
 import kotlinx.coroutines.flow.collectLatest
-import kotlin.math.roundToInt
 
 private val MenuWidth = 152.dp
 private val RowHeight = 44.dp
@@ -46,8 +48,9 @@ private val MenuShape = RoundedCornerShape(26.dp)
 
 /**
  * Font-size dropdown (`#31`): heading presets and Body first, then the full range of point sizes (scrolls); the
- * current size / heading is drawn in the accent colour. The popup reports its applied row to [hold], where the
- * font-size button's press-and-glide highlights rows relative to it ([GlideScrollPad]).
+ * current size / heading is drawn in the accent colour. The popup reports its applied row and its centre to [hold];
+ * the font-size button's press-and-glide then scrolls the highlight from the applied row at a speed set by the finger's
+ * distance from that centre ([GlideJoystick]).
  */
 @Composable
 internal fun FontSizeMenu(
@@ -67,19 +70,30 @@ internal fun FontSizeMenu(
         hold.listCount = sizes.size
         hold.selectedRow = FontSizeRows.anchorRow(selectedHeading, selectedSize, sizes, hold.lastPickBody)
     }
-    // The list follows a glide's highlight (centred, so it is always visible); the highlight never depends on the scroll.
+    // During a glide the popup drives the joystick from the frame clock and the list follows its fractional position
+    // (the highlighted size row stays centred, so the sizes slide under a still band); the scroll never feeds back.
     val rowHeightPx = with(LocalDensity.current) { RowHeight.toPx() }
     var listViewport by remember { mutableIntStateOf(0) }
     LaunchedEffect(hold, listScroll) {
-        snapshotFlow { (hold.highlighted - FontSizeRows.SIZE_START) to listViewport }.collectLatest { (i, viewport) ->
-            if (i < 0 || i >= hold.listCount || viewport <= 0) return@collectLatest
-            val target = GlideScrollPad.centredScroll(i, rowHeightPx, viewport.toFloat(), listScroll.maxValue.toFloat())
-            listScroll.animateScrollTo(target.roundToInt())
+        snapshotFlow { hold.gliding }.collectLatest { gliding ->
+            if (!gliding) return@collectLatest
+            val onFrame: (Long) -> Unit = { nanos ->
+                hold.frame(nanos)
+                val i = hold.position - FontSizeRows.SIZE_START
+                val viewport = listViewport
+                if (hold.position >= 0f && viewport > 0) {
+                    val target = GlideScrollPad.centredScroll(i, rowHeightPx, viewport.toFloat(), listScroll.maxValue.toFloat())
+                    listScroll.dispatchRawDelta(target - listScroll.value)
+                }
+            }
+            while (true) withFrameNanos(onFrame)
         }
     }
     // The same rounded surface as the other toolbar popups (26 dp corners, light 0.5 dp stroke).
     Column(
-        modifier.width(MenuWidth).heightIn(max = MenuMaxHeight).shadow(8.dp, MenuShape).clip(MenuShape)
+        modifier.width(MenuWidth).heightIn(max = MenuMaxHeight)
+            .onGloballyPositioned { hold.neutralY = it.boundsInRoot().center.y }
+            .shadow(8.dp, MenuShape).clip(MenuShape)
             .background(if (SameSameTheme.colors.isDark) Color(0xFF171717) else Color(0xFFFCFCFC))
             .then(if (SameSameTheme.colors.isDark) Modifier else Modifier.border(0.5.dp, Color(0xFFC7C7C7), MenuShape))
             .padding(top = 8.dp, bottom = 14.dp),

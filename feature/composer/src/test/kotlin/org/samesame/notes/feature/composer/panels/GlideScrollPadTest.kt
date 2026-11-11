@@ -2,115 +2,139 @@ package org.samesame.notes.feature.composer.panels
 
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
-import kotlin.random.Random
 
-/** E3 (rel 0.1.2 owner feedback): the glide mapping is positional and relative, with no time-based scrolling. */
+/**
+ * The glide through [FontSizeHoldState]: frames from the frame clock drive the joystick ([GlideJoystick]) around the
+ * popup's centre; the list follows the fractional position ([GlideScrollPad.centredScroll]).
+ */
 class GlideScrollPadTest {
-    // Pixel 6 Pro: 28 dp = 73.5 px. Popup: 3 headings + Body + 26 sizes = 30 rows; anchor on "17" (flat row 13).
-    private val step = 73.5f
+    private val dp = 2.625f // Pixel 6 Pro
     private val sizes = TextSizeCatalog.SIZES
     private val count = FontSizeRows.count(sizes)
-    private val anchor = FontSizeRows.anchorRow(null, 17, sizes)
-    private val anchorY = 1650f
+    private val centreY = 1000f
+    private val buttonY = centreY + 240f * dp
+    private val frameNanos = 16_666_667L
+    private var now = 0L
 
-    private fun index(y: Float) = GlideScrollPad.glideIndex(anchor, anchorY, y, step, count)
+    private fun FontSizeHoldState.frames(n: Int) = repeat(n) { now += frameNanos; frame(now) }
 
-    @Test fun theGlideStartsOnTheAppliedRow() {
-        assertThat(anchor).isEqualTo(FontSizeRows.SIZE_START + sizes.indexOf(17))
-        assertThat(index(anchorY)).isEqualTo(anchor)
-        // Less than half a step either way: still on the applied row.
-        assertThat(index(anchorY - step * 0.49f)).isEqualTo(anchor)
-        assertThat(index(anchorY + step * 0.49f)).isEqualTo(anchor)
+    /** Opens the popup state on [anchor], starts a glide on the button and brings the finger to the centre. */
+    private fun FontSizeHoldState.glideToCentre(anchor: Int, listCount: Int = sizes.size) {
+        this.listCount = listCount
+        selectedRow = anchor
+        neutralY = centreY
+        startGlide(buttonY, dp)
+        frames(1)
+        // On the way up from the button nothing moves.
+        for (y in 0..10) { glideTo(buttonY - (buttonY - centreY) * y / 10f); frames(2); assertThat(highlighted).isEqualTo(anchor) }
     }
 
-    @Test fun oneRowPerStepFingerUpIsUpTheList() {
-        assertThat(index(anchorY - step)).isEqualTo(anchor - 1)
-        assertThat(index(anchorY - 3 * step)).isEqualTo(anchor - 3)
-        assertThat(index(anchorY + step)).isEqualTo(anchor + 1)
-        assertThat(FontSizeRows.pick(index(anchorY - step), sizes)).isEqualTo(FontSizePick.Size(16))
-        assertThat(FontSizeRows.pick(index(anchorY + 2 * step), sizes)).isEqualTo(FontSizePick.Size(20))
+    /** Pushes the finger [dir] just past the dead zone until the highlight changes, then back to the centre to settle. */
+    private fun FontSizeHoldState.oneStep(dir: Int): Int {
+        val from = highlighted
+        glideTo(centreY + dir * (GlideJoystick.DEAD_ZONE_DP + GlideJoystick.RAMP_DP + 4f) * dp)
+        var guard = 0
+        while (highlighted == from && guard++ < 600) frames(1)
+        glideTo(centreY)
+        frames(30)
+        return highlighted
     }
 
-    /**
-     * The owner's complaint: the result depended on timing. The highlight is a function of the end position only, so
-     * any path (fast with 2 events, slow with hundreds, overshooting and coming back) ends on the same row.
-     */
-    @Test fun sameDisplacementGivesTheSameRowWhateverThePath() {
-        val end = anchorY - 4.2f * step
-        val direct = index(end)
-        val rnd = Random(7)
-        repeat(50) {
-            val events = 1 + rnd.nextInt(300)
-            var last = -1
-            for (i in 1..events) {
-                val wobble = if (i < events) (rnd.nextFloat() - 0.5f) * 6 * step else 0f
-                last = index(anchorY + (end - anchorY) * i / events + wobble)
-            }
-            assertThat(last).isEqualTo(direct)
-        }
-        assertThat(direct).isEqualTo(anchor - 4)
+    @Test fun theGlideStartsOnTheAppliedRowAndWaitsForTheCentre() {
+        val hold = FontSizeHoldState()
+        assertThat(hold.highlighted).isEqualTo(-1)
+        val anchor = FontSizeRows.anchorRow(null, 17, sizes)
+        hold.glideToCentre(anchor)
+        hold.frames(120)
+        assertThat(hold.highlighted).isEqualTo(anchor)
+        assertThat(hold.position).isEqualTo(anchor.toFloat())
     }
 
-    @Test fun theMappingIsIndependentOfWhereTheGlideStarted() {
-        // A popup or button elsewhere on screen: the same displacement from the press gives the same row.
-        for (start in listOf(300f, 1100f, 2100f)) {
-            assertThat(GlideScrollPad.glideIndex(anchor, start, start - 2 * step, step, count)).isEqualTo(anchor - 2)
-        }
+    @Test fun theAnchorArrivingLateStillStartsThere() {
+        // The popup reports its rows a frame or two after the glide started.
+        val hold = FontSizeHoldState()
+        hold.startGlide(buttonY, dp)
+        hold.frames(3)
+        assertThat(hold.highlighted).isEqualTo(-1)
+        hold.listCount = sizes.size
+        hold.selectedRow = 5
+        hold.neutralY = centreY
+        hold.frames(1)
+        assertThat(hold.highlighted).isEqualTo(5)
     }
 
-    @Test fun theHighlightIsClampedToTheList() {
-        assertThat(index(anchorY - 100 * step)).isEqualTo(0)
-        assertThat(index(anchorY + 100 * step)).isEqualTo(count - 1)
-        assertThat(GlideScrollPad.glideIndex(-1, anchorY, anchorY, step, count)).isEqualTo(-1)
-        assertThat(GlideScrollPad.glideIndex(0, anchorY, anchorY, step, 0)).isEqualTo(-1)
+    @Test fun fingerAboveTheCentreScrollsUpBelowScrollsDown() {
+        val hold = FontSizeHoldState()
+        val anchor = FontSizeRows.anchorRow(null, 17, sizes)
+        hold.glideToCentre(anchor)
+        hold.glideTo(centreY - 60f * dp)
+        hold.frames(20)
+        assertThat(hold.highlighted).isLessThan(anchor)
+        hold.glideTo(centreY + 60f * dp)
+        hold.frames(80)
+        assertThat(hold.highlighted).isGreaterThan(anchor)
     }
 
-    @Test fun everyRowIsReachableFromEveryAnchorOneStepAtATime() {
-        for (a in 0 until count) {
-            val seen = (-count..count).map { GlideScrollPad.glideIndex(a, anchorY, anchorY + it * step, step, count) }.toSet()
-            assertThat(seen).containsExactlyElementsIn((0 until count).toSet())
-            // Neighbouring steps never skip a row.
-            for (s in -count until count) {
-                val d = GlideScrollPad.glideIndex(a, anchorY, anchorY + (s + 1) * step, step, count) -
-                    GlideScrollPad.glideIndex(a, anchorY, anchorY + s * step, step, count)
-                assertThat(d).isAtMost(1)
-                assertThat(d).isAtLeast(0)
-            }
-        }
-        // The whole list fits a phone's height at the step size: 29 steps of 28 dp = 812 dp < 891 dp (Pixel 6 Pro).
-        assertThat((count - 1) * GlideScrollPad.STEP_DP).isLessThan(891f)
+    @Test fun backOverTheToolbarHidesTheHighlightAndStopsTheTravel() {
+        val hold = FontSizeHoldState()
+        hold.glideToCentre(10)
+        hold.glideTo(centreY + 300f * dp, suppressed = true)
+        hold.frames(60)
+        assertThat(hold.highlighted).isEqualTo(-1)
+        assertThat(hold.position).isEqualTo(10f)
+        // Back into the popup: visible again, travel resumes.
+        hold.glideTo(centreY)
+        hold.frames(1)
+        assertThat(hold.highlighted).isEqualTo(10)
+        hold.endGlide()
+        assertThat(hold.highlighted).isEqualTo(-1)
+        assertThat(hold.gliding).isFalse()
+    }
+
+    @Test fun framesAfterTheGlideEndedDoNothing() {
+        val hold = FontSizeHoldState()
+        hold.glideToCentre(10)
+        hold.endGlide()
+        hold.glideTo(centreY + 200f * dp)
+        hold.frames(60)
+        assertThat(hold.position).isEqualTo(-1f)
     }
 
     @Test fun scrollTargetCentresAndKeepsTheHighlightVisible() {
         val row = 115.5f // 44 dp
         val viewport = 585f
         val maxScroll = sizes.size * row - viewport
-        for (i in sizes.indices) {
+        var i = 0f
+        var last = 0f
+        while (i <= sizes.size - 1) {
             val scroll = GlideScrollPad.centredScroll(i, row, viewport, maxScroll)
             assertThat(scroll).isAtLeast(0f)
             assertThat(scroll).isAtMost(maxScroll)
-            val top = i * row - scroll
-            assertThat(top).isAtLeast(0f)
-            assertThat(top + row).isAtMost(viewport + 0.01f)
+            // Continuous and monotonic: the list slides with the position.
+            assertThat(scroll).isAtLeast(last)
+            assertThat(scroll - last).isAtMost(row * 0.05f + 0.01f)
+            last = scroll
+            val top = Math.round(i) * row - scroll
+            assertThat(top).isAtLeast(-row / 2 - 0.01f)
+            assertThat(top + row).isAtMost(viewport + row / 2 + 0.01f)
+            i += 0.05f
         }
-        // Mid list: exactly centred.
-        assertThat(GlideScrollPad.centredScroll(10, row, viewport, maxScroll)).isEqualTo(10 * row + row / 2 - viewport / 2)
-        // Ends clamp.
-        assertThat(GlideScrollPad.centredScroll(0, row, viewport, maxScroll)).isEqualTo(0f)
-        assertThat(GlideScrollPad.centredScroll(sizes.size - 1, row, viewport, maxScroll)).isEqualTo(maxScroll)
+        assertThat(GlideScrollPad.centredScroll(10f, row, viewport, maxScroll)).isEqualTo(10 * row + row / 2 - viewport / 2)
+        assertThat(GlideScrollPad.centredScroll(-3f, row, viewport, maxScroll)).isEqualTo(0f)
+        assertThat(GlideScrollPad.centredScroll(sizes.size - 1f, row, viewport, maxScroll)).isEqualTo(maxScroll)
     }
 
     /** The popup's visible order, top to bottom, for the real catalog. */
     private val visibleOrder: List<FontSizePick> =
         TextSizeCatalog.Heading.entries.map { FontSizePick.Heading(it) } + FontSizePick.Body + sizes.map { FontSizePick.Size(it) }
 
-    @Test fun oneGlideWalksEveryVisibleRowInOrderDownAndBack() {
-        val h1 = FontSizeRows.anchorRow(TextSizeCatalog.Heading.H1, 32, sizes)
-        val down = (0 until count).map { FontSizeRows.pick(GlideScrollPad.glideIndex(h1, anchorY, anchorY + it * step, step, count), sizes) }
-        assertThat(down).containsExactlyElementsIn(visibleOrder).inOrder()
-        val last = count - 1
-        val up = (0 until count).map { FontSizeRows.pick(GlideScrollPad.glideIndex(last, anchorY, anchorY - it * step, step, count), sizes) }
-        assertThat(up).containsExactlyElementsIn(visibleOrder.reversed()).inOrder()
+    @Test fun oneGlideStepsThroughEveryVisibleRowInOrderDownAndBack() {
+        val hold = FontSizeHoldState()
+        hold.glideToCentre(0)
+        val down = (1 until count).map { FontSizeRows.pick(hold.oneStep(+1), sizes) }
+        assertThat(down).containsExactlyElementsIn(visibleOrder.drop(1)).inOrder()
+        val up = (1 until count).map { FontSizeRows.pick(hold.oneStep(-1), sizes) }
+        assertThat(up).containsExactlyElementsIn(visibleOrder.reversed().drop(1)).inOrder()
     }
 
     /**
@@ -125,13 +149,11 @@ class GlideScrollPadTest {
         var bold = true
         fun glide(dir: Int): FontSizePick {
             val menuSizes = TextSizeCatalog.menuSizes(size)
-            hold.listCount = menuSizes.size
-            hold.selectedRow = FontSizeRows.anchorRow(
+            val anchor = FontSizeRows.anchorRow(
                 TextSizeCatalog.headingFor(size, bold), TextSizeCatalog.selectedSize(size), menuSizes, hold.lastPickBody,
             )
-            hold.startGlide(anchorY, step)
-            hold.glideTo(anchorY + dir * step)
-            val pick = FontSizeRows.pick(hold.highlighted, menuSizes)!!
+            hold.glideToCentre(anchor, menuSizes.size)
+            val pick = FontSizeRows.pick(hold.oneStep(dir), menuSizes)!!
             hold.endGlide()
             hold.notePick(pick)
             when (pick) {
@@ -145,7 +167,6 @@ class GlideScrollPadTest {
         assertThat(down).containsExactlyElementsIn(visibleOrder.drop(1)).inOrder()
         val up = (1 until count).map { glide(-1) }
         assertThat(up).containsExactlyElementsIn(visibleOrder.reversed().drop(1)).inOrder()
-        // Default body text (17 never picked as Body) starts on the "17" row: one step up is 16, down is 18.
         val fresh = FontSizeHoldState()
         assertThat(FontSizeRows.anchorRow(null, 17, sizes, fresh.lastPickBody)).isEqualTo(FontSizeRows.SIZE_START + sizes.indexOf(17))
     }
