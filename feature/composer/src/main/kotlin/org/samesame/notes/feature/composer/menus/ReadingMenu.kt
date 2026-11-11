@@ -1,6 +1,5 @@
 package org.samesame.notes.feature.composer.menus
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -39,11 +38,13 @@ internal fun ReadingOverflowMenu(locked: Boolean, onAction: (ReadingAction) -> U
             Spacer(Modifier.height(16.3.dp))
             MenuDottedDivider(Modifier.padding(horizontal = 22.dp))
             Spacer(Modifier.height(23.dp))
-            Row(Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                IconAction(if (favorite) AppIcons.StarFilled else AppIcons.Star, R.string.feature_composer_ov_favourite) { onAction(ReadingAction.Favourite) }
-                IconAction(if (locked) AppIcons.Lock else AppIcons.Unlock, if (locked) R.string.feature_composer_unlock else R.string.feature_composer_ov_lock) { onAction(ReadingAction.Lock) }
-                IconAction(AppIcons.Share, R.string.feature_composer_ov_share) { onAction(ReadingAction.Share) }
-                IconAction(AppIcons.Trash, R.string.feature_composer_ov_delete) { onAction(ReadingAction.Delete) }
+            // Four actions do not fit the menu at 81 dp each (324 dp in a 278.9 dp menu: the row ran off to the right), so they share the width.
+            Row(Modifier.fillMaxWidth().padding(horizontal = 11.dp).height(48.dp), verticalAlignment = Alignment.CenterVertically) {
+                val cell = Modifier.weight(1f)
+                IconAction(if (favorite) AppIcons.StarFilled else AppIcons.Star, R.string.feature_composer_ov_favourite, cell) { onAction(ReadingAction.Favourite) }
+                IconAction(if (locked) AppIcons.Lock else AppIcons.Unlock, if (locked) R.string.feature_composer_unlock else R.string.feature_composer_ov_lock, cell) { onAction(ReadingAction.Lock) }
+                IconAction(AppIcons.Share, R.string.feature_composer_ov_share, cell) { onAction(ReadingAction.Share) }
+                IconAction(AppIcons.Trash, R.string.feature_composer_ov_delete, cell) { onAction(ReadingAction.Delete) }
             }
         }
     }

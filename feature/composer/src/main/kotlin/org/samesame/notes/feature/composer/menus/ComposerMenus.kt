@@ -221,9 +221,14 @@ internal fun PlainActionRow(label: Int, onClick: () -> Unit) {
 }
 
 @Composable
-internal fun IconAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: Int, onClick: () -> Unit) {
+internal fun IconAction(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: Int,
+    modifier: Modifier = Modifier.width(81.dp),
+    onClick: () -> Unit,
+) {
     val desc = stringResource(label)
-    Box(Modifier.width(81.dp).height(48.dp).clickable(onClick = onClick, role = Role.Button)
+    Box(modifier.height(48.dp).clickable(onClick = onClick, role = Role.Button)
         .semantics { contentDescription = desc }, contentAlignment = Alignment.Center) {
         Icon(icon, desc, Modifier.size(24.dp), tint = SameSameTheme.colors.textPrimary)
     }
