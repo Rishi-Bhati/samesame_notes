@@ -2,7 +2,7 @@ package org.samesame.notes.core.sdocx
 
 import java.io.File
 
-/** The device fixtures in `src/test/resources/sdocx` (files written by the reference app). */
+/** Device fixtures in `src/test/resources/sdocx` (files written by the reference app; kept out of the repository). */
 object SdocxTestFixtures {
 
     val NAMES = listOf(
@@ -10,9 +10,15 @@ object SdocxTestFixtures {
         "f08-highlighter", "f09-text-styled", "f10-image", "f12-pages", "f14-eraser", "f15-slow", "f16-diagonal",
     )
 
-    fun bytes(name: String): ByteArray =
-        checkNotNull(javaClass.classLoader?.getResourceAsStream("sdocx/$name.sdocx")) { "missing fixture $name.sdocx" }
-            .use { it.readBytes() }
+    /**
+     * The fixture's bytes. The files are written by another app and are not part of the repository (`*.sdocx` is
+     * ignored), so a test that needs one is skipped when it is not in `src/test/resources/sdocx`.
+     */
+    fun bytes(name: String): ByteArray {
+        val stream = javaClass.classLoader?.getResourceAsStream("sdocx/$name.sdocx")
+        org.junit.Assume.assumeTrue("fixture $name.sdocx is not present (not part of the repository)", stream != null)
+        return stream!!.use { it.readBytes() }
+    }
 
     fun archive(name: String): SdocxArchive = SdocxReader().read(bytes(name))
 
