@@ -9,7 +9,7 @@
 
 **Same same. But open source.**
 
-> **Alpha.** SameSame notes 0.2.0-alpha is an early release for testing. Expect bugs and rough edges, and expect
+> **Alpha.** SameSame notes 0.2.1-alpha is an early release for testing. Expect bugs and rough edges, and expect
 > file formats and behaviour to change before a stable release.
 > Please [report issues](https://reportary.onrender.com/p/KpEraP6diT5xj5xzvnJzZ23Zob2lSvfm8LKBM1RhEyJkCIplAZx_Dqc3uCeuJw9V/) when you find them.
 
@@ -30,7 +30,7 @@ SameSame notes is not affiliated with, endorsed by or sponsored by Samsung Elect
 
 | Item | Status |
 |---|---|
-| Version | 0.2.0-alpha |
+| Version | 0.2.1-alpha |
 | Stage | Alpha. Expect bugs. Formats and behaviour may change. |
 | Platform | Android 8.0 (API 26) and newer. Designed phone first; tablet and large-screen layouts are not yet polished. |
 | Language | English only |
@@ -188,7 +188,7 @@ Everything in this section is planned, not built. The items are in rough order.
 ## Download and install
 
 Alpha builds are published on the
-[GitHub Releases](https://github.com/Rishi-Bhati/samesame_notes/releases) page. 0.1.0-alpha, 0.1.1-alpha and 0.2.0-alpha
+[GitHub Releases](https://github.com/Rishi-Bhati/samesame_notes/releases) page. 0.1.0-alpha, 0.1.1-alpha, 0.2.0-alpha and 0.2.1-alpha
 are available there. Only install alpha builds from this repository's Releases page. Android asks you to allow
 installing from an unknown source the first time.
 

@@ -34,6 +34,7 @@ class CharStyleSpan(val style: CharStyle, private val env: TextRenderEnv) : Metr
         tp.isStrikeThruText = style.strikethrough
         style.color?.let { tp.color = env.colorTransform(it.toInt()) }
         style.highlight?.let { tp.bgColor = env.colorTransform(it.toInt()) }
+        env.colorOverride?.let { tp.color = it }
     }
 
     private fun applyMetrics(tp: TextPaint) {

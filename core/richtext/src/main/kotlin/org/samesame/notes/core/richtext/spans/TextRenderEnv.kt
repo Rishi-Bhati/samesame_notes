@@ -37,6 +37,9 @@ class TextRenderEnv {
     /** Applied to explicit text/highlight colours (WP-J passes DarkModeInk.invert on a dark page). */
     var colorTransform: (Int) -> Int = { it }
 
+    /** While set, every span paints its glyphs in this colour (link pass: explicit run colours must not hide the link blue). */
+    var colorOverride: Int? = null
+
     /** Fill colour inside a checked checkbox's tick (the page colour). */
     var pageColor: Int = Color.WHITE
 

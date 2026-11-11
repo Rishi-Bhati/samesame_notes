@@ -5,6 +5,13 @@ All notable user-facing changes to SameSame notes are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses
 pre-release alpha versions.
 
+## 0.2.1-alpha (2026-11-12)
+
+### Fixes
+
+- Links in an open note are now drawn fully in the link blue (text and underline). Before, text with its own colour
+  showed only a blue underline while the note previews were already blue.
+
 ## 0.2.0-alpha (2026-11-11)
 
 A Files alpha on top of 0.1.1-alpha, with a much more complete `.sdocx` import and export. It installs over the previous build and keeps your notes and settings.

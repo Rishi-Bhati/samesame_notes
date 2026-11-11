@@ -843,7 +843,8 @@ class BodyTextEngine(
             save = canvas.save()
             canvas.clipPath(linkPath)
             paint.color = drawColors.handle
-            layout.draw(canvas)
+            body.env.colorOverride = drawColors.handle
+            try { layout.draw(canvas) } finally { body.env.colorOverride = null }
             canvas.restoreToCount(save)
         }
         if (!checkedPath.isEmpty) {
