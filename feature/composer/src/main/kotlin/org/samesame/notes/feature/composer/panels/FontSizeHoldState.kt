@@ -39,6 +39,8 @@ class FontSizeHoldState {
         private set
     private var suppressed by mutableStateOf(false)
     private var fingerY = 0f
+    private var pressY = 0f
+    private var neutralAtPress = false
     private var lastFrameNanos = -1L
     private var joystick = GlideJoystick(1f)
 
@@ -53,9 +55,14 @@ class FontSizeHoldState {
         if (!gliding || suppressed || p < 0f || listCount <= 0) -1 else p.roundToInt().coerceIn(0, count - 1)
     }
 
-    /** A glide starts with the finger at root [y]; [pxPerDp] scales the joystick's dp constants. */
-    fun startGlide(y: Float, pxPerDp: Float) {
+    /**
+     * A glide starts with the finger at root [y]; [pxPerDp] scales the joystick's dp constants. With [neutralAtPress]
+     * (keyboard up: the toolbar floats mid-screen and there is room both ways) the neutral line is the press point
+     * itself; otherwise it is the popup's vertical centre.
+     */
+    fun startGlide(y: Float, pxPerDp: Float, neutralAtPress: Boolean = false) {
         joystick = GlideJoystick(pxPerDp)
+        pressY = y; this.neutralAtPress = neutralAtPress
         fingerY = y; suppressed = false; lastFrameNanos = -1L; position = -1f; gliding = true
     }
 
@@ -76,7 +83,7 @@ class FontSizeHoldState {
         }
         val dt = if (lastFrameNanos < 0L) 0f else (frameNanos - lastFrameNanos) / 1_000_000_000f
         lastFrameNanos = frameNanos
-        joystick.advance(fingerY - neutralY, dt, held = suppressed)
+        joystick.advance(fingerY - if (neutralAtPress) pressY else neutralY, dt, held = suppressed)
         position = joystick.position
     }
 

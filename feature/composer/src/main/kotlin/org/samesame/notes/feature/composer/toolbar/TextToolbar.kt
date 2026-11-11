@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -36,6 +37,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -53,6 +55,7 @@ import org.samesame.notes.feature.composer.R
 import org.samesame.notes.feature.composer.panels.ComposerPreviews
 import org.samesame.notes.feature.composer.panels.DarkToolbarColors
 import org.samesame.notes.feature.composer.panels.FontSizeHoldGesture
+import org.samesame.notes.feature.composer.panels.GlideJoystick
 import org.samesame.notes.feature.composer.panels.FontSizeHoldState
 import org.samesame.notes.feature.composer.panels.FontSizePick
 import org.samesame.notes.feature.composer.panels.FontSizeRows
@@ -145,6 +148,7 @@ fun TextToolbar(
     val c = toolbarColors()
     val haptic = LocalHapticFeedback.current
     val fontSizeCoords = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<LayoutCoordinates?>(null) }
+    val imeInsets = androidx.compose.foundation.layout.WindowInsets.ime
     val toolbarCoords = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<LayoutCoordinates?>(null) }
     // The gesture survives recompositions (the popup opening recomposes this toolbar), so read the latest callbacks.
     val tapFontSize = androidx.compose.runtime.rememberUpdatedState(onFontSize)
@@ -230,7 +234,10 @@ fun TextToolbar(
                                     var picked: FontSizePick? = null
                                     var leftButton = false
                                     val toRoot = { p: Offset -> fontSizeCoords.value?.localToRoot(p) ?: p }
-                                    fontSizeHold.startGlide(toRoot(down.position).y, pxPerDp)
+                                    val toolbarBottom = toolbarCoords.value?.boundsInRoot()?.bottom ?: 0f
+                                    val rootHeight = toolbarCoords.value?.findRootCoordinates()?.size?.height?.toFloat() ?: 0f
+                                    val keyboardUp = GlideJoystick.neutralAtPress(imeInsets.getBottom(this), toolbarBottom, rootHeight, pxPerDp)
+                                    fontSizeHold.startGlide(toRoot(down.position).y, pxPerDp, neutralAtPress = keyboardUp)
                                     try {
                                         while (true) {
                                             val event = awaitPointerEvent()

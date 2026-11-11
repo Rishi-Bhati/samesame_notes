@@ -92,6 +92,17 @@ internal class GlideJoystick(pxPerDp: Float) {
     }
 
     companion object {
+        /**
+         * True when the glide's neutral line is the press point: the keyboard is up, either reported by the window insets
+         * ([imeBottomPx] > 0) or visible as the toolbar floating well above the bottom of the window. With the keyboard
+         * down the toolbar sits at the bottom edge, there is no room below the button, so the popup's centre is used.
+         */
+        fun neutralAtPress(imeBottomPx: Int, toolbarBottomPx: Float, rootHeightPx: Float, pxPerDp: Float): Boolean =
+            imeBottomPx > 0 || (rootHeightPx > 0f && rootHeightPx - toolbarBottomPx > KEYBOARD_GAP_DP * pxPerDp)
+
+        /** Gap between the toolbar and the window bottom above which the keyboard counts as up (a nav bar is under 60 dp). */
+        const val KEYBOARD_GAP_DP = 120f
+
         /** Half width of the neutral band around the popup's centre where nothing moves. */
         const val DEAD_ZONE_DP = 16f
 

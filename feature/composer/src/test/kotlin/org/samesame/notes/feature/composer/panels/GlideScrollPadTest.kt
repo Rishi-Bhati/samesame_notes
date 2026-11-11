@@ -170,4 +170,25 @@ class GlideScrollPadTest {
         val fresh = FontSizeHoldState()
         assertThat(FontSizeRows.anchorRow(null, 17, sizes, fresh.lastPickBody)).isEqualTo(FontSizeRows.SIZE_START + sizes.indexOf(17))
     }
+
+    @Test fun withTheKeyboardUpThePressPointIsTheNeutralLine() {
+        val state = FontSizeHoldState()
+        state.listCount = sizes.size
+        state.selectedRow = 10
+        state.neutralY = centreY // the popup's centre is far from the finger and must be ignored
+        state.startGlide(buttonY, dp, neutralAtPress = true)
+        state.frames(3)
+        // Still on the press point: nothing moves.
+        assertThat(state.highlighted).isEqualTo(10)
+        // Pushing up from the press point scrolls up the list, without first travelling to the popup centre.
+        state.glideTo(buttonY - 120f * dp)
+        state.frames(60)
+        assertThat(state.highlighted).isLessThan(10)
+        // Back on the press point it stops and settles on a row.
+        state.glideTo(buttonY)
+        state.frames(40)
+        val rest = state.highlighted
+        state.frames(30)
+        assertThat(state.highlighted).isEqualTo(rest)
+    }
 }

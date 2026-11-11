@@ -158,4 +158,17 @@ class GlideJoystickTest {
         assertThat(j.row).isEqualTo(-1)
         assertThat(j.started).isFalse()
     }
+
+    @Test
+    fun neutralLineIsThePressPointOnlyWithTheKeyboardUp() {
+        val dp = 2.5f
+        // Keyboard down: the toolbar sits on the window bottom edge (nav bar only).
+        org.junit.Assert.assertFalse(GlideJoystick.neutralAtPress(0, 2300f, 2400f, dp))
+        // Keyboard up, reported by the insets.
+        org.junit.Assert.assertTrue(GlideJoystick.neutralAtPress(800, 2300f, 2400f, dp))
+        // Keyboard up, seen only as the toolbar floating high.
+        org.junit.Assert.assertTrue(GlideJoystick.neutralAtPress(0, 1500f, 2400f, dp))
+        // Unknown layout: fall back to the popup centre.
+        org.junit.Assert.assertFalse(GlideJoystick.neutralAtPress(0, 0f, 0f, dp))
+    }
 }
