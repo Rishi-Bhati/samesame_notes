@@ -5,7 +5,7 @@
 
 **Same same. But open source.**
 
-> **Alpha.** SameSame notes 0.1.1-alpha is an early release for testing. Expect bugs and rough edges, and expect
+> **Alpha.** SameSame notes 0.2.0-alpha is an early release for testing. Expect bugs and rough edges, and expect
 > file formats and behaviour to change before a stable release.
 > Please [report issues](https://reportary.onrender.com/p/KpEraP6diT5xj5xzvnJzZ23Zob2lSvfm8LKBM1RhEyJkCIplAZx_Dqc3uCeuJw9V/) when you find them.
 
@@ -26,7 +26,7 @@ SameSame notes is not affiliated with, endorsed by or sponsored by Samsung Elect
 
 | Item | Status |
 |---|---|
-| Version | 0.1.1-alpha |
+| Version | 0.2.0-alpha |
 | Stage | Alpha. Expect bugs. Formats and behaviour may change. |
 | Platform | Android 8.0 (API 26) and newer. Designed phone first; tablet and large-screen layouts are not yet polished. |
 | Language | English only |
@@ -84,6 +84,18 @@ Features are grouped by area. Anything not listed here is not built yet.
 - Record voice recordings inside a note and play them back from a recording bar.
 - A recordings list to rename, share and delete recordings.
 
+### Files
+
+- A Files library opened from the side panel: import any file type as a local copy (nothing is uploaded), organise
+  files in folders, grid or list view, sort, search, rename, move, share, and a Recycle bin for deleted files.
+- Built-in viewers for images, PDFs (read-only), text files and audio, and a Storage page showing what the files use.
+- SameSame notes appears in Share and Open with for every file type. Files that can't go into a note are saved to
+  Files.
+- Copy a file's link and paste it into a note: pictures can be shown in the note or kept as a link, other files paste
+  as a link. Tapping a link opens the file, and a file's Info lists the notes that use it. Insert > From Files adds
+  links from the editor.
+- Exports keep file links, and a `.ssnote` file can include the files its notes link to.
+
 ### Folders, search and trash
 
 - Nested folders (up to 50 levels deep), grid or list view, sorting, favourites and multi-select.
@@ -106,7 +118,8 @@ Features are grouped by area. Anything not listed here is not built yet.
 - Open or share `.ssnote`, `.sdocx` and PDF files from other apps. Each file is imported as a note, and each PDF
   page becomes a note page with its own size.
 - Several files shared at once are each imported as their own note.
-- Samsung Notes `.sdocx` files import and export. A note that has not been edited exports back unchanged.
+- Samsung Notes `.sdocx` files import with their handwriting, text and styles, voice recordings and pictures, and
+  export back with edits to strokes and text. Export is new and experimental: see the limitations below.
 - Bulk import and export (Settings, General): import several files at once, or export selected notes in one
   format to a folder.
 
@@ -124,8 +137,9 @@ Features are grouped by area. Anything not listed here is not built yet.
 - Expect bugs and rough edges, particularly in recently added features.
 - File formats may change. Notes are versioned: older notes are migrated when opened, and a note written by a
   newer version is refused by an older app.
-- Edits to imported `.sdocx` strokes are not yet written back into the original `.sdocx` file. Legacy `.sdoc`
-  files are not supported.
+- `.sdocx` export is experimental. Pages added or removed in an imported note, and objects placed on its pages, are
+  not written back; in notes made here, floating pictures lose their position, floating text boxes become paragraphs,
+  and templates, PDF backgrounds, pressure and tilt are not written. Legacy `.sdoc` files are not supported.
 - Word (`.docx`) and PowerPoint (`.pptx`) exports are new and may not look right in every viewer.
 - PDF pages are imported as images, so their text cannot be selected or searched. PDF export writes original
   pages as images, and the text layout of native notes in PDF export can differ slightly from the editor.
@@ -149,7 +163,7 @@ Everything in this section is planned, not built. The items are in rough order.
 - Markdown preview with full CommonMark and GFM support. (Planned, not built.)
 - A PDF reader and annotation mode, with selectable text. (Planned, not built.)
 - Voice playback that replays ink in sync with the recording. (Planned, not built.)
-- Write edits to imported `.sdocx` strokes back to the original file. (Planned, not built.)
+- Complete `.sdocx` export: page changes, floating objects, templates, pressure and tilt. (Planned, not built.)
 - Finish device validation of voice recording and playback. (Planned, not built.)
 - Tablet and large-screen layout polish. (Planned, not built.)
 - Localisation into other languages. (Planned, not built.)
@@ -159,8 +173,8 @@ Everything in this section is planned, not built. The items are in rough order.
 ## Download and install
 
 Alpha builds are published on the
-[GitHub Releases](https://github.com/Rishi-Bhati/samesame_notes/releases) page. 0.1.0-alpha and 0.1.1-alpha are
-available there. Only install alpha builds from this repository's Releases page. Android asks you to allow
+[GitHub Releases](https://github.com/Rishi-Bhati/samesame_notes/releases) page. 0.1.0-alpha, 0.1.1-alpha and 0.2.0-alpha
+are available there. Only install alpha builds from this repository's Releases page. Android asks you to allow
 installing from an unknown source the first time.
 
 Installing a new build over an old one keeps your notes and settings. To build the app from source, see below.
@@ -259,7 +273,7 @@ feature/camera       In-app camera sheet for inserting photos
 - **`.ssnote`** (native): a ZIP container with `manifest.json`, `document.json` (text, pages, objects and
   recordings), `ink/` (one binary stroke layer per page) and `media/` (images and recordings).
 - **`.sdocx`** (Samsung Notes): read and written by `core:sdocx`. Imported notes keep their original archive, so
-  an unedited note exports back unchanged.
+  an unedited note exports back unchanged, and edited notes are written with the same structure as the original app's files.
 - **Legacy `.sdoc`**: not supported.
 
 ## Reporting issues

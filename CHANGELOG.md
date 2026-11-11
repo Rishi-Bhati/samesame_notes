@@ -5,9 +5,9 @@ All notable user-facing changes to SameSame notes are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses
 pre-release alpha versions.
 
-## 0.2.0-alpha (unreleased)
+## 0.2.0-alpha (2026-11-11)
 
-A Files alpha on top of 0.1.1-alpha. It installs over the previous build and keeps your notes and settings.
+A Files alpha on top of 0.1.1-alpha, with a much more complete `.sdocx` import and export. It installs over the previous build and keeps your notes and settings.
 The 0.1.2 fixes ship inside this release; they are listed under Fixes.
 
 Upgrading keeps your notes: 0.2.0-alpha is signed with the same key as 0.1.1-alpha, so it installs over it in place
@@ -25,8 +25,30 @@ and keeps notes, folders, favourites, locked notes and voice recordings.
 - Exports keep file links (txt, md, HTML, docx, pptx, PDF). A SameSame note file can include its linked files and
   restores them on import.
 
+### `.sdocx` files
+
+- Handwriting in imported `.sdocx` notes now shows and can be edited: all pens, the highlighter, colours, sizes and
+  multi-page notes. Strokes the app can't read are kept untouched and written back unchanged.
+- Edits to the handwriting of an imported note (moving, deleting, adding, recolouring and resizing strokes) are
+  written back when you export it again, and an unedited note still exports back unchanged.
+- Notes made in SameSame notes export to `.sdocx` with real strokes (before, the page was written as a flat picture).
+  Exported files are now written with the same structure as files from the original app. This is new and still
+  experimental: please report any exported file that does not open.
+- Known limits: pages added or removed in an imported note and objects placed on its pages are not written back to
+  `.sdocx`. In notes made here, floating pictures lose their position, floating text boxes become paragraphs, and
+  page templates and PDF backgrounds are not written. Pressure and tilt are not written. Locked `.sdocx` notes
+  are imported unlocked, and export back locked.
+
 ### Fixes
 
+- "Show in note" on a picture now shows the picture straight away. The text caret on a line that holds a picture
+  stays text-sized instead of taking the picture's height.
+- The Files folder tiles match the folder cards on the home screen.
+- Home list and Files screen scrolling is smoother: less work per frame while scrolling, and thumbnails of files that
+  have scrolled away are no longer decoded.
+- The font size picker glide is now a joystick. Hold the size button and slide: the further your finger is from the
+  neutral point, the faster the list scrolls, and bringing the finger back stops it. With the keyboard up the neutral
+  point is where you pressed; with the keyboard down it is the middle of the list.
 - The "Try again in N seconds" message after too many wrong passwords now counts down live instead of staying frozen.
 - Manage folders: long-press a folder to create a subfolder inside it; folders are listed as a tree.
 - Drawer rows for Favourites and Locked notes after All notes, each with a count and shown only when the count is
