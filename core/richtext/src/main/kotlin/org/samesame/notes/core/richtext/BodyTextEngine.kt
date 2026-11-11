@@ -20,6 +20,7 @@ import org.samesame.notes.core.richtext.layout.PuRect
 import org.samesame.notes.core.richtext.layout.TapPlacement
 import org.samesame.notes.core.richtext.layout.TextPageGeometry
 import org.samesame.notes.core.richtext.spans.ChecklistSpan
+import org.samesame.notes.core.richtext.spans.InlineObjectSpan
 import org.samesame.notes.core.richtext.spans.ParagraphSpan
 import org.samesame.notes.core.richtext.spans.fontSizePu
 import java.text.BreakIterator
@@ -364,6 +365,45 @@ class BodyTextEngine(
     }
 
     /**
+     * The caret as it is drawn and as the handles hang from it: [caret], except on a line that holds an inline object,
+     * where the line is as tall as the picture and the caret stays text-sized, sitting on the baseline.
+     */
+    fun textCaret(offset: Int): CaretGeometry {
+        val c = caret(offset)
+        val o = offset.coerceIn(0, body.length)
+        val line = layout.getLineForOffset(o)
+        val (top, bottom) = textCaretSpan(o, line)
+        val dy = c.top - layout.getLineTop(line)
+        return c.copy(top = top + dy, bottom = bottom + dy)
+    }
+
+    /** Vertical extent of the caret in layout space: the line's, or text-sized on the baseline when the line has an object. */
+    private fun textCaretSpan(offset: Int, line: Int): Pair<Float, Float> {
+        val top = layout.getLineTop(line).toFloat()
+        val bottom = lineBottomForCaret(line)
+        val ls = layout.getLineStart(line)
+        val le = layout.getLineEnd(line)
+        if (le <= ls || body.editable.getSpans(ls, le, InlineObjectSpan::class.java).isEmpty()) return top to bottom
+        val (above, below) = textCaretExtent(offset)
+        val baseline = layout.getLineBaseline(line).toFloat()
+        return maxOf(top, baseline - above) to minOf(bottom, baseline + below)
+    }
+
+    private val caretPaint = TextPaint()
+
+    /** Text height above and below the baseline at [offset]: the size of the text next to it (not of an object). */
+    private fun textCaretExtent(offset: Int): Pair<Float, Float> {
+        val ed = body.editable
+        fun sizeAt(i: Int): Float? =
+            if (i in 0 until ed.length && ed[i] != org.samesame.notes.core.model.richtext.OBJECT_CHAR) RichTextBridge.charStyleAt(ed, i).fontSize else null
+        val size = sizeAt(offset - 1) ?: sizeAt(offset) ?: body.typingStyle?.fontSize
+        caretPaint.set(paint)
+        caretPaint.textSize = fontSizePu(size)
+        val fm = caretPaint.fontMetrics
+        return -fm.ascent to fm.descent
+    }
+
+    /**
      * NOTE(WP-F): DynamicLayout adds no line spacing to the last line, so its caret would be shorter
      * than every other line's; extend it to the spaced height.
      */
@@ -534,7 +574,8 @@ class BodyTextEngine(
                 val w = BodyTextMetrics.CARET_WIDTH
                 tmpPaint.color = drawColors.caret
                 tmpPaint.style = Paint.Style.FILL
-                canvas.drawRect(x - w / 2f, layout.getLineTop(line).toFloat(), x + w / 2f, lineBottomForCaret(line), tmpPaint)
+                val (top, bottom) = textCaretSpan(sel.min, line)
+                canvas.drawRect(x - w / 2f, top, x + w / 2f, bottom, tmpPaint)
             }
         }
         canvas.restoreToCount(save)
@@ -551,7 +592,7 @@ class BodyTextEngine(
      * Selection, caret and search changes do not bump it.
      */
     fun staticVersion(decorations: TextDecorations): Long =
-        staticTracker.update(body.layoutVersion, drawRevision, layout, decorations.links, decorations.hint.takeIf { body.length == 0 })
+        staticTracker.update(body.layoutVersion, drawRevision + body.drawVersion, layout, decorations.links, decorations.hint.takeIf { body.length == 0 })
 
     // ---------------------------------------------------------------- cached highlight paths
 

@@ -62,6 +62,10 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
     var layoutVersion: Long = 0
         private set
 
+    /** Bumped by [invalidateDrawing]: what is drawn changed (colours, a picture landing) while the text did not. */
+    var drawVersion: Long = 0
+        private set
+
     private val editListeners = ArrayList<(TextEditEvent) -> Unit>()
     private val changeListeners = ArrayList<() -> Unit>()
 
@@ -521,6 +525,7 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
 
     /** Redraw-only invalidation (colours, page colour, dark mode). */
     fun invalidateDrawing() {
+        drawVersion++
         dirty = true
         if (batchDepth == 0) notifyChanged()
     }

@@ -230,17 +230,21 @@ internal fun FileFolderCard(
     val colors = SameSameTheme.colors
     val tab = folder.color?.let { Color(it.toInt()) } ?: FolderColors[0]
     Box(modifier.width(width).aspectRatio(FolderAspect).combinedClickable(onClick = onClick, onLongClick = onLongClick)) {
+        // Same construction as the notes folder card: a coloured tab behind a card-coloured body.
         Box(
-            Modifier.align(Alignment.TopEnd).size(width * (40f / 85f), width * (12f / 85f))
-                .background(tab, RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp)),
+            Modifier.align(Alignment.TopEnd).size(width = width * (40f / 85f), height = width * (12f / 85f))
+                .background(tab, RoundedCornerShape(topStart = 8.dp, topEnd = 6.dp)),
         )
-        Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.86f).background(tab.copy(alpha = 0.55f), RoundedCornerShape(10.dp))) {
-            Column(Modifier.padding(start = 10.dp, top = 8.dp, end = 6.dp)) {
-                Text(folder.fileCount.toString(), fontSize = cappedSp(13f), color = colors.textPrimary)
-                Text(folder.name, fontSize = cappedSp(13f), color = colors.textPrimary, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
+        Column(
+            Modifier.fillMaxSize().padding(top = 5.dp).background(colors.card, RoundedCornerShape(12.dp)).padding(horizontal = 9.dp, vertical = 6.dp),
+        ) {
+            Text(folder.fileCount.toString(), fontSize = 11.sp, color = colors.textSecondary)
+            Text(
+                folder.name, style = SameSameText.CardTitle, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                color = colors.textPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            )
         }
-        if (selecting) SelectionCircle(selected, Modifier.align(Alignment.TopStart).padding(4.dp), size = 18.dp)
+        if (selecting) SelectionCircle(selected, Modifier.align(Alignment.BottomEnd).padding(end = 4.dp, bottom = 4.dp))
     }
 }
 

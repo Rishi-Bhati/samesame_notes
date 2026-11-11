@@ -115,7 +115,7 @@ internal fun FilesTrashScreen(viewModel: FilesViewModel, snackbar: SnackbarHostS
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         if (selecting) SelectionCircle(sel, Modifier.padding(end = 12.dp))
-                        Icon(AppIcons.Folder, null, tint = colors.iconMuted, modifier = Modifier.size(28.dp))
+                        Icon(AppIcons.Folder, null, tint = colors.iconMuted, modifier = Modifier.size(24.dp))
                         Text(folder.name, style = SameSameText.ListTitle, color = colors.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(start = 14.dp))
                     }
                 }

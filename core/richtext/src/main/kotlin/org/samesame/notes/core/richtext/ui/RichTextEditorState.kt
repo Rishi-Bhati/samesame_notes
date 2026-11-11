@@ -281,7 +281,7 @@ class RichTextEditorState(
     private fun toDoc(p: Offset) = transform.viewToDoc(p.x, p.y)
 
     fun caretInView(offset: Int): Pair<Offset, Offset> {
-        val c: CaretGeometry = engine.caret(offset)
+        val c: CaretGeometry = engine.textCaret(offset)
         val t = transform
         return Offset(t.docToViewX(c.x), t.docToViewY(c.top)) to Offset(t.docToViewX(c.x), t.docToViewY(c.bottom))
     }
