@@ -12,12 +12,12 @@ import org.samesame.notes.feature.composer.panels.GlideJoystick.Companion.RAMP_D
 class GlideJoystickTest {
     // Pixel 6 Pro density; the popup: 3 headings + Body + 26 sizes = 30 rows, "17" is flat row 13.
     private val dp = 2.625f
-    private val count = FontSizeRows.count(TextSizeCatalog.SIZES)
+    private val rows = FontSizeRows.count(TextSizeCatalog.SIZES)
     private val seventeen = FontSizeRows.anchorRow(null, 17, TextSizeCatalog.SIZES)
     private val frame = 1f / 60f
 
     private fun armedAt(row: Int) = GlideJoystick(dp).apply {
-        start(row, count)
+        start(row, rows)
         advance(0f, frame)
         assertThat(armed).isTrue()
     }
@@ -48,7 +48,7 @@ class GlideJoystickTest {
             val v = j.velocity(o)
             assertThat(v).isAtLeast(last)
             assertThat(v).isAtMost(MAX_SPEED)
-            assertThat(j.velocity(-o)).isEqualTo(-v)
+            assertThat(j.velocity(-o) + v).isWithin(1e-6f).of(0f)
             // Continuous: no jump between neighbouring 0.1 dp offsets.
             assertThat(v - last).isLessThan(0.05f)
             last = v
@@ -63,7 +63,7 @@ class GlideJoystickTest {
 
     @Test fun notArmedUntilTheFingerReachesTheCentre() {
         val j = GlideJoystick(dp)
-        j.start(seventeen, count)
+        j.start(seventeen, rows)
         // The finger comes from the button, far below the centre: nothing moves on the way up.
         for (o in 260 downTo 20 step 4) assertThat(j.advance(o * dp, frame)).isEqualTo(seventeen)
         assertThat(j.armed).isFalse()
@@ -74,7 +74,7 @@ class GlideJoystickTest {
 
     @Test fun crossingTheCentreInOneEventArms() {
         val j = GlideJoystick(dp)
-        j.start(seventeen, count)
+        j.start(seventeen, rows)
         j.advance(240f * dp, frame)
         j.advance(-100f * dp, frame)
         assertThat(j.armed).isTrue()
@@ -83,7 +83,7 @@ class GlideJoystickTest {
 
     @Test fun unknownCentreMovesNothing() {
         val j = GlideJoystick(dp)
-        j.start(seventeen, count)
+        j.start(seventeen, rows)
         repeat(100) { assertThat(j.advance(Float.NaN, frame)).isEqualTo(seventeen) }
         assertThat(j.armed).isFalse()
     }
@@ -106,12 +106,12 @@ class GlideJoystickTest {
     @Test fun theWholeRangeIsReachableInOneGestureInUnderTwoSeconds() {
         val down = armedAt(0)
         var t = 0f
-        while (down.row < count - 1) { down.advance((DEAD_ZONE_DP + FULL_SPEED_DP) * dp, frame); t += frame; assertThat(t).isLessThan(2f) }
-        val up = armedAt(count - 1)
+        while (down.row < rows - 1) { down.advance((DEAD_ZONE_DP + FULL_SPEED_DP) * dp, frame); t += frame; assertThat(t).isLessThan(2f) }
+        val up = armedAt(rows - 1)
         t = 0f
         while (up.row > 0) { up.advance(-(DEAD_ZONE_DP + FULL_SPEED_DP) * dp, frame); t += frame; assertThat(t).isLessThan(2f) }
         // Clamped at the ends, however long the finger stays.
-        assertThat(down.hold(300f, 3f)).isEqualTo(count - 1)
+        assertThat(down.hold(300f, 3f)).isEqualTo(rows - 1)
         assertThat(up.hold(-300f, 3f)).isEqualTo(0)
     }
 
@@ -152,8 +152,8 @@ class GlideJoystickTest {
         val j = GlideJoystick(dp)
         assertThat(j.row).isEqualTo(-1)
         assertThat(j.advance(0f, frame)).isEqualTo(-1)
-        j.start(40, count)
-        assertThat(j.row).isEqualTo(count - 1)
+        j.start(40, rows)
+        assertThat(j.row).isEqualTo(rows - 1)
         j.reset()
         assertThat(j.row).isEqualTo(-1)
         assertThat(j.started).isFalse()

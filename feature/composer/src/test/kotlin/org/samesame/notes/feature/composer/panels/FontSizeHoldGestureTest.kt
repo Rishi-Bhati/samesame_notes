@@ -54,24 +54,28 @@ class FontSizeHoldGestureTest {
     }
 
     /** The hold state derives the highlight from the glide alone and hides it while the finger is back over the toolbar. */
-    @Test fun holdStateHighlightsRelativeToTheAppliedRow() {
+    @Test fun holdStateHighlightsFromTheAppliedRow() {
         val hold = FontSizeHoldState()
+        var t = 0L
+        fun frame() { t += 16_666_667L; hold.frame(t) }
         assertThat(hold.highlighted).isEqualTo(-1)
         // The glide starts before the popup has reported: nothing yet, then the applied row once it has.
-        hold.startGlide(1650f, 70f)
+        hold.startGlide(1650f, 2.625f)
+        frame()
         assertThat(hold.highlighted).isEqualTo(-1)
         hold.listCount = TextSizeCatalog.SIZES.size
         hold.selectedRow = FontSizeRows.anchorRow(TextSizeCatalog.Heading.H2, 24, TextSizeCatalog.SIZES)
+        hold.neutralY = 1000f
+        frame()
         assertThat(hold.highlighted).isEqualTo(1)
-        hold.glideTo(1650f - 70f); assertThat(hold.highlighted).isEqualTo(0)
-        hold.glideTo(1650f + 140f); assertThat(hold.highlighted).isEqualTo(FontSizeRows.BODY_INDEX)
-        hold.glideTo(1650f + 140f, suppressed = true); assertThat(hold.highlighted).isEqualTo(-1)
-        hold.glideTo(1650f + 140f); assertThat(hold.highlighted).isEqualTo(FontSizeRows.BODY_INDEX)
-        assertThat(FontSizeRows.pick(hold.highlighted, TextSizeCatalog.SIZES)).isEqualTo(FontSizePick.Body)
+        hold.glideTo(1650f, suppressed = true); frame(); assertThat(hold.highlighted).isEqualTo(-1)
+        hold.glideTo(1650f); frame(); assertThat(hold.highlighted).isEqualTo(1)
+        assertThat(FontSizeRows.pick(hold.highlighted, TextSizeCatalog.SIZES)).isEqualTo(FontSizePick.Heading(TextSizeCatalog.Heading.H2))
         hold.endGlide()
         assertThat(hold.highlighted).isEqualTo(-1)
         hold.clear()
-        hold.startGlide(0f, 70f)
+        hold.startGlide(0f, 2.625f)
+        frame()
         assertThat(hold.highlighted).isEqualTo(-1)
     }
 }
