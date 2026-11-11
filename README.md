@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="branding/promo/banner.jpg" alt="SameSame notes. Same same. But open source." width="100%">
+</p>
+
 [![Report issues](https://img.shields.io/badge/Report%20issues-click%20here-d73a4a?style=for-the-badge)](https://reportary.onrender.com/p/KpEraP6diT5xj5xzvnJzZ23Zob2lSvfm8LKBM1RhEyJkCIplAZx_Dqc3uCeuJw9V/)
 ![Status: Alpha](https://img.shields.io/badge/status-alpha-f0ad4e?style=for-the-badge)
 
@@ -39,7 +43,9 @@ SameSame notes is not affiliated with, endorsed by or sponsored by Samsung Elect
 
 ## Preview
 
-[![Watch the 45-second demo of SameSame notes](branding/promo/poster.jpg)](branding/promo/SameSame-notes-promo.mp4)
+[![A 45-second tour of SameSame notes (click to watch the full video)](branding/promo/demo.gif)](branding/promo/SameSame-notes-promo.mp4)
+
+<p align="center"><sub>Click the preview to watch the full 45-second video.</sub></p>
 
 <p align="center">
   <img src="branding/promo/screenshots/home.jpg" width="200" alt="The notes home screen in the light theme">
