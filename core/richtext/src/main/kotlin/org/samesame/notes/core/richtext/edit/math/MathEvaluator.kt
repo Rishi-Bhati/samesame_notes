@@ -49,18 +49,22 @@ object MathEvaluator {
      */
     fun aggregate(lines: List<String>, average: Boolean, config: MathConfig = MathConfig.default()): MathResult? {
         if (lines.isEmpty() || lines.size > Limits.MATH_MAX_AGGREGATE_LINES) return null
-        var total: Num? = null
-        for (line in lines) {
-            val (value, ops) = evaluateInternal(line.trim(), config) ?: return null
-            if (ops != 0) return null
-            val quantity = value as? Num ?: return null
-            total = if (total == null) quantity else add(total, quantity, subtract = false) as? Num ?: return null
+        return try {
+            var total: Num? = null
+            for (line in lines) {
+                val (value, ops) = evaluateInternal(line.trim(), config) ?: return null
+                if (ops != 0) return null
+                val quantity = value as? Num ?: return null
+                total = if (total == null) quantity else add(total, quantity, subtract = false) as? Num ?: return null
+            }
+            var sum = total ?: return null
+            if (average) {
+                sum = divide(sum, Num(BigDecimal(lines.size))) as? Num ?: return null
+            }
+            MathResult(render(sum, config), 1)
+        } catch (_: Failure) {
+            null
         }
-        var sum = total ?: return null
-        if (average) {
-            sum = divide(sum, Num(BigDecimal(lines.size))) as? Num ?: return null
-        }
-        return MathResult(render(sum, config), 1)
     }
 
     /** A number for display: at most [Limits.MATH_MAX_DECIMALS] decimals, no trailing zeros, never `-0`. */
@@ -91,18 +95,72 @@ object MathEvaluator {
         val text = expression.trim()
         if (text.isEmpty() || text.length > Limits.MATH_MAX_EXPRESSION_LENGTH) return null
         if (text.any { it == '\n' || it == '=' }) return null
+        if (looksLikeDate(text)) return null
+        splitConversion(text)?.let { (source, target) ->
+            val (value, ops) = evaluateInternal(source, config) ?: return null
+            val quantity = value as? Num ?: return null
+            val sourceUnit = quantity.unit ?: return null
+            val (targetUnit, display) = MathUnits.parseUnit(target) ?: return null
+            if (sourceUnit.dimension != targetUnit.dimension) return null
+            val converted = targetUnit.fromBase(sourceUnit.toBase(quantity.value))
+            return Num(converted, targetUnit, display) to (ops + 1)
+        }
         return try {
             val tokens = Lexer(text, config).lex()
-            System.err.println("MATHDEBUG tokens=$tokens")
             val parser = Parser(tokens, config)
-            val v = parser.parseAll()
-            System.err.println("MATHDEBUG value=$v ops=${parser.ops}")
-            v to parser.ops
+            parser.parseAll() to parser.ops
         } catch (_: Failure) {
             null
         } catch (_: ArithmeticException) {
             null
         }
+    }
+
+    private val dateIso = Regex("""^\d{4}\s*[-/.]\s*\d{1,2}\s*[-/.]\s*\d{1,2}$""")
+    private val dateShort = Regex("""^\d{1,2}\s*[-/.]\s*\d{1,2}\s*[-/.]\s*\d{2,4}$""")
+    private val dateDayMonth = Regex("""^(\d{1,4})\s*[/-]\s*(\d{1,2})$""")
+    private val version = Regex("""^\d+(?:\.\d+){2,}$""")
+
+    private fun looksLikeDate(body: String): Boolean {
+        if (dateIso.matches(body) || dateShort.matches(body)) return true
+        val dayMonth = dateDayMonth.matchEntire(body)
+        if (dayMonth != null) {
+            val first = dayMonth.groupValues[1].toIntOrNull() ?: 0
+            val second = dayMonth.groupValues[2].toIntOrNull() ?: 0
+            if (first > 12 || second > 12) return true
+        }
+        if (version.matches(body)) return true
+        return false
+    }
+
+    private fun splitConversion(expression: String): Pair<String, String>? {
+        for (keyword in listOf(" to ", " as ", " in ")) {
+            var from = expression.length
+            while (from > 0) {
+                val at = expression.lastIndexOf(keyword, from - 1, ignoreCase = true)
+                if (at < 0) break
+                if (depthAt(expression, at) == 0) {
+                    val source = expression.substring(0, at).trim()
+                    val target = expression.substring(at + keyword.length).trim()
+                    if (source.isNotEmpty() && target.isNotEmpty() && MathUnits.parseUnit(target) != null) {
+                        return source to target
+                    }
+                }
+                from = at
+            }
+        }
+        return null
+    }
+
+    private fun depthAt(text: String, index: Int): Int {
+        var depth = 0
+        for (i in 0 until index) {
+            when (text[i]) {
+                '(' -> depth++
+                ')' -> depth--
+            }
+        }
+        return depth
     }
 
     private fun render(value: Value, config: MathConfig): String {
@@ -125,12 +183,10 @@ object MathEvaluator {
 
     // ---------------------------------------------------------------- arithmetic
 
-    private fun add(a: Value, b: Value, subtract: Boolean): Value {
-        System.err.println("DEBUG add a=$a b=$b sub=$subtract")
-        return when {
+    private fun add(a: Value, b: Value, subtract: Boolean): Value = when {
         a is Percent && b is Percent -> Percent(if (subtract) a.value - b.value else a.value + b.value)
         a is Num && b is Percent && a.unit == null -> {
-            val factor = if (subtract) BigDecimal.ONE - b.value / HUNDRED else BigDecimal.ONE + b.value / HUNDRED
+            val factor = if (subtract) BigDecimal.ONE - b.value.divide(HUNDRED, MC) else BigDecimal.ONE + b.value.divide(HUNDRED, MC)
             Num(a.value.multiply(factor))
         }
         a is Num && b is Num -> addQuantities(a, b, subtract)
@@ -152,12 +208,8 @@ object MathEvaluator {
 
     private fun multiply(a: Value, b: Value): Value {
         if (a is Percent && b is Percent) fail()
-        if (a is Percent) return scale(b, a.value / HUNDRED)
-        if (b is Percent) {
-            val f = b.value / HUNDRED
-            System.err.println("MATHDEBUG percent b=${b.value} (${b.value.javaClass}) / $HUNDRED = $f")
-            return scale(a, f)
-        }
+        if (a is Percent) return scale(b, a.value.divide(HUNDRED, MC))
+        if (b is Percent) return scale(a, b.value.divide(HUNDRED, MC))
         a as Num
         b as Num
         if (a.unit?.dimension == MathDimension.Temperature || b.unit?.dimension == MathDimension.Temperature) fail()
@@ -217,7 +269,7 @@ object MathEvaluator {
     }
 
     private fun scale(value: Value, factor: BigDecimal): Value = when (value) {
-        is Num -> Num(value.value.multiply(factor).also { System.err.println("MATHDEBUG scale ${value.value} * $factor = $it") }, value.unit, value.display)
+        is Num -> Num(value.value.multiply(factor), value.unit, value.display)
         is Percent -> Percent(value.value.multiply(factor))
     }
 

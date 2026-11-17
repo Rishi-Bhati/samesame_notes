@@ -112,15 +112,15 @@ object MathUnits {
         add(MathDimension.Speed, "1", "m/s", "m/s")
         add(MathDimension.Speed, "0.44704", "mph", "mph")
 
-        // Data (base byte); only the unambiguous capitalised forms are data units.
+        // Data (base byte); short forms are only the unambiguous capitalised ones (MB is data, mb is not).
         add(MathDimension.Data, "1", "B", "B", "byte", "bytes")
-        add(MathDimension.Data, "1000", "KB", "KB", "kb", "kilobyte", "kilobytes")
-        add(MathDimension.Data, "1000000", "MB", "MB", "mb", "megabyte", "megabytes")
-        add(MathDimension.Data, "1000000000", "GB", "GB", "gb", "gigabyte", "gigabytes")
-        add(MathDimension.Data, "1000000000000", "TB", "TB", "tb", "terabyte", "terabytes")
-        add(MathDimension.Data, "1024", "KiB", "KiB", "kib")
-        add(MathDimension.Data, "1048576", "MiB", "MiB", "mib")
-        add(MathDimension.Data, "1073741824", "GiB", "GiB", "gib")
+        add(MathDimension.Data, "1000", "KB", "KB", "kilobyte", "kilobytes")
+        add(MathDimension.Data, "1000000", "MB", "MB", "megabyte", "megabytes")
+        add(MathDimension.Data, "1000000000", "GB", "GB", "gigabyte", "gigabytes")
+        add(MathDimension.Data, "1000000000000", "TB", "TB", "terabyte", "terabytes")
+        add(MathDimension.Data, "1024", "KiB", "KiB", "kibibyte", "kibibytes")
+        add(MathDimension.Data, "1048576", "MiB", "MiB", "mebibyte", "mebibytes")
+        add(MathDimension.Data, "1073741824", "GiB", "GiB", "gibibyte", "gibibytes")
 
         // Temperature (base °C, affine)
         addAll(MathUnit(MathDimension.Temperature, BigDecimal.ONE, "°C"), arrayOf("°C", "C", "celsius", "Celsius"))

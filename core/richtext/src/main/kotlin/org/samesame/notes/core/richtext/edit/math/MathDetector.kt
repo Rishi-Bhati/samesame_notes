@@ -97,7 +97,7 @@ object MathDetector {
         return true
     }
 
-    /** The contiguous block of numeric lines directly above the current line, newest first (at most the cap). */
+    /** The contiguous block of numeric lines directly above the current line, in document order (top to bottom). */
     private fun precedingLines(text: CharSequence, lineStart: Int): List<String> {
         if (lineStart <= 0) return emptyList()
         val before = text.subSequence(0, lineStart - 1).toString()
@@ -111,6 +111,7 @@ object MathDetector {
             collected += trimmed
             if (collected.size >= Limits.MATH_MAX_AGGREGATE_LINES) break
         }
+        collected.reverse()
         return collected
     }
 
