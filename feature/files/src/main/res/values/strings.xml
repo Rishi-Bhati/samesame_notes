@@ -168,6 +168,7 @@
     <string name="feature_files_receive_nothing">Nothing to save</string>
     <string name="feature_files_receive_name">File name</string>
     <string name="feature_files_receive_note_failed">Couldn\'t create a note from this file</string>
+    <string name="feature_files_receive_text_too_large">Too large to open as a note, saved to Files</string>
     <string name="feature_files_receive_pick_folder">Choose folder</string>
     <string name="feature_files_receive_done">Done</string>
     <string name="feature_files_viewer_not_found">File not found</string>

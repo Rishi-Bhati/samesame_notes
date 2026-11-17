@@ -429,6 +429,36 @@ internal class DefaultNoteRepository @Inject constructor(
         return NoteId(id)
     }
 
+    override suspend fun importText(text: String, title: String, folderId: FolderId?): NoteId {
+        val id = UUID.randomUUID().toString()
+        val settings = appSettings.settings.first()
+        val style = settings.newNote
+        var created = false
+        try {
+            val base = documents.create(
+                id, style.pageMode, title = title, ratio = style.ratio, template = style.template,
+                backgroundColor = style.backgroundColor, adjustForDarkMode = settings.adjustColourInDarkMode,
+            )
+            created = true
+            val document = base.copy(body = org.samesame.notes.core.model.richtext.RichText.of(text))
+            documents.writeDocument(document)
+            documents.flush(id)
+            val now = clock.now()
+            noteDao.upsert(
+                NoteEntity(
+                    id = id, title = title, previewText = document.body.plainText().take(PREVIEW_LENGTH), folderId = folderId?.value,
+                    isFavorite = false, isLocked = false, pageMode = document.layout.mode, backgroundColor = style.backgroundColor ?: 0,
+                    createdAt = now, modifiedAt = now, lastOpenedAt = now, trashedAt = null, isDirty = true,
+                ),
+            )
+            searchDao.replace(NoteSearchEntity(noteId = id, title = title, body = document.body.plainText(), inkText = ""))
+            return NoteId(id)
+        } catch (e: Throwable) {
+            if (created) runCatching { documents.delete(id) }
+            throw e
+        }
+    }
+
     override suspend fun importPdf(pdfFiles: List<java.io.File>, title: String, folderId: FolderId?): NoteId {
         val id = UUID.randomUUID().toString()
         val sources = ArrayList<org.samesame.notes.core.data.pdf.PdfPageSource>()

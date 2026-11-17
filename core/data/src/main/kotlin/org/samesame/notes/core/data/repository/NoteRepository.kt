@@ -139,6 +139,9 @@ interface NoteRepository {
      * content. The note is titled [title] (the first file's name by default). Throws
      * [org.samesame.notes.core.data.pdf.PdfImportException] for protected, corrupt or empty files (never anything else).
      */
+    suspend fun importText(text: String, title: String, folderId: FolderId? = null): NoteId =
+        throw UnsupportedOperationException("importText")
+
     suspend fun importPdf(pdfFiles: List<java.io.File>, title: String, folderId: FolderId? = null): NoteId
 
     /**

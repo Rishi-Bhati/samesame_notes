@@ -52,6 +52,8 @@ data class ReceiveUiState(
 sealed interface ReceiveEvent {
     data class OpenNote(val noteId: String) : ReceiveEvent
     data object NoteFailed : ReceiveEvent
+    /** Text files over the size cap were kept in Files instead of becoming notes. */
+    data object TextTooLarge : ReceiveEvent
 }
 
 @HiltViewModel
@@ -151,13 +153,23 @@ class ShareReceiveViewModel @Inject constructor(
         job = viewModelScope.launch {
             var firstId: String? = null
             var failed = 0
+            val tooLarge = ArrayList<ReceivedItem>()
             s.items.forEach { item ->
                 val source = ImportSource(item.name, item.mimeType, item.uri.lastPathSegment) {
                     context.contentResolver.openInputStream(item.uri) ?: throw java.io.FileNotFoundException(item.uri.toString())
                 }
                 when (val r = noteImporter.import(source)) {
                     is org.samesame.notes.core.data.transfer.ImportResult.Imported -> if (firstId == null) firstId = r.id.value
-                    is org.samesame.notes.core.data.transfer.ImportResult.Failed -> failed++
+                    is org.samesame.notes.core.data.transfer.ImportResult.Failed ->
+                        if (r.reason == org.samesame.notes.core.data.transfer.ImportFailure.TOO_LARGE) tooLarge += item else failed++
+                }
+            }
+            if (tooLarge.isNotEmpty()) {
+                eventChannel.send(ReceiveEvent.TextTooLarge)
+                // Kept in Files instead: the large file is still received.
+                if (firstId == null) { job = null; saveToFiles(s.copy(items = tooLarge)); return@launch }
+                tooLarge.forEach { item ->
+                    runCatching { repo.importFromUri(item.uri, s.folderId, displayName = item.name.takeIf { it.isNotBlank() }, sourceApp = sourceApp, onDuplicate = org.samesame.notes.core.model.files.DuplicatePolicy.KeepBoth, onProgress = { _, _ -> }) }
                 }
             }
             val id = firstId

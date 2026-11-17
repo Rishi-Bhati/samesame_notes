@@ -42,6 +42,14 @@ class NoteImportServiceTest {
         assertThat(NoteFileDetector.classify("scan.bin", "application/pdf", null)).isEqualTo(Verdict.Supported(ImportKind.PDF))
     }
 
+    @Test fun textFilesAreDetected() {
+        assertThat(NoteFileDetector.classify("a.txt", "application/octet-stream", null)).isEqualTo(Verdict.Supported(ImportKind.TEXT))
+        assertThat(NoteFileDetector.classify("b.MD", null, null)).isEqualTo(Verdict.Supported(ImportKind.TEXT))
+        assertThat(NoteFileDetector.classify(null, "text/csv", "1234")).isEqualTo(Verdict.Supported(ImportKind.TEXT))
+        assertThat(NoteFileDetector.classify("a.bin", "text/plain", null)).isEqualTo(Verdict.Supported(ImportKind.TEXT))
+        assertThat(NoteFileDetector.classify("a.exe", "application/octet-stream", null)).isEqualTo(Verdict.Unsupported)
+    }
+
     @Test fun pdfTitleDropsTheExtension() {
         assertThat(NoteImportService.pdfTitle(" Scan 1.PDF ")).isEqualTo("Scan 1")
         assertThat(NoteImportService.pdfTitle("")).isEqualTo("")

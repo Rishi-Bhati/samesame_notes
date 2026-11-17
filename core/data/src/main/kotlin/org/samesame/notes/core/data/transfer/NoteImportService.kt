@@ -13,6 +13,7 @@ import org.samesame.notes.core.model.FolderId
 import org.samesame.notes.core.model.Limits
 import org.samesame.notes.core.model.io.InputTooLargeException
 import org.samesame.notes.core.model.io.LimitedInputStream
+import org.samesame.notes.core.model.textimport.TextImport
 import org.samesame.notes.core.model.NoteId
 import java.io.File
 import java.io.InputStream
@@ -20,7 +21,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /** A file this app can turn into a note. */
-enum class ImportKind { SDOCX, SSNOTE, PDF }
+enum class ImportKind { SDOCX, SSNOTE, PDF, TEXT }
 
 /**
  * Decides what a file handed to the app is, from its display name (`OpenableColumns.DISPLAY_NAME`), MIME type and
@@ -48,10 +49,13 @@ object NoteFileDetector {
             "ssnote" -> return Verdict.Supported(ImportKind.SSNOTE)
             "pdf" -> return Verdict.Supported(ImportKind.PDF)
         }
+        val textExt = extensionOf(name) ?: extensionOf(pathName)
+        if (textExt != null && textExt in TextImport.extensions) return Verdict.Supported(ImportKind.TEXT)
         val mime = mimeType?.substringBefore(';')?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
         return when {
             mime in sdocxMimeTypes -> Verdict.Supported(ImportKind.SDOCX)
             mime == PDF_MIME -> Verdict.Supported(ImportKind.PDF)
+            mime in TextImport.mimeTypes -> Verdict.Supported(ImportKind.TEXT)
             else -> Verdict.Unsupported
         }
     }
@@ -84,6 +88,8 @@ enum class ImportFailure {
     INVALID,
     /** A password-protected PDF. */
     PROTECTED,
+    /** A text file over the size cap: not opened as a note. */
+    TOO_LARGE,
     /** The file could not be read. */
     IO,
 }
@@ -133,6 +139,7 @@ class NoteImportService internal constructor(
                     ImportKind.SDOCX -> notes.importSdocx(it, folderId)
                     ImportKind.SSNOTE -> notes.importNote(it, folderId)
                     ImportKind.PDF -> importPdf(it, pdfTitle(source.label), folderId)
+                    ImportKind.TEXT -> importText(input, source.label, folderId)
                 }
             }
             ImportResult.Imported(id)
@@ -166,6 +173,12 @@ class NoteImportService internal constructor(
         return ImportSummary(imported, failures)
     }
 
+    /** Reads at most the text cap (one byte more proves it is over), then makes a note titled after the file. */
+    private suspend fun importText(input: InputStream, label: String, folderId: FolderId?): NoteId {
+        val bytes = LimitedInputStream(input, Limits.MAX_TEXT_IMPORT_BYTES, "Text file", closeInput = false).readBytes()
+        return notes.importText(TextImport.decode(bytes), TextImport.titleOf(label), folderId)
+    }
+
     /** `importPdf` renders from a file (PdfRenderer needs a seekable descriptor), so the stream is copied first. */
     private suspend fun importPdf(input: InputStream, title: String, folderId: FolderId?): NoteId {
         scratch.mkdirs()
@@ -189,7 +202,7 @@ class NoteImportService internal constructor(
                 SdocxImportError.INVALID -> ImportFailure.INVALID
                 SdocxImportError.IO -> ImportFailure.IO
             }
-            e is InputTooLargeException -> ImportFailure.INVALID
+            e is InputTooLargeException -> if (kind == ImportKind.TEXT) ImportFailure.TOO_LARGE else ImportFailure.INVALID
             e is PdfImportException -> if (e.reason == PdfImportError.PasswordProtected) ImportFailure.PROTECTED else ImportFailure.INVALID
             // `importNote` reports an unreadable container as an IOException; the stream itself was already open.
             kind == ImportKind.SSNOTE && e is java.io.IOException -> ImportFailure.INVALID
