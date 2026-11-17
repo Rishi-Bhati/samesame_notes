@@ -84,3 +84,5 @@ CLAUDE.md
 
 # Release signing material (never commit)
 signing/
+*.apk
+*.idsig

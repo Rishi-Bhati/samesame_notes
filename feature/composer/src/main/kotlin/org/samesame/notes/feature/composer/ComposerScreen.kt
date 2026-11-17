@@ -65,6 +65,7 @@ import org.samesame.notes.core.designsystem.theme.SameSameTheme
 import org.samesame.notes.core.ink.DarkModeInk
 import org.samesame.notes.core.ink.brush.PenCatalog
 import org.samesame.notes.core.model.Limits
+import org.samesame.notes.core.model.io.readBytesLimited
 import org.samesame.notes.core.model.document.ViewState
 import org.samesame.notes.core.model.richtext.ListKind
 import org.samesame.notes.core.model.richtext.OBJECT_CHAR
@@ -1778,9 +1779,13 @@ internal fun ComposerEditor(
         scope.launch {
             val ourUri = ShareFiles.uriFor(context, p.file)
             val edited = withContext(Dispatchers.IO) {
-                val returned = result.data?.data?.takeIf { it != ourUri }
+                val returned = result.data?.data?.takeIf { it != ourUri && ShareFiles.isForeignContent(it, context.packageName) }
                 val bytes = returned?.let { u ->
-                    runCatching { context.contentResolver.openInputStream(u)?.use { it.readBytes() } }.getOrNull()
+                    runCatching {
+                        context.contentResolver.openInputStream(u)?.use { stream ->
+                            stream.readBytesLimited(Limits.MAX_SHOW_IN_NOTE_BYTES, "Edited image")
+                        }
+                    }.getOrNull()
                 } ?: p.file.takeIf { it.length() > 0 }?.readBytes()
                 p.file.delete()
                 bytes?.takeIf { !it.contentEquals(p.original) }?.let { b ->

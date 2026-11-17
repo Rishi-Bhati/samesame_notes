@@ -8,6 +8,7 @@ import android.content.IntentFilter
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
+import androidx.core.content.ContextCompat
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.CommandButton
@@ -92,7 +93,12 @@ class VoicePlaybackService : MediaSessionService() {
     private fun onPlayStarted(controller: PlaybackController) {
         if (!requestFocus()) { controller.pause(); return }
         if (!noisyRegistered) {
-            registerReceiver(noisy, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY))
+            ContextCompat.registerReceiver(
+                this,
+                noisy,
+                IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY),
+                ContextCompat.RECEIVER_NOT_EXPORTED,
+            )
             noisyRegistered = true
         }
     }

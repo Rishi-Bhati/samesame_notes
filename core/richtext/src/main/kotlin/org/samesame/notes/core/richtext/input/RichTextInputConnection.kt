@@ -130,7 +130,7 @@ class RichTextInputConnection(
         val ghost = host.mathGhostAtCaret()
         if (ghost != null) {
             val caret = body.selection
-            Log.d("SsMath", "ime setSelection req=$start,$end caret=${caret.start},${caret.end} anchor=${ghost.anchor} len=${body.length}")
+            ImeTrace.logMath("ime setSelection req=$start,$end caret=${caret.start},${caret.end} anchor=${ghost.anchor} len=${body.length}")
             if (caret.collapsed &&
                 host.ghostJudge.onSelection(caret.end, start, end, SystemClock.uptimeMillis()) == SelectionVerdict.Accept
             ) {
@@ -170,7 +170,7 @@ class RichTextInputConnection(
             KeyEvent.KEYCODE_TAB -> {
                 val ghost = host.mathGhostAtCaret()
                 if (ghost != null) {
-                    Log.d("SsMath", "ime key TAB anchor=${ghost.anchor} caret=${sel.start},${sel.end}")
+                    ImeTrace.logMath("ime key TAB anchor=${ghost.anchor} caret=${sel.start},${sel.end}")
                     host.acceptMathGhostFromIme("tab")
                 } else {
                     if (event.isShiftPressed) body.outdent() else body.indent()
@@ -180,7 +180,7 @@ class RichTextInputConnection(
             KeyEvent.KEYCODE_DPAD_RIGHT -> {
                 val ghost = host.mathGhostAtCaret()
                 if (ghost != null) {
-                    Log.d("SsMath", "ime key DPAD_RIGHT anchor=${ghost.anchor} caret=${sel.start},${sel.end}")
+                    ImeTrace.logMath("ime key DPAD_RIGHT anchor=${ghost.anchor} caret=${sel.start},${sel.end}")
                     host.acceptMathGhostFromIme("dpad_right")
                 } else {
                     body.setSelection(if (sel.collapsed) (sel.max + 1).coerceAtMost(body.length) else sel.max)
@@ -222,7 +222,7 @@ class RichTextInputConnection(
         if (n <= 0) return ""
         val ghost = host.mathGhostAtCaret()
         if (ghost != null) {
-            Log.d("SsMath", "ime getTextAfterCursor n=$n caret=${body.selection.start},${body.selection.end}")
+            ImeTrace.logMath("ime getTextAfterCursor n=$n caret=${body.selection.start},${body.selection.end}")
             return ImeTrace.call("getTextAfterCursor[ghost]", "$n,$flags ${st()}") {
                 MathGhostInput.afterCursor(body.editable, body.selection.max, ghost.text, n)
             }

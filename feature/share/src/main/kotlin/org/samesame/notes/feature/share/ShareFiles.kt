@@ -1,6 +1,7 @@
 package org.samesame.notes.feature.share
 
 import android.content.ClipData
+import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -44,4 +45,13 @@ object ShareFiles {
 
     fun shareFile(context: Context, file: File, mimeType: String, title: CharSequence?) =
         context.startActivity(chooser(context, listOf(file to mimeType), title))
+
+    /** Only `content://` URIs of other apps' providers are imported or accepted (no `file://`, nothing served by this app). */
+    fun isForeignContent(uri: Uri, ownPackage: String): Boolean {
+        if (uri.scheme != ContentResolver.SCHEME_CONTENT) return false
+        val rawAuth = uri.authority ?: return false
+        val normalizedAuth = rawAuth.substringAfterLast('@').substringBefore(':').trim().lowercase()
+        val own = ownPackage.lowercase()
+        return normalizedAuth.isNotEmpty() && normalizedAuth != own && !normalizedAuth.startsWith("$own.")
+    }
 }

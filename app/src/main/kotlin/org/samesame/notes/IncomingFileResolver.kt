@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.net.Uri
 import android.provider.OpenableColumns
 import org.samesame.notes.core.data.transfer.NoteFileDetector
+import org.samesame.notes.feature.share.ShareFiles
 
 /** A file handed to the app by another app, with what [NoteFileDetector] made of it. */
 data class IncomingFile(val uri: Uri, val displayName: String?, val mimeType: String?, val verdict: NoteFileDetector.Verdict)
@@ -29,7 +30,7 @@ class IncomingFileResolver(private val contentResolver: ContentResolver) {
     companion object {
         /** Only `content://` URIs of other apps' providers are imported (no `file://`, nothing served by this app). */
         fun isForeignContent(uri: Uri, ownPackage: String): Boolean =
-            uri.scheme == ContentResolver.SCHEME_CONTENT && uri.authority?.let { it == ownPackage || it.startsWith("$ownPackage.") } == false
+            ShareFiles.isForeignContent(uri, ownPackage)
     }
 
     private fun isGeneric(mimeType: String): Boolean = mimeType.substringBefore(';').trim().lowercase().let {
