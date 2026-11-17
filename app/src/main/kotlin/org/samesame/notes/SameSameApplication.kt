@@ -4,16 +4,20 @@ import android.app.Application
 import dagger.hilt.android.HiltAndroidApp
 import org.samesame.notes.core.data.StartupMaintenance
 import org.samesame.notes.feature.composer.voice.VoiceRecordingHub
+import org.samesame.notes.feature.widgets.WidgetUpdater
 import javax.inject.Inject
 
 @HiltAndroidApp
 class SameSameApplication : Application() {
     @Inject lateinit var startup: StartupMaintenance
+    @Inject lateinit var widgetUpdater: WidgetUpdater
 
     override fun onCreate() {
         super.onCreate()
         enableStrictModeIfAsked()
         val started = System.currentTimeMillis()
+        // Home-screen widgets (if any) are redrawn a moment after a note changes.
+        widgetUpdater.ensureStarted()
         // Leftovers of earlier runs (share exports, decrypted working copies, orphaned recordings); off the main thread.
         startup.run { VoiceRecordingHub.discardOrphans(this, started) }
     }

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_creator_name">New note</string>
+    <string name="widget_creator_description">Start a note with the keyboard, pen, camera, a picture or your voice.</string>
+    <string name="widget_single_name">Note</string>
+    <string name="widget_single_description">Keep one note on your home screen.</string>
+    <string name="widget_list_name">Note list</string>
+    <string name="widget_list_description">Your recent notes, or the notes of one folder.</string>
+
+    <string name="widget_creator_keypad">New note with keyboard</string>
+    <string name="widget_creator_pen">New handwritten note</string>
+    <string name="widget_creator_camera">New note with a photo</string>
+    <string name="widget_creator_image">New note with a picture</string>
+    <string name="widget_creator_voice">New voice note</string>
+
+    <string name="widget_untitled">Untitled</string>
+    <string name="widget_locked_note">Locked note</string>
+    <string name="widget_note_gone">This note is no longer available</string>
+    <string name="widget_choose_note">Tap to choose a note</string>
+    <string name="widget_new_note">New note</string>
+    <string name="widget_list_title">Recent notes</string>
+    <string name="widget_list_empty">No notes yet</string>
+    <string name="widget_folder_gone">This folder is no longer available</string>
+
+    <string name="widget_pick_note_title">Choose a note</string>
+    <string name="widget_pick_note_empty">There are no notes to show yet.</string>
+    <string name="widget_pick_folder_title">Choose what to show</string>
+    <string name="widget_pick_locked">A locked note can\'t be shown on a widget.</string>
+    <string name="widget_pick_already">That note is already on a widget.</string>
+    <string name="widget_cant_lock">A note shown on a widget can\'t be locked.</string>
+</resources>

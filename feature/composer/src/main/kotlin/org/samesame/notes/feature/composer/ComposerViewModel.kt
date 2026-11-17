@@ -175,6 +175,9 @@ class ComposerViewModel @AssistedInject constructor(
         }
     }
 
+    /** Whether a home-screen widget shows this note (then it can't be locked). */
+    fun isOnWidget(): Boolean = notes.isOnWidget(listOf(id))
+
     /**
      * Locks the open note with the verified [token]. The session is saved and packed first and dropped, so nothing writes
      * the plain working copy after the note is encrypted; then [onDone] leaves the editor.

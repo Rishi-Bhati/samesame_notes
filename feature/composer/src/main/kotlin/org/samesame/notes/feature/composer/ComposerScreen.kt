@@ -263,6 +263,8 @@ private enum class PageFileAction { Share, Save }
 fun ComposerRoute(
     noteId: String,
     onBack: () -> Unit,
+    /** A home-screen widget button: "keypad", "pen", "camera", "image" or "voice" runs once when the editor is ready. */
+    startAction: String? = null,
     viewModel: ComposerViewModel = hiltViewModel<ComposerViewModel, ComposerViewModel.Factory>(
         key = noteId,
         creationCallback = { it.create(noteId) },
@@ -331,6 +333,8 @@ fun ComposerRoute(
             voiceFile = viewModel::voiceFile,
             newDrawingSession = viewModel::newDrawingSession,
             fileLinks = viewModel.fileLinks,
+            startAction = startAction,
+            isOnWidget = viewModel::isOnWidget,
         )
         EditorTrace.end(traced)
     }
@@ -424,6 +428,10 @@ internal fun ComposerEditor(
     newDrawingSession: ((kotlinx.coroutines.CoroutineScope, List<org.samesame.notes.core.ink.page.PageElement>) -> EditorSession)? = null,
     /** The Files library (link taps, paste of file links, Show in note); null leaves file links inert. */
     fileLinks: org.samesame.notes.feature.composer.files.NoteFileLinks? = null,
+    /** Widget button that created this note (see [ComposerRoute]); runs once. */
+    startAction: String? = null,
+    /** Whether a home-screen widget shows this note (it can't be locked then). */
+    isOnWidget: () -> Boolean = { false },
 ) {
     var lockedSaveNotice by rememberSaveable { mutableStateOf(false) }
     var unlockFlow by rememberSaveable { mutableStateOf(false) }
@@ -1474,6 +1482,17 @@ internal fun ComposerEditor(
         },
     )
     micPermission.Dialogs()
+    var startActionDone by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(startAction) {
+        if (startAction == null || startActionDone) return@LaunchedEffect
+        startActionDone = true
+        when (startAction) {
+            "pen" -> if (session.chrome.value.toolbar.mode != EditorMode.Pen) session.dispatch(ToolbarIntent.ToggleHandwriting)
+            "camera" -> openCamera()
+            "image" -> photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            "voice" -> micPermission.begin()
+        }
+    }
     /** The voice object under a view point (page id and element), or null. */
     fun voiceAtView(p: Offset): Pair<String, ObjectElement>? {
         val d = viewport.viewToDoc(p)
@@ -2352,7 +2371,11 @@ internal fun ComposerEditor(
                             ReadingAction.Tags -> tagsOpen = true
                             ReadingAction.SaveAsFile -> if (locked) lockedSaveNotice = true else saveAsOpen = true
                             ReadingAction.Share -> if (locked) lockedSaveNotice = true else shareMenuOpen = true
-                            ReadingAction.Lock -> if (locked) unlockConfirm = true else lockFlow = true
+                            ReadingAction.Lock -> when {
+                                locked -> unlockConfirm = true
+                                isOnWidget() -> android.widget.Toast.makeText(context, R.string.composer_widget_cant_lock, android.widget.Toast.LENGTH_LONG).show()
+                                else -> lockFlow = true
+                            }
                             ReadingAction.Favourite -> onToggleFavorite()
                             ReadingAction.Delete -> trashConfirm = true
                             ReadingAction.Print -> printNote()
