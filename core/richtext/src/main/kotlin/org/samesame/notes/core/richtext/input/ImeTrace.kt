@@ -2,7 +2,9 @@ package org.samesame.notes.core.richtext.input
 
 import android.content.Context
 import android.content.pm.ApplicationInfo
+import android.os.Build
 import android.util.Log
+import androidx.annotation.RequiresApi
 
 /** Debug-only trace of every IME call (tag `SsIme`). Does nothing unless the app is debuggable. */
 object ImeTrace {
@@ -39,8 +41,14 @@ object ImeTrace {
         is android.view.inputmethod.ExtractedText ->
             "ET(startOffset=${r.startOffset} partial=${r.partialStartOffset}..${r.partialEndOffset} sel=${r.selectionStart},${r.selectionEnd} " +
                 "flags=${r.flags} textLen=${r.text?.length} text=\"${r.text.toString().takeLast(60).replace("\n", "\\n")}\")"
-        is android.view.inputmethod.SurroundingText ->
-            "ST(offset=${r.offset} sel=${r.selectionStart},${r.selectionEnd} textLen=${r.text.length} text=\"${r.text.toString().takeLast(60).replace("\n", "\\n")}\")"
-        else -> r.toString()
+        else -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && r is android.view.inputmethod.SurroundingText) {
+            describeSurrounding(r)
+        } else {
+            r.toString()
+        }
     }
+
+    @RequiresApi(Build.VERSION_CODES.S)
+    private fun describeSurrounding(r: android.view.inputmethod.SurroundingText): String =
+        "ST(offset=${r.offset} sel=${r.selectionStart},${r.selectionEnd} textLen=${r.text.length} text=\"${r.text.toString().takeLast(60).replace("\n", "\\n")}\")"
 }

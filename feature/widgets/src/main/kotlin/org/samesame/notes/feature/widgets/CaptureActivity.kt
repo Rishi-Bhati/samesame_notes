@@ -224,6 +224,7 @@ private fun CaptureSheet(
 ) {
     val c = SameSameTheme.colors
     val context = LocalContext.current
+    val speakPrompt = stringResource(R.string.widget_capture_speak)
     val bodyFocus = remember { FocusRequester() }
     var focusItem by remember { mutableStateOf(-1) }
     val dictation = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -234,7 +235,7 @@ private fun CaptureSheet(
     val dictate: () -> Unit = {
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            .putExtra(RecognizerIntent.EXTRA_PROMPT, context.getString(R.string.widget_capture_speak))
+            .putExtra(RecognizerIntent.EXTRA_PROMPT, speakPrompt)
         try {
             onDictating(true)
             dictation.launch(intent)
@@ -333,7 +334,6 @@ private fun CaptureField(
 @Composable
 private fun ChecklistEditor(draft: CaptureDraft, onDraft: (CaptureDraft) -> Unit, focusItem: Int, onFocusItem: (Int) -> Unit) {
     val c = SameSameTheme.colors
-    val context = LocalContext.current
     val requesters = remember(draft.items.size) { List(draft.items.size) { FocusRequester() } }
     LaunchedEffect(focusItem, draft.items.size) {
         if (focusItem in requesters.indices) runCatching { requesters[focusItem].requestFocus() }
@@ -344,13 +344,13 @@ private fun ChecklistEditor(draft: CaptureDraft, onDraft: (CaptureDraft) -> Unit
             Spacer(Modifier.width(12.dp))
             CaptureField(
                 value = item, onValue = { onDraft(draft.setItem(i, it)) },
-                hint = context.getString(R.string.widget_capture_item_hint, i + 1), style = TextStyle(color = c.textPrimary, fontSize = 17.sp),
+                hint = stringResource(R.string.widget_capture_item_hint, i + 1), style = TextStyle(color = c.textPrimary, fontSize = 17.sp),
                 imeAction = ImeAction.Next, singleLine = true,
                 modifier = Modifier.weight(1f).focusRequester(requesters[i]),
                 onIme = { onDraft(draft.insertItemAfter(i)); onFocusItem(i + 1) },
             )
             if (draft.items.size > 1) {
-                SheetIconButton(Oui.drawable.ic_oui_close, context.getString(R.string.widget_capture_remove_item, i + 1)) {
+                SheetIconButton(Oui.drawable.ic_oui_close, stringResource(R.string.widget_capture_remove_item, i + 1)) {
                     onDraft(draft.removeItem(i)); onFocusItem((i - 1).coerceAtLeast(0))
                 }
             }
