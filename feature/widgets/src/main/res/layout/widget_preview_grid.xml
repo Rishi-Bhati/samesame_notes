@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Widget-picker preview (Android 12+) of the pages widget: a shelf of first pages. -->
+<!-- RemoteViews preview: inflated without AppCompat, so android:tint is the attribute that works here. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:ignore="UseAppTint"
     android:layout_width="match_parent" android:layout_height="match_parent"
     android:background="@drawable/widget_pv_bg" android:orientation="vertical" android:padding="12dp">
     <LinearLayout android:layout_width="match_parent" android:layout_height="32dp" android:layout_marginBottom="4dp"
