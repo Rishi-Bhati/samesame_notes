@@ -341,6 +341,9 @@ internal fun ObjectMoreMenu(
 ) {
     Surface(modifier.width(220.dp), shape = RoundedCornerShape(24.dp), color = ContextFill, shadowElevation = 6.dp) {
         Column(Modifier.verticalScroll(rememberScrollState())) {
+            // A picture shown from Files: its Files rows come first, like on an inline one.
+            actions.onShowAsLink?.let { MenuTextRow(R.string.feature_composer_files_show_as_link, it) }
+            actions.onOpenInFiles?.let { MenuTextRow(R.string.feature_composer_files_open_in_files, it) }
             actions.onCrop?.let { MenuTextRow(R.string.feature_composer_obj_crop, it) }
             actions.onLassoCrop?.let { MenuTextRow(R.string.feature_composer_obj_lasso_crop, it) }
             if (showDrawing) MenuTextRow(R.string.feature_composer_menu_drawing, onDrawing)
@@ -377,6 +380,8 @@ internal data class ObjectMenuExtras(
     val onShare: (() -> Unit)? = null,
     val onSaveImage: (() -> Unit)? = null,
     val onPlay: (() -> Unit)? = null,
+    val onShowAsLink: (() -> Unit)? = null,
+    val onOpenInFiles: (() -> Unit)? = null,
 )
 
 // ------------------------------------------------------------------------------------------------ Page settings (#56)

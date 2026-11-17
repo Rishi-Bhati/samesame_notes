@@ -638,6 +638,7 @@ class EditorSession(
             showSaveImage = onlyObjects && objects.all { it.obj is ImageObject || it.obj is PaintingObject },
             // Play: one voice object.
             showPlay = only is VoiceObject,
+            libraryFileId = (only as? ImageObject)?.libraryFileId,
         )
     }
 
@@ -1069,4 +1070,6 @@ data class ObjectMenuState(
     val showLassoCrop: Boolean = false,
     val showEditImage: Boolean = false,
     val showAnchor: Boolean = false,
+    /** The one selected picture was shown from this Files entry (Show as link / Open in Files rows). */
+    val libraryFileId: String? = null,
 )

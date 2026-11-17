@@ -104,6 +104,44 @@ object PageLayerCodec {
         return result
     }
 
+    /**
+     * [bytes] (a page file) with the JSON of every object element passed through [transform]; strokes and every other byte are
+     * copied as they are, so no ink is decoded (works without the native ink library). A v1 file (no objects) or one this
+     * reader can't follow is returned unchanged.
+     */
+    fun rewriteObjects(bytes: ByteArray, transform: (json: String) -> String): ByteArray {
+        try {
+            val data = DataInputStream(ByteArrayInputStream(bytes))
+            if (data.readInt() != MAGIC) return bytes
+            val version = data.readUnsignedShort()
+            if (version != VERSION) return bytes
+            val flags = data.readUnsignedShort()
+            val count = checkedCount(data.readInt())
+            val out = ByteArrayOutputStream(bytes.size)
+            val w = DataOutputStream(out)
+            w.writeInt(MAGIC); w.writeShort(version); w.writeShort(flags); w.writeInt(count)
+            var changed = false
+            repeat(count) {
+                val tag = data.readUnsignedByte()
+                val payload = readPayload(data, data.readInt())
+                var body = payload
+                if (tag == TAG_OBJECT && payload.size >= 24) {
+                    val json = String(payload, 24, payload.size - 24, Charsets.UTF_8)
+                    val next = transform(json)
+                    if (next != json) {
+                        body = payload.copyOfRange(0, 24) + next.toByteArray(Charsets.UTF_8)
+                        changed = true
+                    }
+                }
+                w.writeByte(tag); w.writeInt(body.size); w.write(body)
+            }
+            w.flush()
+            return if (changed) out.toByteArray() else bytes
+        } catch (e: IOException) {
+            return bytes
+        }
+    }
+
     private fun readStroke(d: DataInputStream, resolveFamily: (String) -> BrushFamily): InkElement {
         val id = ElementId(d.readLong())
         val key = d.readUTF()

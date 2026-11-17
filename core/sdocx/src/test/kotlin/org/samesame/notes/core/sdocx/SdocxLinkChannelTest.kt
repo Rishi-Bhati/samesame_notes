@@ -62,4 +62,18 @@ class SdocxLinkChannelTest {
         assertThat(SdocxLinkChannel.apply(d, "not json".toByteArray()) { null }).isEqualTo(d)
         assertThat(SdocxLinkChannel.apply(d, """{"links":[{"start":-5,"end":99999,"uri":"x","labelSha":"y"}]}""".toByteArray()) { null }).isEqualTo(d)
     }
+
+    @Test fun `a floating picture shown from Files is recorded and its library id comes back on the inline picture`() {
+        val plain = NoteDocument(id = "n", pages = listOf(PageSpec("p1")), body = RichText("hello"))
+        val floating = ImageObject("f", "media/b.png", 1f, 1f, libraryFileId = fileId)
+        assertThat(SdocxLinkChannel.encode(plain) { "shaB" }).isNull()
+        val entry = SdocxLinkChannel.encode(plain, listOf(floating)) { "shaB" }!!
+        // sdocx holds the picture in the text: it comes back as an inline picture with the same bytes.
+        val imported = plain.copy(inlineObjects = listOf(ImageObject("page-p1-1", "media/b.png", 1f, 1f)))
+        val restored = SdocxLinkChannel.apply(imported, entry) { "shaB" }
+        assertThat((restored.inlineObjects.single() as ImageObject).libraryFileId).isEqualTo(fileId)
+        // another picture's bytes get no id
+        val other = SdocxLinkChannel.apply(imported, entry) { "other" }
+        assertThat((other.inlineObjects.single() as ImageObject).libraryFileId).isNull()
+    }
 }

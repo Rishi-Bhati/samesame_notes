@@ -28,9 +28,17 @@ object SdocxLinkChannel {
     private const val VERSION = 1
 
     /** The entry bytes for [doc], or null when it has no link runs and no library-backed images. */
-    fun encode(doc: NoteDocument, imageSha: (media: String) -> String?): ByteArray? {
+    fun encode(
+        doc: NoteDocument,
+        /**
+         * Pictures shown from Files that float on pages. `.sdocx` stores them as pictures in the text, which come back as inline
+         * pictures with the same bytes, so the sha-256 match restores their library id too.
+         */
+        floatingPictures: List<ImageObject> = emptyList(),
+        imageSha: (media: String) -> String?,
+    ): ByteArray? {
         val links = linkRuns(doc.body)
-        val images = doc.inlineObjects.filterIsInstance<ImageObject>().mapNotNull { img ->
+        val images = (doc.inlineObjects.filterIsInstance<ImageObject>() + floatingPictures).mapNotNull { img ->
             val id = img.libraryFileId ?: return@mapNotNull null
             val sha = imageSha(img.media) ?: return@mapNotNull null
             sha to id

@@ -326,6 +326,14 @@ internal class FileLinkController(
         }
     }
 
+    /** The link run "Show as link" puts in place of a picture shown from [fileId]: the file's current name, or its id when it is gone. */
+    suspend fun linkRunFor(fileId: FileId): org.samesame.notes.core.model.richtext.RichText {
+        val file = runCatching { links.resolve(listOf(fileId))[fileId] }.getOrNull()
+        val label = file?.displayName ?: fileId.value
+        val uri = if (file != null) FileLinks.format(file) else FileLinks.format(fileId, "")
+        return FileLinkPaste.linkRun(label, uri, body.currentCharStyle())
+    }
+
     private fun showAsLink(offset: Int, objectId: String, fileId: FileId) {
         scope.launch {
             val file = runCatching { links.resolve(listOf(fileId))[fileId] }.getOrNull()

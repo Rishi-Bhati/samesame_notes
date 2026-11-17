@@ -90,9 +90,12 @@ internal object SdocxExport {
         // Note-level recordings become the note's voice-data list (spec §3.4 bit 13, objects §7).
         val audio = document.recordings.mapNotNull { r -> source.media(r.media)?.let { r.id to it } }.toMap()
         val voiced = SdocxVoiceList.apply(inked, document.recordings, now) { audio[it.id] }
-        val imageSha = document.inlineObjects.filterIsInstance<ImageObject>()
+        val floatingPictures = document.pages.flatMap { spec ->
+            contents.getValue(spec.id).elements.mapNotNull { ((it as? ObjectElement)?.floating()?.obj as? ImageObject)?.takeIf { img -> img.libraryFileId != null } }
+        }
+        val imageSha = (document.inlineObjects.filterIsInstance<ImageObject>() + floatingPictures)
             .mapNotNull { img -> source.media(img.media)?.let { img.media to SdocxLinkChannel.sha(it) } }.toMap()
-        val archive = SdocxLinkChannel.withEntry(voiced, SdocxLinkChannel.encode(document) { imageSha[it] })
+        val archive = SdocxLinkChannel.withEntry(voiced, SdocxLinkChannel.encode(document, floatingPictures) { imageSha[it] })
         SdocxWriter().write(archive, out)
     }
 
@@ -122,7 +125,7 @@ internal object SdocxExport {
         )
         val voiced = SdocxVoiceList.apply(textEdited, document.recordings, now) { recordingAudio[it.id] }
         // Links and library ids ride along in one extra entry; an unchanged note keeps the archive (and its bytes) as is.
-        val edited = SdocxLinkChannel.withEntry(voiced, SdocxLinkChannel.encode(document, imageSha))
+        val edited = SdocxLinkChannel.withEntry(voiced, SdocxLinkChannel.encode(document, imageSha = imageSha))
         if (edited === archive && originalBytes != null) {
             out.write(originalBytes)
             out.flush()

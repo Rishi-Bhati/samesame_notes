@@ -75,7 +75,10 @@ internal class DefaultNoteRepository @Inject constructor(
 
     private fun pictureIdsOf(page: PageContent): List<org.samesame.notes.core.model.files.FileId> =
         org.samesame.notes.core.model.files.NoteFileRefs.pictureIds(
-            page.elements.filterIsInstance<org.samesame.notes.core.ink.page.ObjectElement>().mapNotNull { it.floating()?.obj },
+            page.elements.filterIsInstance<org.samesame.notes.core.ink.page.ObjectElement>()
+                // Cheap guard: only an object whose JSON names a library file is parsed.
+                .filter { it.json.contains("libraryFileId\":\"") }
+                .mapNotNull { it.floating()?.obj },
         )
 
     /**
@@ -92,7 +95,8 @@ internal class DefaultNoteRepository @Inject constructor(
         val pictures = ArrayList<org.samesame.notes.core.model.files.FileId>()
         for (pageId in live) {
             val ids = cache[pageId] ?: run {
-                val read = if (documents.hasPageFile(id, pageId)) {
+                // A page file that never mentions a library id (the usual note) is not decoded at all.
+                val read = if (documents.pageFileMentions(id, pageId, "libraryFileId\":\"")) {
                     runCatching { pictureIdsOf(documents.readPage(id, pageId)) }.getOrDefault(emptyList())
                 } else emptyList()
                 cache[pageId] = read

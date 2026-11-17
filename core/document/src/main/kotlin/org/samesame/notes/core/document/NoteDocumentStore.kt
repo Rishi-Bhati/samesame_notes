@@ -290,6 +290,18 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
         pageFile(ensureWorking(noteId), pageId).let { it.exists() && it.length() > 0L }
     }
 
+    /**
+     * True when the page's own ink file mentions [needle] (a plain byte search, nothing is decoded): a cheap test whether a page
+     * can hold an object with some JSON field before paying for [readPage].
+     */
+    suspend fun pageFileMentions(noteId: String, pageId: String, needle: String): Boolean = withContext(Dispatchers.IO) {
+        val f = pageFile(ensureWorking(noteId), pageId)
+        if (!f.isFile || f.length() == 0L) return@withContext false
+        val n = needle.toByteArray(Charsets.UTF_8)
+        val b = f.readBytes()
+        (0..b.size - n.size).any { i -> n.indices.all { b[i + it] == n[it] } }
+    }
+
     private fun pageElements(dir: File, pageId: String): List<PageElement> {
         val file = pageFile(dir, pageId)
         val local = if (file.exists() && file.length() > 0L) file.inputStream().buffered().use { PageLayerCodec.decode(it) } else null
@@ -908,7 +920,10 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
                 remap = result.second
             }
             val id = UUID.randomUUID().toString()
-            rewriteContainer(staged, containerFile(id), id) { FileIdRemap.apply(it, remap) }
+            rewriteContainer(
+                staged, containerFile(id), id,
+                pageObjects = if (remap.isEmpty()) null else { json -> FileIdRemap.remapFloatingJson(json, remap) },
+            ) { FileIdRemap.apply(it, remap) }
             doc = FileIdRemap.apply(doc, remap)
             ContainerImport(
                 doc.copy(id = id),
@@ -1149,7 +1164,12 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
             }
     }
 
-    private fun rewriteContainer(src: File, dst: File, newId: String, transform: (NoteDocument) -> NoteDocument = { it }) {
+    private fun rewriteContainer(
+        src: File, dst: File, newId: String,
+        /** Rewrites the JSON of every floating object in the page files (library id remap); null leaves pages as they are. */
+        pageObjects: ((String) -> String)? = null,
+        transform: (NoteDocument) -> NoteDocument = { it },
+    ) {
         dst.parentFile?.mkdirs()
         val tmp = File(dst.parentFile, dst.name + TMP_SUFFIX)
         try {
@@ -1163,6 +1183,9 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
                         var bytes = readEntryLimited(zf, entry)
                         if (entry.name == DOCUMENT_FILE) {
                             bytes = transform(NoteDocument.fromJson(bytes.decodeToString()).copy(id = newId)).toJson().encodeToByteArray()
+                        }
+                        if (pageObjects != null && entry.name.startsWith("ink/") && entry.name.endsWith(".ink")) {
+                            bytes = PageLayerCodec.rewriteObjects(bytes, pageObjects)
                         }
                         writeEntry(zos, entry.name, bytes, stored = entry.method == ZipEntry.STORED)
                     }
