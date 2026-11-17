@@ -133,8 +133,8 @@ class RichTextEditorState(
     private val changeListener: () -> Unit = {
         revision++
         caretBlinkOn = true
-        reportSelectionToIme()
         recomputeMathGhost()
+        reportSelectionToIme()
     }
     private val editListener: (TextEditEvent) -> Unit = { e ->
         if (e is TextEditEvent.TextEdit && handle == null) {
@@ -671,10 +671,11 @@ class RichTextEditorState(
         val slice = engine.pagination().sliceForLine(line)
         val content = engine.geometry.contentRect(slice.pageIndex)
         val dy = content.top - slice.columnTop + templateLineShift(slice.pageIndex, slice)
-        val left = content.left + bounds.left
-        val right = content.left + bounds.right
-        val top = bounds.top + dy
-        val bottom = bounds.bottom + dy
+        val pad = GHOST_TOUCH_PADDING
+        val left = content.left + bounds.left - pad
+        val right = content.left + bounds.right + pad
+        val top = bounds.top + dy - pad
+        val bottom = bounds.bottom + dy + pad
         return docX in left..right && docY in top..bottom
     }
 
@@ -692,6 +693,9 @@ class RichTextEditorState(
         )
     }
 }
+
+/** Touch slop padding (in page units) around the ghost text for reliable finger taps and swipes. */
+private const val GHOST_TOUCH_PADDING = 16f
 
 /** `ClipDescription.EXTRA_IS_SENSITIVE`, spelled out so it also works below API 33. */
 private const val EXTRA_IS_SENSITIVE = "android.content.extra.IS_SENSITIVE"

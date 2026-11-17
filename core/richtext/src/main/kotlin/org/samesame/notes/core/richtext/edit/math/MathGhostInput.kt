@@ -118,18 +118,17 @@ class GhostDoubleSpace(private val windowMs: Long = WINDOW_MS) {
  * is being composed, so a word the user is typing is never cut.
  */
 class ImeGhostSync {
-    private var lastKey: String? = null
+    private var lastSyncedKey: String? = null
 
     /** [ghost] now (anchor + text, or null). Returns true when a re-sync is due. */
     fun onGhost(anchor: Int, text: String?, composing: Boolean): Boolean {
-        val key = text?.let { "$anchor:$it" }
-        if (key == lastKey) return false
         if (composing) {
             // Cannot restart mid-composition; remember nothing so the next quiet change still syncs.
-            lastKey = key
             return false
         }
-        lastKey = key
+        val key = text?.let { "$anchor:$it" }
+        if (key == lastSyncedKey) return false
+        lastSyncedKey = key
         return true
     }
 }
