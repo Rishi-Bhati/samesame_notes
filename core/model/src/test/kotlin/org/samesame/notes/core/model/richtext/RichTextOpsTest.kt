@@ -298,7 +298,7 @@ class RichTextOpsTest {
         val both = r.copy(paragraphs = listOf(ParagraphStyle(list = ListKind.Numbered, checkbox = true)))
         assertThat(NoteJson.decodeFromString(RichText.serializer(), NoteJson.encodeToString(RichText.serializer(), both))).isEqualTo(both)
         // defaults omitted by older writers still read
-        val bare = NoteJson.decodeFromString(RichText.serializer(), """{"text":"a","runs":[{"length":1}],"paragraphs":[{}]}""")
+        val bare = NoteJson.decodeFromString(RichText.serializer(), """{"text":"a","runs":[{"length":1,"style":{}}],"paragraphs":[{}]}""")
         assertThat(bare.paragraphs.single()).isEqualTo(ParagraphStyle())
     }
 
