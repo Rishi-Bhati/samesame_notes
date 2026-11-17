@@ -27,7 +27,6 @@ maintain fixes for older releases.
   restored locked note cannot be opened without the original key.
 - Files received from other apps are copied into app storage; sharing and export go through a
   content provider limited to the app's own cache and share directories.
-- Release builds are minified and not debuggable, and the main activity is the only exported
-  component.
+- Release builds are minified and not debuggable. Exported components are strictly restricted to the main activity, incoming share activity, and widget configuration activities; all other activities, services, and providers are unexported.
 - Dependency versions and checksums are pinned; the Gradle wrapper and the dependency
   verification metadata are committed and validated in continuous integration.

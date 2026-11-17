@@ -1046,14 +1046,14 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
                             val entry = zin.nextEntry ?: break
                             budget.countEntry()
                             if (entry.isDirectory || !isAllowedEntry(entry.name)) continue
-                            extract(zin, File(tmpDir, entry.name), entry.name, budget)
+                            extract(zin, tmpDir, entry.name, budget)
                         }
                     }
                 } else {
                     for (entry in zf.entries()) {
                         budget.countEntry()
                         if (entry.isDirectory || entry.name == MANIFEST_FILE || !isAllowedEntry(entry.name)) continue
-                        zf.getInputStream(entry).use { src -> extract(src, File(tmpDir, entry.name), entry.name, budget) }
+                        zf.getInputStream(entry).use { src -> extract(src, tmpDir, entry.name, budget) }
                     }
                 }
             }
@@ -1070,7 +1070,11 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
         }
     }
 
-    private fun extract(src: InputStream, out: File, name: String, budget: InflateBudget) {
+    private fun extract(src: InputStream, baseDir: File, name: String, budget: InflateBudget) {
+        val out = File(baseDir, name)
+        if (!out.canonicalFile.toPath().startsWith(baseDir.canonicalFile.toPath())) {
+            throw SecurityException("ZipSlip path traversal attempt: $name")
+        }
         out.parentFile?.mkdirs()
         val limited = budget.limit(src, name)
         out.outputStream().use { limited.copyTo(it) }

@@ -33,6 +33,7 @@ import org.samesame.notes.core.richtext.edit.TextEditEvent
 import org.samesame.notes.core.richtext.TemplateLineAlignment
 import org.samesame.notes.core.richtext.edit.math.MathDetector
 import org.samesame.notes.core.richtext.edit.math.MathSuggestion
+import org.samesame.notes.core.richtext.input.ImeTrace
 import org.samesame.notes.core.richtext.input.InputHost
 import org.samesame.notes.core.richtext.input.RichTextInputConnection
 import org.samesame.notes.core.richtext.layout.ColumnSlice
@@ -622,7 +623,7 @@ class RichTextEditorState(
         // the ghost it can see appears, changes or goes (it only re-reads the text around the caret on a restart).
         if (ghostSync.onGhost(next?.anchor ?: -1, next?.text, body.composition != null || body.imeComposing)) scheduleGhostResync()
         if (next != null) {
-            Log.d("SsMath", "ghost anchor=${next.anchor} caret=${body.selection.min} text=${next.text}")
+            ImeTrace.logMath("ghost anchor=${next.anchor} caret=${body.selection.min} text=${next.text}")
         }
     }
 
@@ -639,7 +640,7 @@ class RichTextEditorState(
      */
     fun acceptMathGhost(reason: String = "ui"): Boolean {
         val ghost = mathGhostAtCaret() ?: return false
-        Log.d("SsMath", "accept reason=$reason anchor=${ghost.anchor} insert=${ghost.text}")
+        ImeTrace.logMath("accept reason=$reason anchor=${ghost.anchor} insert=${ghost.text}")
         body.replace(ghost.anchor, ghost.anchor, ghost.text)
         mathGhost = null
         handlesVisible = false

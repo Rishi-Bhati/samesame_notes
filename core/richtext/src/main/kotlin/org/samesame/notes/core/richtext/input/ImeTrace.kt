@@ -7,6 +7,7 @@ import android.util.Log
 /** Debug-only trace of every IME call (tag `SsIme`). Does nothing unless the app is debuggable. */
 object ImeTrace {
     const val TAG = "SsIme"
+    const val MATH_TAG = "SsMath"
 
     @Volatile
     var enabled: Boolean = false
@@ -18,6 +19,10 @@ object ImeTrace {
 
     fun log(msg: String) {
         if (enabled) Log.d(TAG, msg)
+    }
+
+    fun logMath(msg: String) {
+        if (enabled) Log.d(MATH_TAG, msg)
     }
 
     /** Logs [name]([args]) and the value [block] returned. */
