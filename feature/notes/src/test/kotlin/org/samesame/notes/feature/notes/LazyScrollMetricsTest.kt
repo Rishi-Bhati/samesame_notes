@@ -262,4 +262,41 @@ class LazyScrollMetricsTest {
         assertThat(merged).containsExactly(0, 105f, 1, 110f, 2, 120f)
         assertThat(known).containsExactly(0, 100f, 2, 120f)
     }
+
+    // B3 round 3: the O(rows) prefix sum is cached in the holder instead of rebuilt on every scroll frame.
+
+    @Test fun `row prefix sum starts every row and totals the content`() {
+        val advances = mapOf(0 to 100f, 1 to 200f, 3 to 150f)
+        val prefix = RowPrefixSum.of(5) { advanceOf(it, 1, advances, 120f, 100f) }
+        assertThat(prefix.starts.toList()).containsExactly(0f, 100f, 300f, 420f, 570f, 690f).inOrder()
+        assertThat(prefix.content).isEqualTo(690f)
+    }
+
+    @Test fun `holder caches the prefix until a measurement or layout changes`() {
+        val holder = ScrollEstimateHolder()
+        holder.estimateFor(40, 2, 1, 100f)
+        val known = holder.advancesWith(listOf(GridRow(1, 0, 100f), GridRow(2, 100, 110f)))
+        val first = holder.prefixFor(20, 1, known, 100f, 0f)
+        assertThat(holder.prefixFor(20, 1, known, 100f, 0f)).isSameInstanceAs(first)
+        // A changed row measurement invalidates it.
+        holder.advancesWith(listOf(GridRow(1, 0, 105f), GridRow(2, 105, 110f)))
+        assertThat(holder.prefixFor(20, 1, known, 100f, 0f)).isNotSameInstanceAs(first)
+        // So does a layout change (the holder clears its known advances).
+        holder.estimateFor(39, 2, 1, 105f)
+        assertThat(holder.prefixFor(19, 1, emptyMap(), 105f, 0f)).isNotSameInstanceAs(first)
+    }
+
+    @Test fun `holder metrics equal the pure calculation across frames`() {
+        val holder = ScrollEstimateHolder()
+        val estimate = holder.estimateFor(40, 2, 1, 100f)
+        val frames = listOf(
+            listOf(GridRow(1, -20, 100f), GridRow(2, 80, 110f), GridRow(3, 190, 90f)),
+            listOf(GridRow(1, -70, 100f), GridRow(2, 30, 110f), GridRow(3, 140, 90f)),
+            listOf(GridRow(2, -70, 110f), GridRow(3, 40, 90f), GridRow(4, 130, 100f)),
+        )
+        for (rows in frames) {
+            val cached = holder.metricsFor(40, 2, 1, rows, 800f, estimate)
+            assertThat(cached).isEqualTo(lazyScrollMetrics(40, 2, 1, rows, 800f, estimate, holder.advancesWith(rows)))
+        }
+    }
 }
