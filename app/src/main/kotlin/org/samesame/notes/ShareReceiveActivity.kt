@@ -56,6 +56,9 @@ class ShareReceiveActivity : FragmentActivity() {
                 viewModel.events.collect { event ->
                     when (event) {
                         is ReceiveEvent.OpenNote -> { startActivity(ComposerActivity.intent(this@ShareReceiveActivity, event.noteId)); finish() }
+                        ReceiveEvent.TextTooLarge -> Toast.makeText(
+                            this@ShareReceiveActivity, org.samesame.notes.feature.files.R.string.feature_files_receive_text_too_large, Toast.LENGTH_LONG,
+                        ).show()
                         ReceiveEvent.NoteFailed -> Toast.makeText(
                             this@ShareReceiveActivity, org.samesame.notes.feature.files.R.string.feature_files_receive_note_failed, Toast.LENGTH_LONG,
                         ).show()

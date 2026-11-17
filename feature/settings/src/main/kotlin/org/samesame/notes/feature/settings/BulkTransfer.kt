@@ -64,7 +64,7 @@ object BulkSummary {
         f[ImportFailure.UNSUPPORTED]?.let { add(SummaryLine(SummaryLine.Kind.Unsupported, it)) }
         f[ImportFailure.LEGACY]?.let { add(SummaryLine(SummaryLine.Kind.Legacy, it)) }
         f[ImportFailure.PROTECTED]?.let { add(SummaryLine(SummaryLine.Kind.Protected, it)) }
-        val other = (f[ImportFailure.INVALID] ?: 0) + (f[ImportFailure.IO] ?: 0)
+        val other = (f[ImportFailure.INVALID] ?: 0) + (f[ImportFailure.IO] ?: 0) + (f[ImportFailure.TOO_LARGE] ?: 0)
         if (other > 0) add(SummaryLine(SummaryLine.Kind.Failed, other))
     }.filter { it.kind == SummaryLine.Kind.Imported || it.count > 0 }
 

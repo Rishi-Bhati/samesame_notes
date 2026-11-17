@@ -132,7 +132,7 @@ class MainActivity : FragmentActivity() {
 
     private fun ImportFailure.messageRes(): Int = when (this) {
         ImportFailure.LEGACY -> R.string.sdocx_import_legacy
-        ImportFailure.INVALID, ImportFailure.UNSUPPORTED -> R.string.sdocx_import_invalid
+        ImportFailure.INVALID, ImportFailure.UNSUPPORTED, ImportFailure.TOO_LARGE -> R.string.sdocx_import_invalid
         ImportFailure.PROTECTED -> R.string.file_import_protected
         ImportFailure.IO -> R.string.sdocx_import_io
     }

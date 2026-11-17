@@ -43,6 +43,10 @@ object Limits {
     const val MAX_DECODE_PIXELS = 4096 * 4096
     /** Size of one incoming file (a note, .sdocx or PDF) read from another app. */
     const val MAX_IMPORT_BYTES = 2L * 1024 * 1024 * 1024
+    /** A picture larger than this is not opened as a note picture (kept in Files only). */
+    const val MAX_IMAGE_IMPORT_BYTES = 64L * 1024 * 1024
+    /** A text file larger than this is not opened as a note (it is kept in Files instead). */
+    const val MAX_TEXT_IMPORT_BYTES = 2L * 1024 * 1024
     /** Uncompressed size of `manifest.json` in a note container. */
     const val MAX_MANIFEST_BYTES = 64 * 1024
     /** Uncompressed size of `document.json` in a note container. */
