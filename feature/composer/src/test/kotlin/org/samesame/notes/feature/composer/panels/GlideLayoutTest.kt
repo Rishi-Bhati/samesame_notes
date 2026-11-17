@@ -80,10 +80,13 @@ class GlideLayoutTest {
                         count = count, anchor = anchor, rowPx = rowPx, topPad = topPad, bottomPad = bottomPad,
                         fingerY = fingerY, minTop = 0f, maxBottom = 1000f,
                     )
-                    assertThat(p.visible).isInRange(1, count)
-                    assertThat(p.scroll).isInRange(0, count - p.visible)
+                    assertThat(p.visible).isAtLeast(1)
+                    assertThat(p.visible).isAtMost(count)
+                    assertThat(p.scroll).isAtLeast(0)
+                    assertThat(p.scroll).isAtMost(count - p.visible)
                     // The anchor stays inside the viewport.
-                    assertThat(anchor - p.scroll).isInRange(0, p.visible - 1)
+                    assertThat(anchor - p.scroll).isAtLeast(0)
+                    assertThat(anchor - p.scroll).isAtMost(p.visible - 1)
                     assertThat(p.top).isAtLeast(0f)
                     assertThat(p.top).isAtMost(1000f - p.visible * rowPx - topPad)
                 }
