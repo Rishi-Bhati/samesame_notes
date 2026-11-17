@@ -16,8 +16,9 @@ maintain fixes for older releases.
 
 ## Security model
 
-- SameSame notes runs entirely on the device and declares no `INTERNET` permission, so the app
-  never sends notes anywhere.
+- SameSame notes keeps notes on the device. The app declares the `INTERNET` permission only for the manual
+  Check for updates in Settings, which sends one HTTPS request to the GitHub releases API when the user taps it;
+  notes are never sent anywhere.
 - Note content is stored as files in the app's private storage; the database is a catalog and
   search index, not the note content itself.
 - A locked note is encrypted with AES-GCM, using a key derived from the user's password with
@@ -27,6 +28,6 @@ maintain fixes for older releases.
   restored locked note cannot be opened without the original key.
 - Files received from other apps are copied into app storage; sharing and export go through a
   content provider limited to the app's own cache and share directories.
-- Release builds are minified and not debuggable. Exported components are strictly restricted to the main activity, incoming share activity, and widget configuration activities; all other activities, services, and providers are unexported.
+- Release builds are minified and not debuggable. Only the main activity, the share target, the widget configuration activities and the widget receivers are exported; all other components are not.
 - Dependency versions and checksums are pinned; the Gradle wrapper and the dependency
   verification metadata are committed and validated in continuous integration.

@@ -9,7 +9,7 @@
 
 **Same same. But open source.**
 
-> **Alpha.** SameSame notes 0.2.1-alpha is an early release for testing. Expect bugs and rough edges, and expect
+> **Alpha.** SameSame notes 0.3.0-alpha is an early release for testing. Expect bugs and rough edges, and expect
 > file formats and behaviour to change before a stable release.
 > Please [report issues](https://reportary.onrender.com/p/KpEraP6diT5xj5xzvnJzZ23Zob2lSvfm8LKBM1RhEyJkCIplAZx_Dqc3uCeuJw9V/) when you find them.
 
@@ -18,7 +18,7 @@
 SameSame notes is an open-source notes app for Android with handwriting. It aims for familiar screens, toolbar
 layout, menus and gestures, so people who already use a stylus notes app should find their way around quickly.
 It is more open in one respect: each note is a single ZIP file made of JSON and binary ink layers, and all of
-it stays on the device. The app declares no INTERNET permission.
+it stays on the device. The only network request is the optional Check for updates in Settings, and only when you tap it.
 
 Notes can be exported to PDF, images, plain text, Markdown, HTML, Word and PowerPoint. Samsung Notes `.sdocx`
 files can be imported and exported.
@@ -30,11 +30,11 @@ SameSame notes is not affiliated with, endorsed by or sponsored by Samsung Elect
 
 | Item | Status |
 |---|---|
-| Version | 0.2.1-alpha |
+| Version | 0.3.0-alpha |
 | Stage | Alpha. Expect bugs. Formats and behaviour may change. |
 | Platform | Android 8.0 (API 26) and newer. Designed phone first; tablet and large-screen layouts are not yet polished. |
 | Language | English only |
-| Data | Stored on the device only. No INTERNET permission. |
+| Data | Stored on the device only. The INTERNET permission is used only for the manual Check for updates. |
 | Note format | `.ssnote`, versioned. Older notes are migrated when opened. |
 | Samsung Notes files | `.sdocx` import and export |
 | Cloud sync and backup | Not built yet (see the roadmap) |
@@ -76,6 +76,9 @@ Features are grouped by area. Anything not listed here is not built yet.
 - Typing shortcuts: `- ` or `* ` starts a bullet list, `1. ` a numbered list, `[] ` a checklist, and `*bold*`,
   `_italic_` and `~strike~` format text as you type.
 - Web addresses, e-mail addresses, phone numbers and dates or times are detected and shown as links.
+- Calculate as you type: type an expression and `=` to see the result faded inline. Accept it by swiping right on the
+  keyboard spacebar, double space, swiping over the ghost, tapping it or Tab. Units, conversions and percentages work,
+  and `sum`, `total` and `avg` add up the lines above. A setting turns it off.
 - Undo and redo (up to 200 steps), and autosave while you write.
 
 ### Objects and images
@@ -104,8 +107,11 @@ Features are grouped by area. Anything not listed here is not built yet.
 - A Files library opened from the side panel: import any file type as a local copy (nothing is uploaded), organise
   files in folders, grid or list view, sort, search, rename, move, share, and a Recycle bin for deleted files.
 - Built-in viewers for images, PDFs (read-only), text files and audio, and a Storage page showing what the files use.
-- SameSame notes appears in Share and Open with for every file type. Files that can't go into a note are saved to
-  Files.
+- SameSame notes appears in Share for every file type, and in Open with for the files it can open (PDF, notes, text,
+  pictures and audio). Files that can't go into a note are saved to Files.
+- Your own drag order, favourites, and a short description and tags per file, with filter chips and tag search.
+- Upload a whole folder with its subfolders. Zip export of a folder, and of a note as Markdown or HTML with its linked
+  files.
 - Copy a file's link and paste it into a note: pictures can be shown in the note or kept as a link, other files paste
   as a link. Tapping a link opens the file, and a file's Info lists the notes that use it. Insert > From Files adds
   links from the editor.
@@ -133,14 +139,31 @@ Features are grouped by area. Anything not listed here is not built yet.
 - Open or share `.ssnote`, `.sdocx` and PDF files from other apps. Each file is imported as a note, and each PDF
   page becomes a note page with its own size.
 - Several files shared at once are each imported as their own note.
+- Open with and Share: text files (`.txt`, `.md`, `.csv`, `.log` and `.tsv`, up to 2 MiB) open as a new note. Photos
+  open as a new note with the picture upright, and audio files open as a new note with a voice recording; a copy of
+  each is kept in Files. Shared text or links from other apps become a new note.
 - Samsung Notes `.sdocx` files import with their handwriting, text and styles, voice recordings and pictures, and
   export back with edits to strokes and text. Export is new and experimental: see the limitations below.
 - Bulk import and export (Settings, General): import several files at once, or export selected notes in one
   format to a folder.
 
+### Widgets
+
+- A note creator widget that starts a note with the keypad, pen, brush, a picture or a voice recording, plus a shortcut
+  to the app.
+- A note widget showing the top of one note, and a Notes widget with List, Pages or Automatic display.
+- A Quick capture widget that opens a small capture sheet over the home screen. It saves when you tap Save, go back
+  or tap outside.
+- Widget background in White, Black or Match dark mode, with opacity. A locked note never shows its content on a widget.
+
 ### Appearance
 
 - Light, dark and system themes.
+
+### Updates
+
+- Check for updates in Settings, About. It checks only when you tap it, with one HTTPS request to the GitHub releases
+  API. Nothing about your notes is sent.
 
 ### Performance
 
@@ -188,7 +211,7 @@ Everything in this section is planned, not built. The items are in rough order.
 ## Download and install
 
 Alpha builds are published on the
-[GitHub Releases](https://github.com/Rishi-Bhati/samesame_notes/releases) page. 0.1.0-alpha, 0.1.1-alpha, 0.2.0-alpha and 0.2.1-alpha
+[GitHub Releases](https://github.com/Rishi-Bhati/samesame_notes/releases) page. 0.1.0-alpha, 0.1.1-alpha, 0.2.0-alpha, 0.2.1-alpha and 0.3.0-alpha
 are available there. Only install alpha builds from this repository's Releases page. Android asks you to allow
 installing from an unknown source the first time.
 
@@ -270,6 +293,7 @@ feature/settings     Settings screens, including bulk import and export
 feature/lock         Lock and unlock screens and biometric flows
 feature/share        Share sheet, save-as-file dialog and transfer progress
 feature/camera       In-app camera sheet for inserting photos
+feature/widgets      Home screen widgets: note creator, note, notes, and quick capture
 ```
 
 ## Architecture notes

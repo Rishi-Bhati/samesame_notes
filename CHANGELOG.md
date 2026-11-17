@@ -5,13 +5,18 @@ All notable user-facing changes to SameSame notes are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses
 pre-release alpha versions.
 
-## 0.2.2-alpha (2026-11-17)
+## 0.3.0-alpha (2026-11-17)
+
+Widgets, calculate as you type, more Files tools, and opening text, photos and audio as notes. It installs over 0.2.1-alpha with the same signing key and keeps your notes.
 
 ### Widgets
 
-- Note creator, single note, note list, and quick capture widgets.
-- Background white/black/match dark mode and opacity.
-- Lock rules: a locked note never shows content on a widget and a note on a widget cannot be locked.
+- Note creator widget: start a note with the keypad, pen, brush, a picture or a voice recording, plus a shortcut to the app.
+- Note widget showing the top of one note.
+- Notes widget with List, Pages or Automatic display. It replaces the separate notes list and pages widgets; widgets already placed keep working.
+- Quick capture widget: opens a small capture sheet over the home screen. It saves when you tap Save, go back or tap outside.
+- Background White, Black or Match dark mode, with opacity.
+- A locked note never shows its content on a widget.
 
 ### Calculate as you type
 
@@ -30,17 +35,42 @@ pre-release alpha versions.
 - Favourites.
 - Tags and a short description per file, with filter chips and tag search.
 
+### Open with and Share
+
+- Text files (.txt, .md, .csv, .log, .tsv up to 2 MiB) open as a new note.
+- Photos open as a new note with the picture upright, and a copy is kept in Files.
+- Audio files open as a new note with a voice recording, and a copy is kept in Files.
+- Shared text or links from other apps become a new note.
+- "Open with" lists the app only for files it can open (PDF, notes, text, pictures, audio). "Share" still accepts every
+  file type and saves the rest to Files.
+
 ### Editor
 
 - Checkbox and number or bullet together on one line.
 - New text-size glide: the size under your finger is the one you get, with a live preview in the note.
 - Top bar title: tap at or after the title places caret at the end without opening the expanded header.
 
+### Settings
+
+- Check for updates in Settings > About. It checks only when you tap it.
+
+### Privacy
+
+- The app now declares the INTERNET permission. It is used only by Check for updates: one HTTPS request to GitHub's
+  releases API when you tap it. Nothing about your notes is sent, and nothing runs automatically.
+
 ### Fixes
 
 - A picture shown in a note from Files now behaves like any picture: move, resize, rotate and the full menu, and keeps its Files link.
 - Checkboxes and list markers line up at every text size.
 - Smoother scrolling, with image caches sized to the phone's memory.
+- Security hardening: stricter checks on files received from other apps and on edited pictures returned by other apps,
+  stricter archive extraction, widget setup screens kept out of recent apps, and calculation suggestions are no longer
+  written to the system log.
+
+### Upgrading
+
+- Notes edited in 0.3.0-alpha use a newer note format; don't go back to 0.2.x after upgrading.
 
 ## 0.2.1-alpha (2026-11-12)
 
