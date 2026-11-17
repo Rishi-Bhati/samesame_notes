@@ -127,4 +127,39 @@ class ExportInstrumentedTest {
         assertThat(docx.size).isGreaterThan(1000)
         assertThat(pptx.size).isGreaterThan(1000)
     }
+
+    // Written, not run (no device): NoteRenderer uses Android Paint, so this path is not JVM-testable.
+    @Test fun markdownAndHtmlWithFilesWriteRelativeLinks() {
+        val id = "0b6c1a52-6d6f-4a39-9a3c-3f2f6a7d9e10"
+        val uri = "samesame://file/$id?n=Plan%20v2.pdf"
+        val body = RichText(
+            "See Plan v2 now",
+            listOf(TextRun(4, CharStyle()), TextRun(7, CharStyle(link = uri)), TextRun(4, CharStyle())),
+            listOf(ParagraphStyle()),
+        )
+        val doc = NoteDocument(id = "t", title = "Test", body = body, pages = listOf(PageSpec("p0")))
+        val src = object : ExportSource {
+            override suspend fun document() = doc
+            override suspend fun page(pageId: String) = PageContent(pageId, emptyList(), 0)
+            override suspend fun media(path: String): ByteArray? = null
+            override suspend fun linkedFiles(ids: Set<String>) = listOf(
+                ExportLinkedFile(ids.single(), "Plan v2.pdf") { "pdf-bytes".toByteArray().inputStream() },
+            )
+        }
+        for (format in listOf(ExportFormat.MARKDOWN, ExportFormat.HTML)) {
+            val (bytes, target) = export(src, format, ExportOptions(linkFilesAsZip = true))
+            assertThat(target.extension).isEqualTo("zip")
+            val names = ArrayList<String>()
+            val note = StringBuilder()
+            ZipInputStream(bytes.inputStream()).use { z ->
+                while (true) {
+                    val entry = z.nextEntry ?: break
+                    names += entry.name
+                    if (entry.name.startsWith("note.")) note.append(z.readBytes().toString(Charsets.UTF_8)) else z.readBytes()
+                }
+            }
+            assertThat(names).contains("files/Plan v2.pdf")
+            assertThat(note.toString()).contains("files/Plan%20v2.pdf")
+        }
+    }
 }

@@ -7,6 +7,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
@@ -41,6 +42,7 @@ import org.samesame.notes.core.model.files.FileSort
 import org.samesame.notes.core.model.files.FileSortField
 import org.samesame.notes.core.model.files.FileTags
 import org.samesame.notes.core.model.files.FileUsage
+import org.samesame.notes.core.model.files.FolderExportFile
 import org.samesame.notes.core.model.files.FilesSummary
 import org.samesame.notes.core.model.files.FilesTrash
 import org.samesame.notes.core.model.files.ImportResult
@@ -410,6 +412,26 @@ class DefaultFilesRepository @Inject internal constructor(
                 for (sha in shas) if (dao.countBySha(sha) == 0) blobs.delete(sha)
             }
         }
+    }
+
+    // ---------------------------------------------------------------- folder zip export
+
+    override suspend fun folderExportFiles(folderId: FileFolderId): List<FolderExportFile> = withContext(Dispatchers.IO) {
+        val all = dao.allFolders()
+        require(all.any { it.id == folderId.value && it.trashedAt == null }) { "Unknown folder" }
+        val subtree = subtreeOf(listOf(folderId.value), all)
+        val byId = all.associateBy { it.id }
+        dao.observeLiveFiles().first()
+            .filter { it.folderId in subtree && blobs.exists(it.sha256) }
+            .map { row ->
+                val path = ArrayList<String>()
+                var cur = row.folderId?.let(byId::get)
+                while (cur != null && cur.id != folderId.value && path.size <= Limits.MAX_FOLDER_DEPTH) {
+                    path += cur.name
+                    cur = cur.parentId?.let(byId::get)
+                }
+                FolderExportFile(path.reversed(), row.displayName, row.sizeBytes) { blobs.file(row.sha256).inputStream() }
+            }
     }
 
     // ---------------------------------------------------------------- bundles in .ssnote containers (v3)

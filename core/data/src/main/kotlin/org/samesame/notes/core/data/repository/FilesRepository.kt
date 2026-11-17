@@ -4,6 +4,7 @@ import android.net.Uri
 import kotlinx.coroutines.flow.Flow
 import org.samesame.notes.core.model.Limits
 import org.samesame.notes.core.model.files.DuplicatePolicy
+import org.samesame.notes.core.model.files.FolderExportFile
 import org.samesame.notes.core.model.files.FileCategory
 import org.samesame.notes.core.model.files.FileFolder
 import org.samesame.notes.core.model.files.FileFolderId
@@ -159,4 +160,12 @@ interface FilesRepository {
 
     /** Distinct notes using any of [ids] (the delete warning "Used in N notes"). */
     suspend fun usageCount(ids: List<FileId>): Int
+
+    // ---- Export ----
+
+    /**
+     * Live files in [folderId]'s subtree for a streaming zip export, with their folder paths relative to it. Files
+     * whose content is missing are left out. Fakes without export support keep the default.
+     */
+    suspend fun folderExportFiles(folderId: FileFolderId): List<FolderExportFile> = emptyList()
 }

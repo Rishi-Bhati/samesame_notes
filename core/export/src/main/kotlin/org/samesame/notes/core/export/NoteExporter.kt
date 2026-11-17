@@ -13,9 +13,8 @@ import org.samesame.notes.core.export.text.HtmlExport
 import org.samesame.notes.core.export.text.MarkdownExport
 import org.samesame.notes.core.export.text.TextExport
 import org.samesame.notes.core.model.PageMode
+import org.samesame.notes.core.model.files.ZipEntryNames
 import java.io.OutputStream
-import java.util.zip.ZipEntry
-import java.util.zip.ZipOutputStream
 
 /** A format implemented outside this module (SSNOTE by the repository, SDOCX by the importer/exporter agent). */
 fun interface FormatExporter {
@@ -54,22 +53,25 @@ class NoteExporter {
                 ExportFormat.PDF -> PdfExport.write(renderer, out)
                 ExportFormat.IMAGES -> return@withContext ImageExport.write(renderer, doc.title, options, out)
                 ExportFormat.TXT -> out.write(TextExport.render(doc, assets).toByteArray(Charsets.UTF_8))
-                ExportFormat.HTML -> out.write(HtmlExport.render(doc, assets).toByteArray(Charsets.UTF_8))
+                ExportFormat.HTML -> {
+                    val html = HtmlExport.render(doc, assets)
+                    if (options.linkFilesAsZip) {
+                        val files = linkedFiles(html, scoped)
+                        val paths = ZipEntryNames.allocate(files.map { it.id.lowercase() to it.name })
+                        BundleZip.write(out, "note.html", BundleZip.rewriteLinks(html, paths), files = files, paths = paths)
+                    } else out.write(html.toByteArray(Charsets.UTF_8))
+                }
                 ExportFormat.DOCX -> DocxExport.write(doc, assets, out)
                 ExportFormat.PPTX -> PptxExport.write(doc, assets, out)
                 ExportFormat.MARKDOWN -> {
                     val result = MarkdownExport.render(doc, assets, writeMedia = options.markdownAsZip)
-                    if (options.markdownAsZip) {
-                        val zip = ZipOutputStream(out)
-                        zip.putNextEntry(ZipEntry("${sanitizeFileName(doc.title)}.md"))
-                        zip.write(result.markdown.toByteArray(Charsets.UTF_8))
-                        zip.closeEntry()
-                        for ((name, bytes) in result.media) {
-                            zip.putNextEntry(ZipEntry(name))
-                            zip.write(bytes)
-                            zip.closeEntry()
-                        }
-                        zip.finish()
+                    if (options.markdownAsZip || options.linkFilesAsZip) {
+                        val files = linkedFiles(result.markdown, scoped)
+                        val paths = ZipEntryNames.allocate(files.map { it.id.lowercase() to it.name })
+                        BundleZip.write(
+                            out, "note.md", BundleZip.rewriteLinks(result.markdown, paths),
+                            media = result.media, files = files, paths = paths,
+                        )
                     } else out.write(result.markdown.toByteArray(Charsets.UTF_8))
                 }
                 ExportFormat.SSNOTE, ExportFormat.SDOCX -> error("unreachable")
@@ -77,5 +79,11 @@ class NoteExporter {
             out.flush()
             target
         }
+    }
+
+    /** The linked files actually referenced by the rendered text (missing files are simply not bundled). */
+    private suspend fun linkedFiles(text: String, source: ExportSource): List<ExportLinkedFile> {
+        val ids = BundleZip.linkedIds(text)
+        return if (ids.isEmpty()) emptyList() else source.linkedFiles(ids)
     }
 }

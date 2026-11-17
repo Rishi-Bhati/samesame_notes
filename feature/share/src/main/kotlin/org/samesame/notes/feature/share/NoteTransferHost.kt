@@ -48,15 +48,19 @@ sealed interface TransferRequest {
     val format: ExportFormat
     /** `.ssnote` only: bundle the library files the notes link to. */
     val includeLinkedFiles: Boolean
+    /** md/HTML only: write a zip with the linked library files and relative links. */
+    val linkFilesAsZip: Boolean get() = false
 
     /** Export, then open the system share sheet. */
     data class Share(
         override val ids: List<NoteId>, override val format: ExportFormat, override val includeLinkedFiles: Boolean = true,
+        override val linkFilesAsZip: Boolean = false,
     ) : TransferRequest
 
     /** Export, then let the user pick where to put the file(s). Several notes: one zip or a folder of files. */
     data class Save(
         override val ids: List<NoteId>, override val format: ExportFormat, override val includeLinkedFiles: Boolean = true,
+        override val linkFilesAsZip: Boolean = false,
     ) : TransferRequest
 }
 
@@ -109,7 +113,7 @@ fun NoteTransferHost(
                 r
             } else false
             progress = Progress(0, req.ids.size, "")
-            val batch = service.exportToCache(req.ids, req.format, org.samesame.notes.core.export.ExportOptions(includeLinkedFiles = req.includeLinkedFiles)) { done, total, title -> progress = Progress(done, total, title) }
+            val batch = service.exportToCache(req.ids, req.format, org.samesame.notes.core.export.ExportOptions(includeLinkedFiles = req.includeLinkedFiles, linkFilesAsZip = req.linkFilesAsZip)) { done, total, title -> progress = Progress(done, total, title) }
             progress = null
             if (batch.items.isEmpty()) {
                 onMessage(if (batch.failed > 0) failed else nothing)

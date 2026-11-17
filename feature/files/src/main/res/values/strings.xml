@@ -8,6 +8,25 @@
     <string name="feature_files_summary">%1$s, %2$s</string>
     <string name="feature_files_back">Back</string>
     <string name="feature_files_upload">Upload</string>
+    <string name="feature_files_upload_folder">Upload folder</string>
+    <string name="feature_files_export_zip">Export as zip</string>
+    <string name="feature_files_export_zip_done">Folder exported as zip</string>
+    <string name="feature_files_folder_summary_title">Folder uploaded</string>
+    <plurals name="feature_files_folder_summary_imported">
+        <item quantity="one">Saved %1$d file</item>
+        <item quantity="other">Saved %1$d files</item>
+    </plurals>
+    <plurals name="feature_files_folder_summary_skipped">
+        <item quantity="one">%1$d item skipped</item>
+        <item quantity="other">%1$d items skipped</item>
+    </plurals>
+    <string name="feature_files_skip_detail">%1$s \u2014 %2$s</string>
+    <string name="feature_files_skip_empty_name">No name</string>
+    <string name="feature_files_skip_too_deep">Folder too deep</string>
+    <string name="feature_files_skip_too_many">File limit reached</string>
+    <string name="feature_files_skip_too_large">Too large</string>
+    <string name="feature_files_skip_no_space">Not enough space</string>
+    <string name="feature_files_skip_unreadable">Couldn\'t read</string>
     <string name="feature_files_search">Search</string>
     <string name="feature_files_more_options">More options</string>
     <string name="feature_files_menu_edit">Edit</string>

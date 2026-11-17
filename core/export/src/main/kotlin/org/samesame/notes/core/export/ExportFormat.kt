@@ -59,6 +59,8 @@ data class ExportOptions(
     val pageIds: Set<String>? = null,
     /** SSNOTE: bundle the library files the note links to (container v3). On by default; other formats ignore it. */
     val includeLinkedFiles: Boolean = true,
+    /** MARKDOWN / HTML: write a zip with `note.md|html` + `files/<name>` and relative links that work on a PC. */
+    val linkFilesAsZip: Boolean = false,
 )
 
 /** File name extension and MIME type of what an export writes. */
@@ -81,7 +83,7 @@ fun expectedTarget(format: ExportFormat, options: ExportOptions, infinite: Boole
     ExportFormat.SDOCX -> ExportTarget("sdocx", "application/octet-stream")
     ExportFormat.PDF -> ExportTarget("pdf", "application/pdf")
     ExportFormat.TXT -> ExportTarget("txt", "text/plain")
-    ExportFormat.HTML -> ExportTarget("html", "text/html")
+    ExportFormat.HTML -> if (options.linkFilesAsZip) ExportTarget("zip", "application/zip") else ExportTarget("html", "text/html")
     ExportFormat.DOCX -> ExportTarget(
         "docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     )
@@ -89,7 +91,8 @@ fun expectedTarget(format: ExportFormat, options: ExportOptions, infinite: Boole
         "pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     )
     ExportFormat.MARKDOWN ->
-        if (options.markdownAsZip) ExportTarget("zip", "application/zip") else ExportTarget("md", "text/markdown")
+        if (options.markdownAsZip || options.linkFilesAsZip) ExportTarget("zip", "application/zip")
+        else ExportTarget("md", "text/markdown")
     ExportFormat.IMAGES -> {
         val tall = when (options.image.layout) {
             ImageLayout.SingleTall -> true
@@ -107,6 +110,8 @@ interface ExportSource {
     suspend fun page(pageId: String): PageContent
     /** Bytes of `media/<name>` or null when missing. */
     suspend fun media(path: String): ByteArray?
+    /** Library files available for `linkFilesAsZip`; empty unless the caller opts in. */
+    suspend fun linkedFiles(ids: Set<String>): List<ExportLinkedFile> = emptyList()
 }
 
 /** An image rendered by [ExportAssets]; always PNG. */

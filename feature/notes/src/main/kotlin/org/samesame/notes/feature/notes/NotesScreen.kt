@@ -605,16 +605,18 @@ internal fun NotesScreen(
     if (saveDialog) {
         val transferVm: NoteTransferViewModel = hiltViewModel()
         var includeFiles by remember { mutableStateOf(true) }
+        var linkFilesAsZip by remember { mutableStateOf(false) }
         val linkedBytes by produceState(0L, unlockedIds) { value = transferVm.service.linkedFilesBytes(unlockedIds) }
         SaveAsFileDialog(
             onDismiss = { saveDialog = false },
             onConfirm = { format ->
                 saveDialog = false
                 if (lockedCount > 0) message(resources.getString(R.string.feature_notes_save_except_locked))
-                transfer = TransferRequest.Save(unlockedIds, format, includeFiles)
+                transfer = TransferRequest.Save(unlockedIds, format, includeFiles, linkFilesAsZip)
             },
             linkedFilesBytes = linkedBytes,
             onIncludeLinkedFilesChange = { includeFiles = it },
+            onLinkFilesAsZipChange = { linkFilesAsZip = it },
         )
     }
     NoteTransferHost(

@@ -357,6 +357,7 @@ internal class DefaultNoteRepository @Inject constructor(
             }
             override suspend fun page(pageId: String): PageContent = documents.readPage(id.value, pageId)
             override suspend fun media(path: String): ByteArray? = documents.readMedia(id.value, path)
+            override suspend fun linkedFiles(ids: Set<String>) = exportLinkedFiles(ids)
         }
         return exporter.export(source, format, options, out)
     }
@@ -504,6 +505,13 @@ internal class DefaultNoteRepository @Inject constructor(
         val files = fileRefs ?: return emptyList()
         val refs = noteFileRefs(id.value, currentDocument(id.value)).keys
         return if (refs.isEmpty()) emptyList() else files.linkedFileSources(refs)
+    }
+
+    /** The note's linked library files as streaming export sources, for md/HTML "export with files". */
+    private suspend fun exportLinkedFiles(ids: Set<String>): List<org.samesame.notes.core.export.ExportLinkedFile> {
+        val files = fileRefs ?: return emptyList()
+        return files.linkedFileSources(ids.map { org.samesame.notes.core.model.files.FileId(it) })
+            .map { org.samesame.notes.core.export.ExportLinkedFile(it.entry.id, it.entry.name, it.open) }
     }
 
     override suspend fun linkedFilesBytes(id: NoteId): Long {

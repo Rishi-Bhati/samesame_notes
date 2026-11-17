@@ -1,11 +1,14 @@
 package org.samesame.notes.feature.files
 
+import android.content.ContentResolver
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -27,8 +30,12 @@ import org.samesame.notes.core.model.files.FileSortField
 import org.samesame.notes.core.model.files.FileUsage
 import org.samesame.notes.core.model.files.FilesSummary
 import org.samesame.notes.core.model.files.FilesTrash
+import org.samesame.notes.core.model.files.FolderExportFile
 import org.samesame.notes.core.model.files.ImportResult
 import org.samesame.notes.core.model.files.LibraryFile
+import org.samesame.notes.core.model.files.ZipEntryNames
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import javax.inject.Inject
 
 /** What is selected on the Files screen. Files and folders can be mixed (Delete and Select all); Move and Share use the files. */
@@ -152,6 +159,13 @@ class FilesViewModel @Inject constructor(
     private val _import = MutableStateFlow<FilesImportUi?>(null)
     val importUi: StateFlow<FilesImportUi?> = _import
     private var importJob: Job? = null
+
+    /** The skipped-file summary of the last folder upload, shown until dismissed. */
+    private val _folderSummary = MutableStateFlow<FolderUploader.Summary?>(null)
+    val folderSummary: StateFlow<FolderUploader.Summary?> = _folderSummary
+    fun dismissFolderSummary() { _folderSummary.value = null }
+
+    private val folderUploader = FolderUploader(repo)
 
     init {
         viewModelScope.launch { repo.purgeExpiredTrash() }
@@ -373,6 +387,41 @@ class FilesViewModel @Inject constructor(
                 if (_import.value?.duplicates.isNullOrEmpty()) _import.value = null
             }
         }
+    }
+
+    /**
+     * Imports a whole `ACTION_OPEN_DOCUMENT_TREE` into the open folder. The tree is walked and imported on `Dispatchers.IO`;
+     * [cancelImport] cancels the job, and [FolderUploader] rolls back everything it created.
+     */
+    fun uploadFolder(treeUri: Uri, resolver: ContentResolver) {
+        if (importJob?.isActive == true) return
+        val folder = currentFolder.value
+        importJob = viewModelScope.launch {
+            _folderSummary.value = null
+            _import.value = FilesImportUi(progress = ImportProgress(1, 0, ""))
+            try {
+                val source = DocumentsTreeSource(resolver, treeUri)
+                val summary = folderUploader.upload(
+                    source = source,
+                    openFile = source::open,
+                    destination = folder,
+                    onProgress = { p -> _import.value = FilesImportUi(p) },
+                )
+                _folderSummary.value = summary
+                if (summary.imported > 0) eventChannel.send(FilesEvent.Imported(summary.imported, 0))
+            } catch (c: kotlinx.coroutines.CancellationException) {
+                throw c
+            } catch (e: Exception) {
+                fail(FailureKind.Generic)
+            } finally {
+                _import.value = null
+            }
+        }
+    }
+
+    /** The files of a folder subtree, for the streaming zip export. */
+    suspend fun folderFiles(folderId: FileFolderId): List<FolderExportFile> = withContext(Dispatchers.IO) {
+        repo.folderExportFiles(folderId)
     }
 
     private suspend fun finishImport(report: ImportReport) {

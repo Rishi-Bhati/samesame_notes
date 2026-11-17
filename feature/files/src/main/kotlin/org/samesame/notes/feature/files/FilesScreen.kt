@@ -14,7 +14,9 @@ import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
@@ -53,10 +55,13 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.samesame.notes.core.designsystem.component.AppDropdownMenu
 import org.samesame.notes.core.designsystem.component.AppFab
 import org.samesame.notes.core.designsystem.component.AppMenuItem
+import org.samesame.notes.core.designsystem.component.AppPillButton
 import org.samesame.notes.core.designsystem.component.BottomActionBar
 import org.samesame.notes.core.designsystem.component.BottomBarItem
 import org.samesame.notes.core.designsystem.component.CollapsingHeaderScaffold
@@ -71,7 +76,10 @@ import org.samesame.notes.core.model.files.FileFolderId
 import org.samesame.notes.core.model.files.FileId
 import org.samesame.notes.core.model.files.FileSortField
 import org.samesame.notes.core.model.files.LibraryFile
+import org.samesame.notes.core.model.files.ZipEntryNames
 import org.samesame.notes.feature.files.viewer.openLibraryFile
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 private enum class Menu { None, Main, View }
 private enum class Dialog { None, RenameFile, RenameFolder, CreateFolder, Delete, Info }
@@ -98,8 +106,12 @@ internal fun FilesScreen(
     var dialog by remember { mutableStateOf(Dialog.None) }
     var deleteUsed by remember { mutableStateOf(0) }
     var infoFile by remember { mutableStateOf<LibraryFile?>(null) }
+    var fabMenu by remember { mutableStateOf(false) }
+    var exportFolderId by remember { mutableStateOf<FileFolderId?>(null) }
     val noApp = stringResource(R.string.feature_files_no_app)
     val shareLabel = stringResource(R.string.feature_files_open_failed_share)
+    val zipDoneLabel = stringResource(R.string.feature_files_export_zip_done)
+    val zipFailLabel = stringResource(R.string.feature_files_err_generic)
 
     fun share(files: List<LibraryFile>) {
         if (files.isEmpty()) return
@@ -124,6 +136,37 @@ internal fun FilesScreen(
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> viewModel.upload(uris) }
     val upload = { picker.launch(arrayOf("*/*")) }
+    val treePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) viewModel.uploadFolder(uri, context.contentResolver)
+    }
+    val uploadFolder = { treePicker.launch(null) }
+    // A folder selection exports a streaming zip; every entry name is sanitised and unique.
+    val zipExport = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        val id = exportFolderId
+        exportFolderId = null
+        if (uri != null && id != null) {
+            scope.launch {
+                val result = runCatching {
+                    withContext(Dispatchers.IO) {
+                        context.contentResolver.openOutputStream(uri)?.use { out ->
+                            val files = viewModel.folderFiles(id)
+                            val zip = ZipOutputStream(out.buffered())
+                            val used = HashSet<String>()
+                            files.forEach { file ->
+                                val name = ZipEntryNames.unique(ZipEntryNames.path(file.folderPath, file.name), used)
+                                used += name
+                                zip.putNextEntry(ZipEntry(name))
+                                file.open().use { it.copyTo(zip, 64 * 1024) }
+                                zip.closeEntry()
+                            }
+                            zip.close()
+                        } ?: error("cannot open output")
+                    }
+                }
+                snackbar.showSnackbar(if (result.isSuccess) zipDoneLabel else zipFailLabel)
+            }
+        }
+    }
 
     BackHandler(enabled = state.selecting) { viewModel.clearSelection() }
     BackHandler(enabled = !state.selecting) { if (!viewModel.navigateUp()) onBack() }
@@ -171,6 +214,9 @@ internal fun FilesScreen(
                     IconButton(onClick = upload, modifier = Modifier.size(40.dp)) {
                         Icon(AppIcons.Upload, stringResource(R.string.feature_files_upload), tint = colors.textPrimary, modifier = Modifier.size(24.dp))
                     }
+                    IconButton(onClick = uploadFolder, modifier = Modifier.size(40.dp)) {
+                        Icon(AppIcons.CreateFolder, stringResource(R.string.feature_files_upload_folder), tint = colors.textPrimary, modifier = Modifier.size(24.dp))
+                    }
                     IconButton(onClick = onOpenSearch, modifier = Modifier.size(40.dp)) {
                         Icon(AppIcons.Search, stringResource(R.string.feature_files_search), tint = colors.textPrimary)
                     }
@@ -194,7 +240,17 @@ internal fun FilesScreen(
                 }
             },
             floatingActionButton = {
-                if (!state.selecting) AppFab(AppIcons.Upload, stringResource(R.string.feature_files_upload), upload)
+                if (!state.selecting) {
+                    Column(horizontalAlignment = Alignment.End) {
+                        if (fabMenu) {
+                            AppPillButton(stringResource(R.string.feature_files_upload_folder), onClick = { fabMenu = false; uploadFolder() })
+                            Spacer(Modifier.size(8.dp))
+                            AppPillButton(stringResource(R.string.feature_files_upload), onClick = { fabMenu = false; upload() })
+                            Spacer(Modifier.size(8.dp))
+                        }
+                        AppFab(if (fabMenu) AppIcons.Close else AppIcons.Upload, stringResource(R.string.feature_files_upload), onClick = { fabMenu = !fabMenu })
+                    }
+                }
             },
             bottomBar = {
                 AnimatedVisibility(
@@ -255,6 +311,14 @@ internal fun FilesScreen(
                 if (singleFile) {
                     AppMenuItem(stringResource(R.string.feature_files_more_info), { moreMenu = false; infoFile = filesSelected.first(); dialog = Dialog.Info })
                     AppMenuItem(stringResource(R.string.feature_files_more_open_with), { moreMenu = false; openWith(filesSelected.first()) })
+                }
+                if (state.selectedFolders.size == 1) {
+                    val folder = state.selectedFolders.first()
+                    AppMenuItem(stringResource(R.string.feature_files_export_zip), {
+                        moreMenu = false
+                        exportFolderId = folder.id
+                        zipExport.launch(folder.name + ".zip")
+                    })
                 }
             }
         }

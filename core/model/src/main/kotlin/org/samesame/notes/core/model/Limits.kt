@@ -89,4 +89,6 @@ object Limits {
     const val MAX_FILE_TAG_LENGTH = 30
     /** Tags one file may carry. */
     const val MAX_FILE_TAGS = 20
+    /** Files one Upload folder takes; a larger tree reports the rest as skipped. */
+    const val MAX_FILES_PER_UPLOAD = 1_000
 }

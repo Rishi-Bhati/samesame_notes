@@ -259,6 +259,13 @@ private enum class ComposerPage { Template, Sorter }
 /** What the page sorter's Share / Save as file does with its selected pages (the format dialog comes next). */
 private enum class PageFileAction { Share, Save }
 
+/** The Save as file choice held until the system file picker returns. */
+private data class PendingExport(
+    val format: ExportFormat,
+    val pageIds: Set<String>?,
+    val linkFilesAsZip: Boolean = false,
+)
+
 @Composable
 fun ComposerRoute(
     noteId: String,
@@ -1063,6 +1070,7 @@ internal fun ComposerEditor(
     // ---- WP-J2: insert sources, menus, full-screen pages and dialogs
     var pageScreen by rememberSaveable { mutableStateOf<ComposerPage?>(null) }
     var saveAsOpen by rememberSaveable { mutableStateOf(false) }
+    var linkFilesAsZip by remember { mutableStateOf(false) }
     var shareMenuOpen by rememberSaveable { mutableStateOf(false) }
     var tagsOpen by rememberSaveable { mutableStateOf(false) }
     var searchOpen by rememberSaveable { mutableStateOf(false) }
@@ -1105,8 +1113,8 @@ internal fun ComposerEditor(
     }
     // Back closes the search bar first (registered last, so it sits on top of the back chain).
     BackHandler(enabled = searchOpen) { searchOpen = false; searchQuery = "" }
-    // Save as file: the format and the page subset (null = the whole note) until the file picker returns.
-    var pendingExport by remember { mutableStateOf<Pair<ExportFormat, Set<String>?>?>(null) }
+    // Save as file: the format, page subset (null = the whole note) and with-files flag until the picker returns.
+    var pendingExport by remember { mutableStateOf<PendingExport?>(null) }
     var pageFileAction by remember { mutableStateOf<Pair<PageFileAction, Set<String>>?>(null) }
     val context = LocalContext.current
     val images = remember(session) {
@@ -1141,23 +1149,24 @@ internal fun ComposerEditor(
         val pending = pendingExport
         pendingExport = null
         if (uri != null && pending != null) {
-            val (format, pageIds) = pending
+            val (format, pageIds, linkFilesAsZip) = pending
             scope.launch {
                 val result = runCatching {
                     withContext(Dispatchers.IO) {
-                        context.contentResolver.openOutputStream(uri)?.use { out -> exportNote(format, ExportOptions(pageIds = pageIds), out) }
-                            ?: error("cannot open output")
+                        context.contentResolver.openOutputStream(uri)?.use { out ->
+                            exportNote(format, ExportOptions(pageIds = pageIds, linkFilesAsZip = linkFilesAsZip), out)
+                        } ?: error("cannot open output")
                     }
                 }
                 if (result.isFailure) snackbar.showSnackbar(saveFailed)
             }
         }
     }
-    fun startSaveAs(format: ExportFormat, pageIds: Set<String>? = null) {
+    fun startSaveAs(format: ExportFormat, pageIds: Set<String>? = null, linkFilesAsZip: Boolean = false) {
         val infinite = doc.layout.mode == PageMode.Infinite
         val pageCount = pageIds?.let { ids -> doc.pages.count { it.id in ids } } ?: doc.pages.size
-        val target = expectedTarget(format, ExportOptions(pageIds = pageIds), infinite, pageCount)
-        pendingExport = format to pageIds
+        val target = expectedTarget(format, ExportOptions(pageIds = pageIds, linkFilesAsZip = linkFilesAsZip), infinite, pageCount)
+        pendingExport = PendingExport(format, pageIds, linkFilesAsZip)
         createDocument.launch(target.fileName(title) to target.mimeType)
     }
     // Share: render the note into the share cache, then open the system share sheet.
@@ -2622,8 +2631,13 @@ internal fun ComposerEditor(
         }
         if (saveAsOpen) {
             SaveAsFileDialog(
-                onDismiss = { saveAsOpen = false },
-                onConfirm = { format -> saveAsOpen = false; startSaveAs(format) },
+                onDismiss = { saveAsOpen = false; linkFilesAsZip = false },
+                onConfirm = { format ->
+                    saveAsOpen = false
+                    startSaveAs(format, linkFilesAsZip = linkFilesAsZip)
+                    linkFilesAsZip = false
+                },
+                onLinkFilesAsZipChange = { linkFilesAsZip = it },
             )
         }
         if (shareMenuOpen) ShareFormatDialog(onDismiss = { shareMenuOpen = false }, onPick = { shareMenuOpen = false; shareAs(it) })
@@ -2636,9 +2650,14 @@ internal fun ComposerEditor(
                     formats = PageShareFormats,
                 )
                 PageFileAction.Save -> SaveAsFileDialog(
-                    onDismiss = { pageFileAction = null },
-                    onConfirm = { format -> pageFileAction = null; startSaveAs(format, ids) },
+                    onDismiss = { pageFileAction = null; linkFilesAsZip = false },
+                    onConfirm = { format ->
+                        pageFileAction = null
+                        startSaveAs(format, ids, linkFilesAsZip)
+                        linkFilesAsZip = false
+                    },
                     formats = PageSaveFormats,
+                    onLinkFilesAsZipChange = { linkFilesAsZip = it },
                 )
             }
         }
