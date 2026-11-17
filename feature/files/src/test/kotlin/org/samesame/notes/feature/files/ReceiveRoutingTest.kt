@@ -24,6 +24,25 @@ class ReceiveRoutingTest {
         assertThat(ReceiveRouting.canBecomeNote(ReceiveKind.Text)).isTrue()
         assertThat(ReceiveRouting.defaultToNewNote(listOf(ReceiveKind.Pdf))).isFalse()
         assertThat(ReceiveRouting.defaultToNewNote(emptyList())).isFalse()
-        assertThat(ReceiveRouting.canBecomeNote(ReceiveKind.Image)).isFalse()
+        assertThat(ReceiveRouting.canBecomeNote(ReceiveKind.Image)).isTrue()
+        assertThat(ReceiveRouting.canBecomeNote(ReceiveKind.Audio)).isTrue()
+        assertThat(ReceiveRouting.canBecomeNote(ReceiveKind.Other)).isFalse()
+        assertThat(ReceiveRouting.defaultToNewNote(listOf(ReceiveKind.Image, ReceiveKind.Image, ReceiveKind.Audio))).isTrue()
+        assertThat(ReceiveRouting.defaultToNewNote(listOf(ReceiveKind.Image, ReceiveKind.Other))).isFalse()
+    }
+
+    @Test fun audioKinds() {
+        assertThat(ReceiveRouting.kindOf("a.MP3", null)).isEqualTo(ReceiveKind.Audio)
+        assertThat(ReceiveRouting.kindOf("rec", "audio/mp4")).isEqualTo(ReceiveKind.Audio)
+        assertThat(ReceiveRouting.kindOf("clip.3gp", "video/3gpp")).isEqualTo(ReceiveKind.Other)
+        assertThat(ReceiveRouting.kindOf("a.jpg", "image/jpeg")).isEqualTo(ReceiveKind.Image)
+    }
+
+    @Test fun extensions() {
+        assertThat(ReceiveRouting.imageExtension("a.JPEG", null)).isEqualTo("jpg")
+        assertThat(ReceiveRouting.imageExtension("noext", "image/heic")).isEqualTo("heic")
+        assertThat(ReceiveRouting.audioExtension("x.opus", null)).isEqualTo("opus")
+        assertThat(ReceiveRouting.audioExtension("x", "audio/mpeg")).isEqualTo("mp3")
+        assertThat(ReceiveRouting.audioExtension("x", null)).isEqualTo("m4a")
     }
 }

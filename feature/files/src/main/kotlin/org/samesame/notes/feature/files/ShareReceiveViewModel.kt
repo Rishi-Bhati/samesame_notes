@@ -46,7 +46,7 @@ data class ReceiveUiState(
 ) {
     val canNewNote: Boolean get() = items.isNotEmpty() && items.all { ReceiveRouting.canBecomeNote(it.kind) }
     /** Some item can't go into a note, so the sheet says it will be saved to Files. */
-    val hasFilesOnly: Boolean get() = items.any { it.kind == ReceiveKind.Other || it.kind == ReceiveKind.Image }
+    val hasFilesOnly: Boolean get() = items.any { it.kind == ReceiveKind.Other }
 }
 
 sealed interface ReceiveEvent {
@@ -61,6 +61,7 @@ class ShareReceiveViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val repo: FilesRepository,
     private val noteImporter: NoteImportService,
+    private val notes: org.samesame.notes.core.data.repository.NoteRepository,
     private val prefs: FilesPreferences,
 ) : ViewModel() {
 
@@ -154,7 +155,14 @@ class ShareReceiveViewModel @Inject constructor(
             var firstId: String? = null
             var failed = 0
             val tooLarge = ArrayList<ReceivedItem>()
+            val handled = HashSet<ReceivedItem>()
             s.items.forEach { item ->
+                if (item.kind == ReceiveKind.Image || item.kind == ReceiveKind.Audio) {
+                    if (item in handled) return@forEach
+                    val id = if (item.kind == ReceiveKind.Image) importPictures(s, handled) else importAudioItem(s, item)
+                    if (id == null) failed++ else if (firstId == null) firstId = id
+                    return@forEach
+                }
                 val source = ImportSource(item.name, item.mimeType, item.uri.lastPathSegment) {
                     context.contentResolver.openInputStream(item.uri) ?: throw java.io.FileNotFoundException(item.uri.toString())
                 }
@@ -175,6 +183,37 @@ class ShareReceiveViewModel @Inject constructor(
             val id = firstId
             if (id != null) eventChannel.send(ReceiveEvent.OpenNote(id))
             else { eventChannel.send(ReceiveEvent.NoteFailed); state.update { it.copy(phase = ReceivePhase.Choosing) } }
+        }
+    }
+
+    /** Keeps [item] in Files too (a receive always does for pictures and audio); the entry id, null when it could not be saved. */
+    private suspend fun keepInFiles(s: ReceiveUiState, item: ReceivedItem): LibraryFile? =
+        runCatching {
+            repo.importFromUri(item.uri, s.folderId, displayName = item.name.takeIf { it.isNotBlank() }, sourceApp = sourceApp, onDuplicate = DuplicatePolicy.KeepBoth, onProgress = { _, _ -> })
+        }.getOrNull().let { (it as? ImportResult.Imported)?.file }
+
+    /** All received pictures of this share become ONE note (stacked down the page). Returns its id, null on failure. */
+    private suspend fun importPictures(s: ReceiveUiState, handled: MutableSet<ReceivedItem>): String? {
+        val pictures = s.items.filter { it.kind == ReceiveKind.Image }
+        handled += pictures
+        val prepared = pictures.mapNotNull { item ->
+            val file = keepInFiles(s, item)
+            ReceivedMedia.image(context, item.uri, item.name, item.mimeType, file?.id?.value)
+        }
+        if (prepared.isEmpty()) return null
+        val title = if (pictures.size == 1) pictures[0].name.substringBeforeLast('.', pictures[0].name).trim() else ""
+        return runCatching { notes.importImages(prepared, title).value }.getOrNull()
+    }
+
+    private suspend fun importAudioItem(s: ReceiveUiState, item: ReceivedItem): String? {
+        val ext = ReceiveRouting.audioExtension(item.name, item.mimeType)
+        val file = ReceivedMedia.audioToScratch(context, item.uri, ext) ?: return null
+        try {
+            keepInFiles(s, item)
+            val title = item.name.substringBeforeLast('.', item.name).trim()
+            return runCatching { notes.importAudio(file, ext, title, ReceivedMedia.audioDurationMs(file)).value }.getOrNull()
+        } finally {
+            file.delete()
         }
     }
 

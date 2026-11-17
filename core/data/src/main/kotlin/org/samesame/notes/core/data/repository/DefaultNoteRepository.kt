@@ -429,6 +429,96 @@ internal class DefaultNoteRepository @Inject constructor(
         return NoteId(id)
     }
 
+    override suspend fun importImages(images: List<ImportedImage>, title: String, folderId: FolderId?): NoteId {
+        require(images.isNotEmpty()) { "No images" }
+        val id = UUID.randomUUID().toString()
+        val settings = appSettings.settings.first()
+        val style = settings.newNote
+        var created = false
+        try {
+            val base = documents.create(
+                id, style.pageMode, title = title, ratio = style.ratio, template = style.template,
+                backgroundColor = style.backgroundColor, adjustForDarkMode = settings.adjustColourInDarkMode,
+            )
+            created = true
+            val pageHeight = if (style.pageMode == org.samesame.notes.core.model.PageMode.Pages) {
+                org.samesame.notes.core.model.Limits.PAGE_WIDTH_PU * style.ratio.heightOverWidth
+            } else null
+            val placements = org.samesame.notes.core.model.textimport.ImageNoteLayout.layout(images.map { it.widthPx to it.heightPx }, pageHeight)
+            val pages = ArrayList(base.pages)
+            while (pages.size <= placements.maxOf { it.page }) {
+                pages += base.pages.first().copy(id = UUID.randomUUID().toString())
+            }
+            val byPage = HashMap<Int, MutableList<org.samesame.notes.core.ink.page.PageElement>>()
+            images.forEachIndexed { i, img ->
+                val media = documents.writeMedia(id, img.bytes, img.extension)
+                val rect = placements[i].rect
+                val elementId = org.samesame.notes.core.ink.tools.randomElementId()
+                val obj = org.samesame.notes.core.model.document.FloatingObject(
+                    org.samesame.notes.core.model.document.ImageObject(
+                        elementId.value.toString(), media, rect.width, rect.height, libraryFileId = img.libraryFileId,
+                    ),
+                    rect, wrap = org.samesame.notes.core.model.document.TextWrap.Behind,
+                )
+                byPage.getOrPut(placements[i].page) { ArrayList() } += org.samesame.notes.core.ink.page.newObjectElement(elementId, obj)
+            }
+            byPage.forEach { (page, elements) -> documents.writePage(id, PageContent(pages[page].id, elements, 0)) }
+            val document = base.copy(pages = pages)
+            documents.writeDocument(document)
+            documents.flush(id)
+            val now = clock.now()
+            noteDao.upsert(
+                NoteEntity(
+                    id = id, title = title, previewText = "", folderId = folderId?.value, isFavorite = false, isLocked = false,
+                    pageMode = document.layout.mode, backgroundColor = style.backgroundColor ?: 0,
+                    createdAt = now, modifiedAt = now, lastOpenedAt = now, trashedAt = null, isDirty = true,
+                ),
+            )
+            searchDao.replace(NoteSearchEntity(noteId = id, title = title, body = "", inkText = ""))
+            images.mapNotNull { it.libraryFileId }.takeIf { it.isNotEmpty() }?.let {
+                fileRefs?.let { sink -> runCatching { sink.replaceNoteRefs(NoteId(id), org.samesame.notes.core.model.files.NoteFileRefs.of(document)) } }
+            }
+            return NoteId(id)
+        } catch (e: Throwable) {
+            if (created) runCatching { documents.delete(id) }
+            throw e
+        }
+    }
+
+    override suspend fun importAudio(file: java.io.File, extension: String, title: String, durationMs: Long, folderId: FolderId?): NoteId {
+        val id = UUID.randomUUID().toString()
+        val settings = appSettings.settings.first()
+        val style = settings.newNote
+        var created = false
+        try {
+            val base = documents.create(
+                id, style.pageMode, title = title, ratio = style.ratio, template = style.template,
+                backgroundColor = style.backgroundColor, adjustForDarkMode = settings.adjustColourInDarkMode,
+            )
+            created = true
+            val media = documents.writeMediaFile(id, file, extension)
+            val now = clock.now()
+            val recording = org.samesame.notes.core.model.document.NoteRecording(
+                id = UUID.randomUUID().toString(), media = media, name = title.ifBlank { "Voice recording 1" },
+                createdAtMs = now, elapsedMs = durationMs,
+            )
+            documents.writeDocument(base.copy(recordings = listOf(recording)))
+            documents.flush(id)
+            noteDao.upsert(
+                NoteEntity(
+                    id = id, title = title, previewText = "", folderId = folderId?.value, isFavorite = false, isLocked = false,
+                    pageMode = base.layout.mode, backgroundColor = style.backgroundColor ?: 0,
+                    createdAt = now, modifiedAt = now, lastOpenedAt = now, trashedAt = null, isDirty = true,
+                ),
+            )
+            searchDao.replace(NoteSearchEntity(noteId = id, title = title, body = "", inkText = ""))
+            return NoteId(id)
+        } catch (e: Throwable) {
+            if (created) runCatching { documents.delete(id) }
+            throw e
+        }
+    }
+
     override suspend fun importText(text: String, title: String, folderId: FolderId?): NoteId {
         val id = UUID.randomUUID().toString()
         val settings = appSettings.settings.first()

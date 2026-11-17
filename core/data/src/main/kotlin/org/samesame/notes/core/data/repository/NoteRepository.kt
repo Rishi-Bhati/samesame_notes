@@ -139,6 +139,17 @@ interface NoteRepository {
      * content. The note is titled [title] (the first file's name by default). Throws
      * [org.samesame.notes.core.data.pdf.PdfImportException] for protected, corrupt or empty files (never anything else).
      */
+    /**
+     * A new note holding [images] as ordinary floating pictures (stacked down the page, see
+     * [org.samesame.notes.core.model.textimport.ImageNoteLayout]). Atomic: a failure leaves no half note.
+     */
+    suspend fun importImages(images: List<ImportedImage>, title: String, folderId: FolderId? = null): NoteId =
+        throw UnsupportedOperationException("importImages")
+
+    /** A new note whose only content is [file] as a note-level voice recording named [title]. Atomic like [importImages]. */
+    suspend fun importAudio(file: java.io.File, extension: String, title: String, durationMs: Long, folderId: FolderId? = null): NoteId =
+        throw UnsupportedOperationException("importAudio")
+
     suspend fun importText(text: String, title: String, folderId: FolderId? = null): NoteId =
         throw UnsupportedOperationException("importText")
 
@@ -223,3 +234,6 @@ interface NoteRepository {
  */
 class LockVerificationRequiredException(val noteIds: List<NoteId>) :
     SecurityException("Deleting ${noteIds.size} locked note(s) needs identity verification")
+
+/** One picture for [NoteRepository.importImages]: upright pixels' encoded [bytes], their [extension], pixel size and the Files entry it is kept in. */
+class ImportedImage(val bytes: ByteArray, val extension: String, val widthPx: Int, val heightPx: Int, val libraryFileId: String? = null)
