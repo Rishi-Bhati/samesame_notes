@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.samesame.notes.core.designsystem.component.AppDropdownMenu
@@ -162,6 +163,10 @@ internal fun FilesScreen(
                             zip.close()
                         } ?: error("cannot open output")
                     }
+                }
+                // A failed export must not leave a truncated zip behind in the folder the user picked.
+                if (result.isFailure) withContext(NonCancellable + Dispatchers.IO) {
+                    runCatching { android.provider.DocumentsContract.deleteDocument(context.contentResolver, uri) }
                 }
                 snackbar.showSnackbar(if (result.isSuccess) zipDoneLabel else zipFailLabel)
             }
