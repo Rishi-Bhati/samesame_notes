@@ -90,12 +90,12 @@ class FolderUploader(private val repo: FilesRepository) {
     private suspend fun existingNames(destination: FileFolderId?): Map<List<String>, Set<String>> {
         val all = repo.observeFolders().first()
         val byId = all.associateBy { it.id }
-        fun chainIds(id: FileFolderId?): List<String> {
+        fun chainIds(id: FileFolderId?): List<FileFolderId> {
             if (id == null) return emptyList()
-            val out = ArrayList<String>()
+            val out = ArrayList<FileFolderId>()
             var cursor: FileFolder? = byId[id]
             while (cursor != null && out.size <= Limits.MAX_FOLDER_DEPTH) {
-                out += cursor.id.value
+                out += cursor.id
                 cursor = cursor.parentId?.let(byId::get)
             }
             return out.asReversed()

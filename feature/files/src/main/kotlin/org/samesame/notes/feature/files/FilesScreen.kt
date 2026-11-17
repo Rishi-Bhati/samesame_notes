@@ -13,7 +13,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -49,6 +51,7 @@ import kotlinx.coroutines.withContext
 import org.samesame.notes.core.designsystem.component.AppDropdownMenu
 import org.samesame.notes.core.designsystem.component.AppFab
 import org.samesame.notes.core.designsystem.component.AppMenuItem
+import org.samesame.notes.core.designsystem.component.AppPillButton
 import org.samesame.notes.core.designsystem.component.BottomActionBar
 import org.samesame.notes.core.designsystem.component.BottomBarItem
 import org.samesame.notes.core.designsystem.component.CollapsingHeaderScaffold
@@ -96,6 +99,8 @@ internal fun FilesScreen(
     var exportFolderId by remember { mutableStateOf<FileFolderId?>(null) }
     val noApp = stringResource(R.string.feature_files_no_app)
     val shareLabel = stringResource(R.string.feature_files_open_failed_share)
+    val zipDoneLabel = stringResource(R.string.feature_files_export_zip_done)
+    val zipFailLabel = stringResource(R.string.feature_files_err_generic)
 
     fun share(files: List<LibraryFile>) {
         if (files.isEmpty()) return
@@ -147,7 +152,7 @@ internal fun FilesScreen(
                         } ?: error("cannot open output")
                     }
                 }
-                snackbar.showSnackbar(stringResource(if (result.isSuccess) R.string.feature_files_export_zip_done else R.string.feature_files_err_generic))
+                snackbar.showSnackbar(if (result.isSuccess) zipDoneLabel else zipFailLabel)
             }
         }
     }
@@ -224,7 +229,17 @@ internal fun FilesScreen(
                 }
             },
             floatingActionButton = {
-                if (!state.selecting) AppFab(AppIcons.Upload, stringResource(R.string.feature_files_upload), upload)
+                if (!state.selecting) {
+                    Column(horizontalAlignment = Alignment.End) {
+                        if (fabMenu) {
+                            AppPillButton(stringResource(R.string.feature_files_upload_folder), onClick = { fabMenu = false; uploadFolder() })
+                            Spacer(Modifier.size(8.dp))
+                            AppPillButton(stringResource(R.string.feature_files_upload), onClick = { fabMenu = false; upload() })
+                            Spacer(Modifier.size(8.dp))
+                        }
+                        AppFab(if (fabMenu) AppIcons.Close else AppIcons.Upload, stringResource(R.string.feature_files_upload), onClick = { fabMenu = !fabMenu })
+                    }
+                }
             },
             bottomBar = {
                 AnimatedVisibility(
@@ -285,6 +300,14 @@ internal fun FilesScreen(
                 if (singleFile) {
                     AppMenuItem(stringResource(R.string.feature_files_more_info), { moreMenu = false; infoFile = filesSelected.first(); dialog = Dialog.Info })
                     AppMenuItem(stringResource(R.string.feature_files_more_open_with), { moreMenu = false; openWith(filesSelected.first()) })
+                }
+                if (state.selectedFolders.size == 1) {
+                    val folder = state.selectedFolders.first()
+                    AppMenuItem(stringResource(R.string.feature_files_export_zip), {
+                        moreMenu = false
+                        exportFolderId = folder.id
+                        zipExport.launch(folder.name + ".zip")
+                    })
                 }
             }
         }

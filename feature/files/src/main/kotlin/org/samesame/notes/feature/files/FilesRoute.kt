@@ -41,6 +41,7 @@ fun FilesRoute(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val importUi by viewModel.importUi.collectAsStateWithLifecycle()
+    val folderSummary by viewModel.folderSummary.collectAsStateWithLifecycle()
     var page by rememberSaveable { mutableStateOf(if (initialTarget is FilesTarget.Search) FilesPage.Search else FilesPage.Files) }
     // The target is applied once; a recreated screen keeps where the user went from there.
     var targetApplied by rememberSaveable { mutableStateOf(false) }
@@ -100,6 +101,7 @@ fun FilesRoute(
             }
         }
         importUi?.progress?.let { ImportProgressDialog(it, viewModel::cancelImport) }
+        folderSummary?.let { FolderUploadSummaryDialog(it, viewModel::dismissFolderSummary) }
         importUi?.duplicates?.firstOrNull()?.let { dup ->
             DuplicateDialog(
                 name = dup.existing.displayName,

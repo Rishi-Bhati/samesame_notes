@@ -44,6 +44,7 @@ import org.samesame.notes.core.designsystem.theme.FolderColors
 import org.samesame.notes.core.designsystem.theme.SameSameText
 import org.samesame.notes.core.designsystem.theme.SameSameTheme
 import org.samesame.notes.core.designsystem.theme.capped
+import org.samesame.notes.core.files.UploadSkipReason
 import org.samesame.notes.core.model.NoteId
 import org.samesame.notes.core.model.files.FileFolder
 import org.samesame.notes.core.model.files.FileUsage
@@ -184,6 +185,54 @@ internal fun ImportProgressDialog(progress: ImportProgress, onCancel: () -> Unit
             }
         }
     }
+}
+
+/** Result of a folder upload: what was saved and everything that was skipped, with the reason. */
+@Composable
+internal fun FolderUploadSummaryDialog(summary: FolderUploader.Summary, onDismiss: () -> Unit) {
+    val skipped = summary.skipped.map { it.name to stringResource(skipReasonLabel(it.reason)) } +
+        summary.failures.map { it.name to stringResource(failureReasonLabel(it.reason)) }
+    AppDialog(
+        onDismissRequest = onDismiss,
+        dismissLabel = stringResource(R.string.feature_files_close),
+        confirmLabel = stringResource(R.string.feature_files_ok),
+        onConfirm = onDismiss,
+        title = stringResource(R.string.feature_files_folder_summary_title),
+        atBottom = true,
+    ) {
+        Text(
+            stringResource(R.plurals.feature_files_folder_summary_imported, summary.imported, summary.imported),
+            style = SameSameText.DialogMessage.capped(), color = SameSameTheme.colors.textPrimary,
+        )
+        if (skipped.isNotEmpty()) {
+            Text(
+                stringResource(R.plurals.feature_files_folder_summary_skipped, skipped.size, skipped.size),
+                style = SameSameText.DialogMessage.capped(), color = SameSameTheme.colors.textPrimary,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+            Column(Modifier.padding(top = 6.dp)) {
+                skipped.forEach { (name, reason) ->
+                    Text(
+                        stringResource(R.string.feature_files_skip_detail, name, reason),
+                        style = SameSameText.ListBody, color = SameSameTheme.colors.textSecondary,
+                        modifier = Modifier.padding(vertical = 2.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun skipReasonLabel(reason: UploadSkipReason) = when (reason) {
+    UploadSkipReason.EmptyName -> R.string.feature_files_skip_empty_name
+    UploadSkipReason.TooDeep -> R.string.feature_files_skip_too_deep
+    UploadSkipReason.TooManyFiles -> R.string.feature_files_skip_too_many
+}
+
+private fun failureReasonLabel(reason: ImportFailureReason) = when (reason) {
+    ImportFailureReason.TooLarge -> R.string.feature_files_skip_too_large
+    ImportFailureReason.NoSpace -> R.string.feature_files_skip_no_space
+    ImportFailureReason.Unreadable -> R.string.feature_files_skip_unreadable
 }
 
 /** The Info sheet: details, location and the notes that use the file. */

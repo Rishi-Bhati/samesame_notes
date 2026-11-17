@@ -9,4 +9,5 @@ android {
 dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.kotlinx.coroutines.core)
+    implementation(projects.core.files)
 }
