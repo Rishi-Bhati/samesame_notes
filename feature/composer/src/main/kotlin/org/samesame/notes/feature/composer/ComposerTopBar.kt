@@ -60,7 +60,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.TextUnit
@@ -114,6 +119,8 @@ internal fun ComposerTopBar(
     // tap); the rest of the bar opens the header (tap title = edit, empty space = metadata, as in the reference).
     var editingBarTitle by rememberSaveable { mutableStateOf(false) }
     var hadBarFocus by remember { mutableStateOf(false) }
+    // The bar field's text and caret: a tap on / after the title text puts the caret at the tapped character, or at the end.
+    var barField by remember { mutableStateOf(TextFieldValue(title, TextRange(title.length))) }
     val barFocus = remember { FocusRequester() }
     val motion = rememberTitleHeaderMotion(expanded)
     val focusManager = LocalFocusManager.current
@@ -219,8 +226,8 @@ internal fun ComposerTopBar(
                 }
                 if (editingBarTitle) {
                     BasicTextField(
-                        value = title,
-                        onValueChange = onTitleChange,
+                        value = if (barField.text == title) barField else TextFieldValue(title, TextRange(title.length)),
+                        onValueChange = { barField = it; onTitleChange(it.text) },
                         readOnly = reading,
                         singleLine = true,
                         textStyle = titleStyle,
@@ -240,26 +247,27 @@ internal fun ComposerTopBar(
                 if (!editingBarTitle) {
                     // Empty space beside the title opens the metadata header.
                     Box(
-                        Modifier.matchParentSize().padding(start = titleTapWidth).clickable(
+                        Modifier.matchParentSize().padding(start = titleTapWidth + TitleEndRoom).clickable(
                             enabled = !expanded, indication = null, interactionSource = remember { MutableInteractionSource() },
                         ) { expandHeader() },
                     )
                     // The title text itself starts editing it; in the view/reading state the tap first switches the note
                     // to editing (the same intent as a body tap / the pencil button), then the title gets the caret.
+                    // The tap area is the text plus [TitleEndRoom] of trailing room, so the end of the title is easy to hit.
                     Box(
-                        Modifier.align(Alignment.CenterStart).height(titleTapHeight).width(titleTapWidth + 4.dp).clickable(
-                            enabled = !expanded, indication = null, interactionSource = remember { MutableInteractionSource() },
-                        ) {
-                            if (reading) onEdit()
-                            editingBarTitle = true
-                        },
-                    )
-                } else if (!expanded) {
-                    // While typing, the space after the text still opens the header; the text keeps caret placement.
-                    Box(
-                        Modifier.matchParentSize().padding(start = titleTapWidth).clickable(
-                            indication = null, interactionSource = remember { MutableInteractionSource() },
-                        ) { expandHeader() },
+                        Modifier.align(Alignment.CenterStart).height(titleTapHeight).width(titleTapWidth + TitleEndRoom)
+                            .semantics { onClick { if (!expanded) { if (reading) onEdit(); editingBarTitle = true }; true } }
+                            .pointerInput(expanded, title, titleTapWidth) {
+                                detectTapGestures { pos ->
+                                    if (expanded) return@detectTapGestures
+                                    val caret = titleCaretForTap(
+                                        pos.x, titleLayout.size.width.toFloat(), title.length,
+                                    ) { x -> titleLayout.getOffsetForPosition(Offset(x, titleLayout.size.height / 2f)) }
+                                    barField = TextFieldValue(title, TextRange(caret))
+                                    if (reading) onEdit()
+                                    editingBarTitle = true
+                                }
+                            },
                     )
                 }
             }
@@ -381,6 +389,17 @@ private val TitleStart = 56.dp
 /** Space kept free at the end of the bar title for the action icons (the book icon reaches ~127 dp from the edge). */
 private val BarTitleEnd = 132.dp
 private val SlotTouch = 40.dp
+
+/** Trailing room after the bar title's last character that still counts as a tap on the title (puts the caret at the end). */
+private val TitleEndRoom = 24.dp
+
+/**
+ * Caret offset for a tap at [x] (px from the title's start) on a title of [length] characters whose text is [textWidth] px
+ * wide: at or past the end of the text (or the trailing room) the caret goes to the end, otherwise to the tapped character
+ * ([offsetAt] maps an x inside the text to an offset). Always within 0..[length].
+ */
+internal fun titleCaretForTap(x: Float, textWidth: Float, length: Int, offsetAt: (Float) -> Int): Int =
+    if (length <= 0 || x >= textWidth) length else offsetAt(x.coerceAtLeast(0f)).coerceIn(0, length)
 
 /** Bar title (start 56 dp, text centre 29.3 dp) to the header title (start 24 dp, text centre 87.5 dp). */
 private val TitleDx = 24.dp - TitleStart
