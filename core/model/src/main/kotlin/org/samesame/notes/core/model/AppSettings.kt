@@ -20,6 +20,8 @@ data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.System,
     /** "When pasting a file link": what pasting a link to a picture of the Files library does; [FilePasteMode.Ask] by default. */
     val filePasteMode: FilePasteMode = FilePasteMode.Ask,
+    /** "Calculate as you type": show an inline result after a typed `=` that can be accepted. */
+    val calculateAsYouType: Boolean = true,
 )
 
 /** Settings > "When pasting a file link" (Files). Only links to pictures ask; other files always paste as links. */
