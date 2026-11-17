@@ -90,6 +90,9 @@ class CaptureActivity : ComponentActivity() {
     private var draft by mutableStateOf(CaptureDraft())
     private var saved = false
 
+    /** The speech dialog is on top: the sheet is only covered, not left, so onStop must not save and close it. */
+    private var dictating = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -106,6 +109,7 @@ class CaptureActivity : ComponentActivity() {
                     draft = draft,
                     onDraft = { draft = it },
                     dictateFirst = dictateFirst,
+                    onDictating = { dictating = it },
                     onSave = { saveAndClose(openInApp = false) },
                     onOpenInApp = { saveAndClose(openInApp = true) },
                     onRecordAudio = { recordAudioInstead() },
@@ -124,7 +128,7 @@ class CaptureActivity : ComponentActivity() {
     /** Leaving the sheet any other way (home, recents, another app on top) keeps what was typed. */
     override fun onStop() {
         super.onStop()
-        if (!isChangingConfigurations && !saved && !draft.isEmpty) {
+        if (!isChangingConfigurations && !dictating && !saved && !draft.isEmpty) {
             WidgetLog.i("capture left with text: saving")
             saveAndClose(openInApp = false)
         }
@@ -212,6 +216,7 @@ private fun CaptureSheet(
     draft: CaptureDraft,
     onDraft: (CaptureDraft) -> Unit,
     dictateFirst: Boolean,
+    onDictating: (Boolean) -> Unit,
     onSave: () -> Unit,
     onOpenInApp: () -> Unit,
     onRecordAudio: () -> Unit,
@@ -222,6 +227,7 @@ private fun CaptureSheet(
     val bodyFocus = remember { FocusRequester() }
     var focusItem by remember { mutableStateOf(-1) }
     val dictation = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        onDictating(false)
         val text = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
         if (!text.isNullOrBlank()) onDraft(draft.append(text))
     }
@@ -230,8 +236,10 @@ private fun CaptureSheet(
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             .putExtra(RecognizerIntent.EXTRA_PROMPT, context.getString(R.string.widget_capture_speak))
         try {
+            onDictating(true)
             dictation.launch(intent)
         } catch (e: ActivityNotFoundException) {
+            onDictating(false)
             Toast.makeText(context, R.string.widget_capture_no_dictation, Toast.LENGTH_LONG).show()
         }
     }
