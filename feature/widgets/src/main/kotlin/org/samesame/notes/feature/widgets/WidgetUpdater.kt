@@ -40,7 +40,10 @@ class WidgetUpdater @Inject constructor(
         if (!hasWidgets()) return
         prunePins()
         watchWallpaper()
+        WidgetLog.i("updater started")
         job = scope.launch {
+            // Once per start (app launch, first widget, app update): widgets drawn by an older process are refreshed.
+            updateAll()
             notes.observeNotes(NoteFilter.All, SortOrder())
                 .map(WidgetContent::signature)
                 .refreshTriggers()
@@ -68,12 +71,30 @@ class WidgetUpdater @Inject constructor(
         if (changed && hasWidgets()) scope.launch { updateAll() }
     }
 
-    /** Redraws every widget now. Safe to call from anywhere (a failed redraw is skipped, the next change retries). */
+    /**
+     * Redraws every widget now: live sessions reload their data ([WidgetSignals]), the others start a new session. Safe to
+     * call from anywhere (a failed redraw is logged and skipped; the next change retries).
+     */
     suspend fun updateAll() {
-        runCatching { SingleNoteWidget().updateAll(context) }
-        runCatching { NoteListWidget().updateAll(context) }
-        runCatching { NoteGridWidget().updateAll(context) }
-        runCatching { NoteCreatorWidget().updateAll(context) }
+        WidgetSignals.bump()
+        listOf(SingleNoteWidget(), NoteListWidget(), NoteCreatorWidget(), QuickCaptureWidget()).forEach { widget ->
+            runCatching { widget.updateAll(context) }.onFailure { WidgetLog.w("updateAll ${widget.javaClass.simpleName} failed", it) }
+        }
+    }
+
+    /**
+     * After a configure screen saved [widgetId]'s settings: redraw it. Runs in the application scope, so it finishes after
+     * the configure activity is gone.
+     */
+    fun redraw(widgetId: Int, widget: () -> androidx.glance.appwidget.GlanceAppWidget) {
+        scope.launch {
+            WidgetSignals.bump()
+            runCatching {
+                widget().update(context, androidx.glance.appwidget.GlanceAppWidgetManager(context).getGlanceIdBy(widgetId))
+            }.onSuccess { WidgetLog.i("redraw #$widgetId requested") }
+                .onFailure { WidgetLog.w("redraw #$widgetId failed", it) }
+        }
+        ensureStarted()
     }
 
     private var wallpaperListener: Any? = null
@@ -108,7 +129,7 @@ class WidgetUpdater @Inject constructor(
         scope.launch {
             val manager = androidx.glance.appwidget.GlanceAppWidgetManager(context)
             val receivers = listOf(
-                NoteCreatorWidgetReceiver::class, SingleNoteWidgetReceiver::class, NoteListWidgetReceiver::class, NoteGridWidgetReceiver::class,
+                NoteCreatorWidgetReceiver::class, SingleNoteWidgetReceiver::class, NoteListWidgetReceiver::class, QuickCaptureWidgetReceiver::class,
             )
             val categories = androidx.collection.intSetOf(android.appwidget.AppWidgetProviderInfo.WIDGET_CATEGORY_HOME_SCREEN)
             val ok = receivers.all { r ->
@@ -128,7 +149,7 @@ class WidgetUpdater @Inject constructor(
     private fun hasWidgets(): Boolean =
         listOf(
             SingleNoteWidgetReceiver::class.java, NoteListWidgetReceiver::class.java, NoteGridWidgetReceiver::class.java,
-            NoteCreatorWidgetReceiver::class.java,
+            NoteCreatorWidgetReceiver::class.java, QuickCaptureWidgetReceiver::class.java,
         )
             .any { widgetIds(it).isNotEmpty() }
 

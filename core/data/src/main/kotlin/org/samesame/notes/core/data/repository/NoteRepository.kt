@@ -153,6 +153,13 @@ interface NoteRepository {
     suspend fun importText(text: String, title: String, folderId: FolderId? = null): NoteId =
         throw UnsupportedOperationException("importText")
 
+    /**
+     * A new note whose body is [body] (formatting and checklist paragraphs kept), titled [title]: the quick-capture sheet's
+     * save. Atomic like [importText]: the note exists completely or not at all.
+     */
+    suspend fun importRichText(body: org.samesame.notes.core.model.richtext.RichText, title: String, folderId: FolderId? = null): NoteId =
+        throw UnsupportedOperationException("importRichText")
+
     suspend fun importPdf(pdfFiles: List<java.io.File>, title: String, folderId: FolderId? = null): NoteId
 
     /**

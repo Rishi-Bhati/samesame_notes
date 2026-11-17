@@ -4,7 +4,7 @@ import android.content.Context
 import org.samesame.notes.core.model.FolderId
 import org.samesame.notes.core.model.NoteFilter
 
-/** What a note-list or pages widget shows. */
+/** What a notes widget shows. */
 sealed interface ListSource {
     /** The most recently edited notes of every folder. */
     data object Recent : ListSource
@@ -57,7 +57,15 @@ class WidgetListConfig(context: Context) {
         prefs.edit().putString("s$widgetId", source.key()).remove("f$widgetId").apply()
     }
 
+    /** The widget's chosen layout, or [fallback] when none was saved. */
+    fun displayOf(widgetId: Int, fallback: NotesDisplay = NotesDisplay.Auto): NotesDisplay =
+        NotesDisplay.fromKey(prefs.getString("d$widgetId", null)) ?: fallback
+
+    fun setDisplay(widgetId: Int, display: NotesDisplay) {
+        prefs.edit().putString("d$widgetId", display.key).apply()
+    }
+
     fun clear(widgetId: Int) {
-        prefs.edit().remove("s$widgetId").remove("f$widgetId").apply()
+        prefs.edit().remove("s$widgetId").remove("f$widgetId").remove("d$widgetId").apply()
     }
 }

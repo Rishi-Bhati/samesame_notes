@@ -33,6 +33,24 @@ class WidgetLayoutTest {
         assertThat(cell.value * 3 + NoteGridLayout.CELL_GAP.value * 2).isWithin(0.01f).of(306f)
     }
 
+    @Test fun `automatic display shows pages only when there is room`() {
+        assertThat(NotesDisplay.resolve(NotesDisplay.Auto, DpSize(320.dp, 300.dp))).isEqualTo(NotesDisplay.Pages)
+        assertThat(NotesDisplay.resolve(NotesDisplay.Auto, DpSize(320.dp, 180.dp))).isEqualTo(NotesDisplay.List)
+        assertThat(NotesDisplay.resolve(NotesDisplay.Auto, DpSize(200.dp, 400.dp))).isEqualTo(NotesDisplay.List)
+        assertThat(NotesDisplay.resolve(NotesDisplay.List, DpSize(400.dp, 400.dp))).isEqualTo(NotesDisplay.List)
+        assertThat(NotesDisplay.resolve(NotesDisplay.Pages, DpSize(200.dp, 120.dp))).isEqualTo(NotesDisplay.Pages)
+        NotesDisplay.entries.forEach { assertThat(NotesDisplay.fromKey(it.key)).isEqualTo(it) }
+        assertThat(NotesDisplay.fromKey("grid")).isNull()
+    }
+
+    @Test fun `quick capture keeps a wide bar and adds what fits`() {
+        assertThat(QuickCaptureLayout.sideButtons(180.dp)).isEqualTo(0)
+        assertThat(QuickCaptureLayout.sideButtons(300.dp)).isEqualTo(2)
+        assertThat(QuickCaptureLayout.sideButtons(600.dp)).isEqualTo(4)
+        assertThat(QuickCaptureLayout.tiles(DpSize(300.dp, 80.dp))).isFalse()
+        assertThat(QuickCaptureLayout.tiles(DpSize(300.dp, 140.dp))).isTrue()
+    }
+
     @Test fun `page crop keeps the top of the page`() {
         assertThat(WidgetBitmaps.cropRect(400, 800, 0.5f)).isEqualTo(400 to 200)
         // A page shorter than the frame is kept whole.

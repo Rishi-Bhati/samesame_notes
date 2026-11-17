@@ -3,6 +3,10 @@ package org.samesame.notes.feature.widgets
 import android.content.Context
 import android.graphics.Bitmap
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -35,32 +39,42 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import kotlinx.coroutines.flow.first
 import org.samesame.notes.core.model.NoteId
-import kotlin.math.abs
 import dev.oneuiproject.oneui.R as Oui
 
 /**
  * One note on the home screen: its title and date, then the top of its first page in a rounded frame (drawn dark when the
  * widget's content is dark). Tapping opens the note. A locked or missing note never produces a page or a title.
  */
-class SingleNoteWidget : GlanceAppWidget() {
+class SingleNoteWidget : LoggingGlanceWidget() {
     override val sizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val ep = WidgetEntryPoint.get(context)
-        val manager = GlanceAppWidgetManager(context)
-        val widgetId = manager.getAppWidgetId(id)
-        val noteId = ep.pins().noteOf(widgetId)
-        val note = noteId?.let { runCatching { ep.notes().observeNote(it).first() }.getOrNull() }
-        val state = WidgetContent.single(pinned = noteId != null, note = note)
-        val style = WidgetStyleStore(context).get(widgetId)
-        val wallpaper = wallpaperPrefersDarkText(context)
-        val dark = style.isDark(isNight(context), wallpaper)
-        // Nothing but a ready note reaches the renderer; the page is cut to each size the launcher shows the widget at.
-        val sizes = runCatching { manager.getAppWidgetSizes(id) }.getOrDefault(emptyList()).ifEmpty { listOf(DEFAULT_SIZE) }
-        val pages: Map<DpSize, ImageProvider?> = if (state is SingleNoteState.Ready) {
-            sizes.distinct().take(2).associateWith { size -> renderFor(context, ep, state.noteId, dark, size)?.let(::ImageProvider) }
-        } else emptyMap()
-        provideContent { SingleNoteContent(widgetId, state, pages, widgetPalette(style, wallpaper)) }
+        val widgetId = GlanceAppWidgetManager(context).getAppWidgetId(id)
+        WidgetLog.i("note #$widgetId provideGlance")
+        // Content first, data inside the composition: the launcher's loading layout is replaced at once, and a redraw
+        // request (WidgetSignals) reloads the data even while this session stays alive.
+        provideContent {
+            val version by WidgetSignals.version.collectAsState()
+            val style = remember(version) { WidgetStyleStore(context).get(widgetId) }
+            val wallpaper = remember(version) { wallpaperPrefersDarkText(context) }
+            val dark = remember(version, style, wallpaper) { style.isDark(isNight(context), wallpaper) }
+            val p = widgetPalette(style, wallpaper)
+            val state by produceState<Loaded<SingleNoteState>>(Loaded.Loading, version) {
+                value = loadWidgetData("note #$widgetId state") { loadState(context, widgetId) }
+            }
+            when (val s = state) {
+                Loaded.Loading -> LoadingFrame(p)
+                Loaded.Failed -> FailedFrame(p)
+                is Loaded.Ready -> SingleNoteContent(widgetId, s.value, p) { ready, size ->
+                    val page by produceState<ImageProvider?>(null, version, ready.noteId, size, dark) {
+                        value = (loadWidgetData("note #$widgetId page ${size.width}x${size.height}") {
+                            renderFor(context, ready.noteId, dark, size)
+                        } as? Loaded.Ready)?.value?.let(::ImageProvider)
+                    }
+                    page
+                }
+            }
+        }
     }
 
     override suspend fun providePreview(context: Context, widgetCategory: Int) {
@@ -68,19 +82,23 @@ class SingleNoteWidget : GlanceAppWidget() {
             NoteId("preview"), context.getString(R.string.widget_sample_title), System.currentTimeMillis(),
             context.getString(R.string.widget_sample_body),
         )
-        val page = mapOf(DEFAULT_SIZE to ImageProvider(R.drawable.widget_pv_page))
-        provideContent { SingleNoteContent(0, sample, page, widgetPalette(WidgetStyle())) }
+        val page = ImageProvider(R.drawable.widget_pv_page)
+        provideContent { SingleNoteContent(0, sample, widgetPalette(WidgetStyle())) { _, _ -> page } }
     }
 
-    private suspend fun renderFor(context: Context, ep: WidgetEntryPoint, id: NoteId, dark: Boolean, size: DpSize): Bitmap? {
+    private suspend fun loadState(context: Context, widgetId: Int): SingleNoteState {
+        val ep = WidgetEntryPoint.get(context)
+        val noteId = ep.pins().noteOf(widgetId)
+        val note = noteId?.let { ep.notes().observeNote(it).first() }
+        return WidgetContent.single(pinned = noteId != null, note = note)
+    }
+
+    /** Only a ready note reaches the renderer (and the repository refuses locked notes on its own). */
+    private suspend fun renderFor(context: Context, id: NoteId, dark: Boolean, size: DpSize): Bitmap? {
         val area = SingleNoteLayout.pageArea(size) ?: return null
         val density = context.resources.displayMetrics.density
         val widthPx = (area.width.value * density).toInt()
-        return WidgetBitmaps.pageTop(ep.notes(), id, dark, widthPx, area.height.value / area.width.value)
-    }
-
-    companion object {
-        internal val DEFAULT_SIZE = DpSize(300.dp, 170.dp)
+        return WidgetBitmaps.pageTop(WidgetEntryPoint.get(context).notes(), id, dark, widthPx, area.height.value / area.width.value)
     }
 }
 
@@ -100,15 +118,20 @@ object SingleNoteLayout {
 }
 
 @Composable
-internal fun SingleNoteContent(widgetId: Int, state: SingleNoteState, pages: Map<DpSize, ImageProvider?>, p: WidgetPalette) {
+internal fun SingleNoteContent(
+    widgetId: Int,
+    state: SingleNoteState,
+    p: WidgetPalette,
+    pageFor: @Composable (SingleNoteState.Ready, DpSize) -> ImageProvider?,
+) {
     val context = LocalContext.current
     val size = LocalSize.current
     val compact = size.height < SingleNoteLayout.COMPACT_BELOW
     when (state) {
         is SingleNoteState.Ready -> {
             val open = actionStartActivity(WidgetIntents.openNote(context, state.noteId.value))
-            // Exact mode: the page cut for the size closest to the one being drawn.
-            val page = pages.entries.minByOrNull { abs(it.key.width.value - size.width.value) + abs(it.key.height.value - size.height.value) }?.value
+            // Exact mode: each size the launcher shows gets its own page cut.
+            val page = if (compact) null else pageFor(state, size)
             WidgetFrame(p, onClick = open) { ReadyNote(state, page, compact, p, open) }
         }
         SingleNoteState.NotChosen -> WidgetFrame(p, onClick = actionStartActivity(NotePickerActivity.intent(context, widgetId))) {
