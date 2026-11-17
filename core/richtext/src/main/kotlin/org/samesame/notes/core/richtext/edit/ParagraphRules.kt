@@ -58,7 +58,7 @@ object ParagraphRules {
      * outdents one level first and only ends the list at level 0.
      */
     fun onEnter(paragraph: ParagraphStyle, paragraphIsEmpty: Boolean): EnterAction = when {
-        paragraph.list == ListKind.None || !paragraphIsEmpty -> EnterAction.InsertNewline
+        !paragraph.hasMarker || !paragraphIsEmpty -> EnterAction.InsertNewline
         paragraph.indent > 0 -> EnterAction.Outdent
         else -> EnterAction.EndList
     }
@@ -68,7 +68,17 @@ object ParagraphRules {
      * (text and indent kept), otherwise the paragraph joins the previous one.
      * NOTE(WP-F): assumed from common editors; not captured.
      */
-    fun backspaceRemovesMarker(paragraph: ParagraphStyle): Boolean = paragraph.list != ListKind.None
+    fun backspaceRemovesMarker(paragraph: ParagraphStyle): Boolean = paragraph.hasMarker
+
+    /**
+     * What Backspace at the start of an item takes off: the bullet/number first (the part next to the text), then the checkbox,
+     * so a "[ ] 1. text" item needs two presses to become plain.
+     */
+    fun withoutOuterMarkerPart(p: ParagraphStyle): ParagraphStyle =
+        if (p.list != ListKind.None) p.copy(list = ListKind.None) else p.copy(checkbox = false, checked = false)
+
+    /** Every marker part off (Enter on an empty item ends the whole list). */
+    fun withoutMarker(p: ParagraphStyle): ParagraphStyle = p.copy(list = ListKind.None, checkbox = false, checked = false)
 
     fun indent(p: ParagraphStyle): ParagraphStyle = p.copy(indent = (p.indent + 1).coerceAtMost(Limits.MAX_INDENT_LEVEL))
     fun outdent(p: ParagraphStyle): ParagraphStyle = p.copy(indent = (p.indent - 1).coerceAtLeast(0))

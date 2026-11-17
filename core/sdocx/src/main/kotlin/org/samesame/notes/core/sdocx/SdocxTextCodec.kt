@@ -442,12 +442,13 @@ internal object SdocxTextCodec {
             }
             out += paragraph(PARA_ALIGN, i, i + 1, align, 0)
             if (para.indent > 0) out += paragraph(PARA_INDENT, i, i + 1, para.indent, 0)
-            when (para.list) {
+            // The format holds one list type per paragraph: 8 = solid circle, 4 = digits, 2 = checkbox. A paragraph with a
+            // checkbox AND a bullet/number writes the checkbox; its number/bullet rides in SdocxLinkChannel ("lists").
+            if (para.checkbox) out += paragraph(PARA_LIST, i, i + 1, 2, if (para.checked) 1 else 0)
+            else when (para.list) {
                 ListKind.None -> Unit
-                // 8 = solid circle, the reference app's "Bullet points"; 4 = digits; 2 = checkbox.
                 ListKind.Bullet -> out += paragraph(PARA_LIST, i, i + 1, 8, 0)
                 ListKind.Numbered -> out += paragraph(PARA_LIST, i, i + 1, 4, 0)
-                ListKind.Checklist -> out += paragraph(PARA_LIST, i, i + 1, 2, if (para.checked) 1 else 0)
             }
             out += paragraph(PARA_PARSING_STATE, i, i + 1, 1, 0)
         }

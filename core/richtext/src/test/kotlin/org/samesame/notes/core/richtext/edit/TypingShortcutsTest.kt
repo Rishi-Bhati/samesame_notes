@@ -18,9 +18,9 @@ class TypingShortcutsTest {
     }
 
     @Test fun checklistMarkersAreConsumed() {
-        assertThat(TypingShortcuts.blockMarker("[] ")).isEqualTo(BlockMarker("[] ", ListKind.Checklist, false))
-        assertThat(TypingShortcuts.blockMarker("[ ] ")).isEqualTo(BlockMarker("[ ] ", ListKind.Checklist, false))
-        assertThat(TypingShortcuts.blockMarker("[x] ")).isEqualTo(BlockMarker("[x] ", ListKind.Checklist, true))
+        assertThat(TypingShortcuts.blockMarker("[] ")).isEqualTo(BlockMarker("[] ", ListKind.None, false, true))
+        assertThat(TypingShortcuts.blockMarker("[ ] ")).isEqualTo(BlockMarker("[ ] ", ListKind.None, false, true))
+        assertThat(TypingShortcuts.blockMarker("[x] ")).isEqualTo(BlockMarker("[x] ", ListKind.None, true, true))
     }
 
     @Test fun incompleteOrWrongMarkersAreIgnored() {

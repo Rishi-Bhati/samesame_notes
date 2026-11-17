@@ -22,7 +22,7 @@ class BodyTextTest {
 
     private val bold = CharStyle(bold = true)
     private val bullet = ParagraphStyle(list = ListKind.Bullet)
-    private val todo = ParagraphStyle(list = ListKind.Checklist)
+    private val todo = ParagraphStyle(checkbox = true)
 
     private fun sample(): RichText = RichTextOps.normalise(
         RichText(
@@ -183,7 +183,7 @@ class BodyTextTest {
 
         val c = BodyText()
         c.commitText("[x] ")
-        assertThat(c.paragraphStyles.single()).isEqualTo(ParagraphStyle(list = ListKind.Checklist, checked = true))
+        assertThat(c.paragraphStyles.single()).isEqualTo(ParagraphStyle(checkbox = true, checked = true))
         assertThat(c.toRichText().text).isEqualTo("")
     }
 
@@ -252,7 +252,7 @@ class BodyTextTest {
                     ParagraphStyle(list = ListKind.Bullet),
                     ParagraphStyle(list = ListKind.Numbered),
                     ParagraphStyle(list = ListKind.Numbered),
-                    ParagraphStyle(list = ListKind.Checklist, checked = true),
+                    ParagraphStyle(checkbox = true, checked = true),
                 ),
             ),
         )
@@ -280,7 +280,7 @@ class BodyTextTest {
             RichText.of("a\no").copy(
                 paragraphs = listOf(
                     ParagraphStyle(list = ListKind.Bullet, indent = 1),
-                    ParagraphStyle(list = ListKind.Checklist),
+                    ParagraphStyle(checkbox = true),
                 ),
             ),
         )

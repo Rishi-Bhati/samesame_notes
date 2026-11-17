@@ -29,8 +29,8 @@ class ClipboardTextTest {
             bullet,
             numbered,
             numbered,
-            ParagraphStyle(list = ListKind.Checklist, checked = true),
-            ParagraphStyle(list = ListKind.Checklist),
+            ParagraphStyle(checkbox = true, checked = true),
+            ParagraphStyle(checkbox = true),
         )
         assertThat(clip(text, paragraphs)).isEqualTo("• a\n1. b\n2. c\n[x] d\n[ ] e")
     }

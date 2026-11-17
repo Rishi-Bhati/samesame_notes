@@ -102,10 +102,10 @@ internal fun buildSpannable(
                 ListKind.None -> null
                 ListKind.Bullet -> Marker.Bullet
                 ListKind.Numbered -> Marker.Number("${p.number ?: 1}.")
-                ListKind.Checklist -> if (p.style.checked) Marker.Checked else Marker.Unchecked
             }
-            out.setSpan(MarkerSpan(p.style.indent * INDENT_PU, marker, colorTransform), start, end, f)
-            if (p.style.list == ListKind.Checklist && p.style.checked) {
+            val box = if (p.style.checkbox) (if (p.style.checked) Marker.Checked else Marker.Unchecked) else null
+            out.setSpan(MarkerSpan(p.style.indent * INDENT_PU, marker, colorTransform, box), start, end, f)
+            if (p.style.checkbox && p.style.checked) {
                 // Checked item: text dimmed to 40 % and struck through (no newline in the span).
                 val textEnd = if (end > start && out[end - 1] == '\n') end - 1 else end
                 if (textEnd > start) out.setSpan(CheckedTextSpan(colorTransform(Color.WHITE)), start, textEnd, f)
@@ -142,17 +142,25 @@ private class MarkerSpan(
     private val indent: Int,
     private val marker: Marker?,
     private val colorTransform: (Int) -> Int = { it },
+    /** The checkbox, drawn first; a bullet/number [marker] then follows it, one more gap to the right. */
+    private val checkbox: Marker? = null,
 ) : LeadingMarginSpan {
-    override fun getLeadingMargin(first: Boolean): Int = indent + if (marker != null) LIST_GAP else 0
+    override fun getLeadingMargin(first: Boolean): Int =
+        indent + (if (marker != null) LIST_GAP else 0) + (if (checkbox != null) LIST_GAP else 0)
 
     override fun drawLeadingMargin(
         c: Canvas, p: Paint, x: Int, dir: Int, top: Int, baseline: Int, bottom: Int,
         text: CharSequence, start: Int, end: Int, first: Boolean, layout: Layout,
     ) {
-        if (!first || marker == null) return
-        val left = x + indent.toFloat()
+        if (!first || (marker == null && checkbox == null)) return
         val size = p.textSize
         val old = Paint(p)
+        if (checkbox != null) drawOne(c, p, checkbox, x + indent.toFloat(), baseline, size)
+        if (marker != null) drawOne(c, p, marker, x + indent.toFloat() + (if (checkbox != null) LIST_GAP else 0), baseline, size)
+        p.set(old)
+    }
+
+    private fun drawOne(c: Canvas, p: Paint, marker: Marker, left: Float, baseline: Int, size: Float) {
         p.color = colorTransform(Color.BLACK).let { if (marker == Marker.Checked) dim(it, colorTransform(Color.WHITE)) else it }
         p.style = Paint.Style.FILL
         p.isFakeBoldText = false
@@ -175,7 +183,6 @@ private class MarkerSpan(
                 }
             }
         }
-        p.set(old)
     }
 }
 

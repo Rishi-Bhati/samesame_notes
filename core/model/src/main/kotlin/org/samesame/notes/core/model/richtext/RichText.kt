@@ -1,6 +1,11 @@
 package org.samesame.notes.core.model.richtext
 
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 
 /** Character that stands for an inline object in [RichText.text]; its run carries the objectId. */
 const val OBJECT_CHAR: Char = '￼'
@@ -55,28 +60,67 @@ data class CharStyle(
 @Serializable
 enum class TextAlign { Left, Center, Right }
 
+/** The bullet/number part of a paragraph's marker. The checkbox is its own flag ([ParagraphStyle.checkbox]), so both can show. */
 @Serializable
-enum class ListKind { None, Bullet, Numbered, Checklist }
+enum class ListKind { None, Bullet, Numbered }
 
-@Serializable
+/**
+ * [checkbox] puts a checkbox in front of the marker (drawn: checkbox, then bullet/number, then text); [checked] is only
+ * meaningful with it. Format v9 split the checkbox out of [list]: documents up to v8 stored a checklist as
+ * `list = "Checklist"`, which [ParagraphStyleSerializer] reads as `list = None, checkbox = true`.
+ */
+@Serializable(with = ParagraphStyleSerializer::class)
 data class ParagraphStyle(
     val align: TextAlign = TextAlign.Left,
     val indent: Int = 0,
     val list: ListKind = ListKind.None,
     val checked: Boolean = false,
+    val checkbox: Boolean = false,
+) {
+    /** True when the paragraph shows any marker (checkbox, bullet or number). */
+    val hasMarker: Boolean get() = checkbox || list != ListKind.None
+}
+
+@Serializable
+@SerialName("ParagraphStyle")
+private class ParagraphStyleSurrogate(
+    val align: TextAlign = TextAlign.Left,
+    val indent: Int = 0,
+    val list: String = "None",
+    val checked: Boolean = false,
+    val checkbox: Boolean = false,
 )
+
+/** Reads the v8 and older checklist shape (`list = "Checklist"`) as a checkbox; writes the current shape. */
+object ParagraphStyleSerializer : KSerializer<ParagraphStyle> {
+    override val descriptor: SerialDescriptor = ParagraphStyleSurrogate.serializer().descriptor
+
+    override fun deserialize(decoder: Decoder): ParagraphStyle {
+        val s = decoder.decodeSerializableValue(ParagraphStyleSurrogate.serializer())
+        val legacyChecklist = s.list == "Checklist"
+        val kind = ListKind.entries.firstOrNull { it.name == s.list } ?: ListKind.None
+        return ParagraphStyle(s.align, s.indent, kind, s.checked, s.checkbox || legacyChecklist)
+    }
+
+    override fun serialize(encoder: Encoder, value: ParagraphStyle) {
+        encoder.encodeSerializableValue(
+            ParagraphStyleSurrogate.serializer(),
+            ParagraphStyleSurrogate(value.align, value.indent, value.list.name, value.checked, value.checkbox),
+        )
+    }
+}
 
 /**
  * Plain-text marker a list paragraph gets outside the editor (the .txt export and the clipboard): two spaces per
- * indent level, then `• `, `1. ` or `[x] `/`[ ] `. [number] is the 1-based item number of a [ListKind.Numbered]
+ * indent level, then the checkbox `[x] `/`[ ] ` when on, then `• ` or `1. `. [number] is the 1-based item number of a [ListKind.Numbered]
  * paragraph (null when the caller has no numbering; it then falls back to 1).
  */
 fun listMarkerPrefix(style: ParagraphStyle, number: Int?): String {
+    val box = if (style.checkbox) (if (style.checked) "[x] " else "[ ] ") else ""
     val marker = when (style.list) {
         ListKind.None -> ""
         ListKind.Bullet -> "• "
         ListKind.Numbered -> "${number ?: 1}. "
-        ListKind.Checklist -> if (style.checked) "[x] " else "[ ] "
     }
-    return "  ".repeat(style.indent.coerceAtLeast(0)) + marker
+    return "  ".repeat(style.indent.coerceAtLeast(0)) + box + marker
 }

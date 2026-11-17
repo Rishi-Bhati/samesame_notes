@@ -2257,6 +2257,7 @@ internal fun ComposerEditor(
                             highlightColor = cs.highlight?.toColor() ?: androidx.compose.ui.graphics.Color.Unspecified,
                             canUndo = editor?.canUndo ?: chrome.undo.canUndo,
                             canRedo = editor?.canRedo ?: chrome.undo.canRedo,
+                            todoOn = activeBody.currentParagraphStyle().checkbox,
                             openPanel = when (tb.panel) {
                                 Panel.TextOptions -> TextToolbarButton.TextOptions
                                 Panel.FontColor -> TextToolbarButton.FontColor
@@ -2266,7 +2267,7 @@ internal fun ComposerEditor(
                             },
                         ),
                         onHandwriting = { session.dispatch(ToolbarIntent.ToggleHandwriting) },
-                        onTodo = { editor?.breakTypingBurst() ?: session.breakTypingBurst(); activeBody.toggleList(ListKind.Checklist) },
+                        onTodo = { editor?.breakTypingBurst() ?: session.breakTypingBurst(); activeBody.toggleCheckbox() },
                         onTextOptions = { session.dispatch(ToolbarIntent.TogglePanel(Panel.TextOptions)) },
                         onFontColor = { session.dispatch(ToolbarIntent.TogglePanel(Panel.FontColor)) },
                         onHighlight = { session.dispatch(ToolbarIntent.TogglePanel(Panel.Highlight)) },

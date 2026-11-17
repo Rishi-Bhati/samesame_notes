@@ -108,7 +108,7 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
     val paragraphStyles: List<ParagraphStyle> get() = paragraphs.toList()
 
     /** True when any paragraph is a checked checklist item (no list copy). */
-    internal fun hasCheckedItems(): Boolean = paragraphs.any { it.list == ListKind.Checklist && it.checked }
+    internal fun hasCheckedItems(): Boolean = paragraphs.any { it.checkbox && it.checked }
 
     /** Style of paragraph [index] without copying the list (null when out of range); for per-frame drawing code. */
     internal fun paragraphStyleOrNull(index: Int): ParagraphStyle? = paragraphs.getOrNull(index)
@@ -253,12 +253,12 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
         val range = paragraphRange(p)
         when {
             sel.collapsed && ParagraphRules.onEnter(style, range.isEmpty()) == ParagraphRules.EnterAction.EndList ->
-                changeParagraphs(p, listOf(style.copy(list = ListKind.None, checked = false)))
+                changeParagraphs(p, listOf(ParagraphRules.withoutMarker(style)))
             sel.collapsed && ParagraphRules.onEnter(style, range.isEmpty()) == ParagraphRules.EnterAction.Outdent ->
                 changeParagraphs(p, listOf(style.copy(indent = (style.indent - 1).coerceAtLeast(0), checked = false)))
             else -> {
                 // Auto-indent: a plain paragraph keeps its leading spaces/tabs on the new line.
-                val indent = if (style.list == ListKind.None && sel.collapsed) leadingIndent(p, sel.min) else ""
+                val indent = if (!style.hasMarker && sel.collapsed) leadingIndent(p, sel.min) else ""
                 replace(sel.min, sel.max, "\n$indent")
             }
         }
@@ -286,10 +286,10 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
                 lastConversion = null
                 editable.insert(range.first, conversion.marker)
                 Selection.setSelection(editable, range.first + conversion.marker.length)
-                setParagraphsRaw(p, listOf(style.copy(list = ListKind.None, checked = false)))
+                setParagraphsRaw(p, listOf(conversion.before))
                 return@batch
             }
-            changeParagraphs(p, listOf(style.copy(list = ListKind.None, checked = false)))
+            changeParagraphs(p, listOf(ParagraphRules.withoutOuterMarkerPart(style)))
             return@batch
         }
         if (caret == 0) return@batch
@@ -335,7 +335,7 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
     // ---------------------------------------------------------------- typing shortcuts
 
     /** A block marker that was just converted, so one Backspace can restore the typed text. */
-    private data class TypedConversion(val paragraph: Int, val marker: String)
+    private data class TypedConversion(val paragraph: Int, val marker: String, val before: ParagraphStyle)
 
     private var lastConversion: TypedConversion? = null
 
@@ -348,10 +348,16 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
         val range = paragraphRange(p)
         val prefix = editable.subSequence(range.first, caret).toString()
         TypingShortcuts.blockMarker(prefix)?.let { marker ->
-            lastConversion = TypedConversion(p, marker.marker)
+            lastConversion = TypedConversion(p, marker.marker, paragraphs[p])
             editable.delete(range.first, caret)
             Selection.setSelection(editable, range.first)
-            setParagraphsRaw(p, listOf(paragraphs[p].copy(list = marker.list, checked = marker.checked)))
+            setParagraphsRaw(
+                p,
+                listOf(
+                    if (marker.checkbox) paragraphs[p].copy(checkbox = true, checked = marker.checked)
+                    else paragraphs[p].copy(list = marker.list),
+                ),
+            )
             return
         }
         if (typed.length == 1 && typed[0] == ' ') applyInlineShortcut(range)
@@ -413,14 +419,28 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
         changeParagraphs(first, (first..last).map { transform(paragraphs[it]) })
     }
 
-    /** Toolbar list buttons: `RichTextOps.toggleList` semantics. */
+    /** Toolbar bullet/number buttons: `RichTextOps.toggleList` semantics; a checkbox on the paragraph stays. */
     fun toggleList(kind: ListKind) = batch {
         val (first, last) = selectedParagraphs()
         val allSame = (first..last).all { paragraphs[it].list == kind }
         val target = if (allSame) ListKind.None else kind
         changeParagraphs(first, (first..last).map { i ->
             val p = paragraphs[i]
-            if (p.list == target && !p.checked) p else p.copy(list = target, checked = false)
+            if (p.list == target) p else p.copy(list = target)
+        })
+    }
+
+    /** Toolbar checkbox button: `RichTextOps.toggleCheckbox` semantics; a bullet or number on the paragraph stays. */
+    fun toggleCheckbox() = batch {
+        val (first, last) = selectedParagraphs()
+        val allOn = (first..last).all { paragraphs[it].checkbox }
+        changeParagraphs(first, (first..last).map { i ->
+            val p = paragraphs[i]
+            when {
+                allOn -> p.copy(checkbox = false, checked = false)
+                p.checkbox -> p
+                else -> p.copy(checkbox = true, checked = false)
+            }
         })
     }
 
@@ -430,7 +450,7 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
 
     fun toggleChecked(paragraph: Int) = batch {
         val p = paragraphs.getOrNull(paragraph) ?: return@batch
-        if (p.list == ListKind.Checklist) changeParagraphs(paragraph, listOf(p.copy(checked = !p.checked)))
+        if (p.checkbox) changeParagraphs(paragraph, listOf(p.copy(checked = !p.checked)))
     }
 
     // ---------------------------------------------------------------- history (not recorded)

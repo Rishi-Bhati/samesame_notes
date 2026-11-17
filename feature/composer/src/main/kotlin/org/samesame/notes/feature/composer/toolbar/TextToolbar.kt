@@ -72,6 +72,8 @@ data class TextToolbarModel(
     val highlightColor: Color = Color.Unspecified,
     val canUndo: Boolean = true,
     val canRedo: Boolean = false,
+    /** The caret paragraph has a checkbox (the checklist button shows selected). */
+    val todoOn: Boolean = false,
     /** Button whose panel is open, shown with a pill behind it. */
     val openPanel: TextToolbarButton? = null,
 )
@@ -164,7 +166,7 @@ fun TextToolbar(
                 Icon(AppIcons.Handwriting, null, Modifier.size(24.dp), tint = c.icon)
             }
             Spacer(Modifier.width(TextCellsStart - ToggleStart - ToggleSize))
-            Cell(Modifier.width(TextCellWidth)) { ToolButton(AppIcons.Checklist, R.string.feature_composer_todo, onClick = onTodo) }
+            Cell(Modifier.width(TextCellWidth)) { ToolButton(AppIcons.Checklist, R.string.feature_composer_todo, active = model.todoOn, onClick = onTodo) }
             Cell(Modifier.width(TextCellWidth)) {
                 ToolButton(AppIcons.TextStyle, R.string.feature_composer_text_options, active = model.isHighlighted(TextToolbarButton.TextOptions), onClick = onTextOptions)
             }

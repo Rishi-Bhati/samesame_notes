@@ -27,6 +27,13 @@ object NoteDocumentMigrations {
         runCatching { NoteJson.decodeFromString(LegacyDocumentViewState.serializer(), text).viewState }.getOrNull()
 
     /**
+     * v8 -> v9 split the checkbox out of the paragraph list kind ([org.samesame.notes.core.model.richtext.ParagraphStyle.checkbox]).
+     * A v8 checklist paragraph (`list = "Checklist"`) is read as `list = None, checkbox = true` by `ParagraphStyleSerializer`, wherever
+     * a paragraph style is stored (the body, text boxes in the page files), so the migration itself only stamps the version.
+     */
+    fun v8ToV9(v8: NoteDocument): NoteDocument = v8.copy(formatVersion = NOTE_DOCUMENT_FORMAT_VERSION)
+
+    /**
      * v7 -> v8 only adds the defaulted `CharStyle.link` (explicit link runs) and `ImageObject.libraryFileId` ("Show in
      * note" images), both null in a v7 document, so every v7 note reads as the same value with the current version.
      * Floating objects in the page files carry no document version and read the new field as null the same way.

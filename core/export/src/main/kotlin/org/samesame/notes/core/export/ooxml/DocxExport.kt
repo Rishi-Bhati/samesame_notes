@@ -102,12 +102,12 @@ object DocxExport {
                     ppr.append("<w:pStyle w:val=\"ListParagraph\"/>")
                         .append("<w:numPr><w:ilvl w:val=\"${min(st.indent, 8)}\"/><w:numId w:val=\"$numId\"/></w:numPr>")
                 }
-                ListKind.Checklist -> {
-                    prefix = if (st.checked) "☑ " else "☐ "
-                    ppr.append("<w:ind w:left=\"${st.indent * 720 + 360}\" w:hanging=\"360\"/>")
-                }
-                ListKind.None -> if (st.indent > 0) ppr.append("<w:ind w:left=\"${st.indent * 720}\"/>")
+                ListKind.None ->
+                    if (st.checkbox) ppr.append("<w:ind w:left=\"${st.indent * 720 + 360}\" w:hanging=\"360\"/>")
+                    else if (st.indent > 0) ppr.append("<w:ind w:left=\"${st.indent * 720}\"/>")
             }
+            // The checkbox is a leading glyph run in front of the list's own number or bullet (which Word draws before the run).
+            if (st.checkbox) prefix = if (st.checked) "☑ " else "☐ "
             previousNumbered = st.list == ListKind.Numbered
             when (st.align) {
                 TextAlign.Left -> Unit

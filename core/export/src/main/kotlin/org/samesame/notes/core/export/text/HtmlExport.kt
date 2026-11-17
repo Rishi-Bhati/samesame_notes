@@ -57,7 +57,7 @@ object HtmlExport {
                 TextAlign.Right -> "text-align:right;"
             }
             val inner = p.spans.joinToString("") { span -> if (span.isObject) obj(span) else spanHtml(span) }
-            if (style.list == ListKind.None) {
+            if (!style.hasMarker) {
                 close()
                 val margin = if (style.indent > 0) "margin-left:${style.indent * 1.5}em;" else ""
                 val css = align + margin
@@ -65,7 +65,9 @@ object HtmlExport {
                     .append(inner.ifEmpty { "<br>" }).append("</p>\n")
                 continue
             }
-            val key = Triple(style.list, style.indent, false)
+            // A checkbox alone is a "check" list; with a bullet or number the box is drawn inside the item of that list.
+            val checkOnly = style.checkbox && style.list == ListKind.None
+            val key = Triple(style.list, style.indent, checkOnly)
             if (openKey != key) {
                 close()
                 val margin = if (style.indent > 0) "margin-left:${style.indent * 1.5}em;" else ""
@@ -74,21 +76,14 @@ object HtmlExport {
                         b.append("<ol start=\"${p.number ?: 1}\"").append(if (margin.isEmpty()) "" else " style=\"$margin\"").append(">\n")
                         openTag = "ol"
                     }
-                    ListKind.Checklist -> {
-                        b.append("<ul class=\"check\"").append(if (margin.isEmpty()) "" else " style=\"$margin\"").append(">\n")
-                        openTag = "ul"
-                    }
                     else -> {
-                        b.append("<ul").append(if (margin.isEmpty()) "" else " style=\"$margin\"").append(">\n")
+                        b.append("<ul").append(if (checkOnly) " class=\"check\"" else "").append(if (margin.isEmpty()) "" else " style=\"$margin\"").append(">\n")
                         openTag = "ul"
                     }
                 }
                 openKey = key
             }
-            val box = when (style.list) {
-                ListKind.Checklist -> if (style.checked) "☑ " else "☐ "
-                else -> ""
-            }
+            val box = if (style.checkbox) (if (style.checked) "☑ " else "☐ ") else ""
             b.append("<li").append(if (align.isEmpty()) "" else " style=\"$align\"").append(">").append(box).append(inner).append("</li>\n")
         }
         close()

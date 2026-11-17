@@ -266,7 +266,8 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
         if (version <= 4) doc = NoteDocumentMigrations.v4ToV5(doc)
         if (version <= 5) doc = NoteDocumentMigrations.v5ToV6(doc)
         if (version <= 6) doc = NoteDocumentMigrations.v6ToV7(doc)
-        return NoteDocumentMigrations.v7ToV8(doc)
+        doc = NoteDocumentMigrations.v7ToV8(doc)
+        return NoteDocumentMigrations.v8ToV9(doc)
     }
 
     suspend fun writeDocument(document: NoteDocument) = withContext(Dispatchers.IO) {

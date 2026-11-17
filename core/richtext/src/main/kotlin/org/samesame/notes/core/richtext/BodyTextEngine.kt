@@ -329,7 +329,7 @@ class BodyTextEngine(
         val offset = layout.getOffsetForHorizontal(layout.getLineForVertical(ly.toInt()), lx)
         val p = body.paragraphIndexAt(offset)
         val style = body.paragraphStyleOrNull(p) ?: return null
-        if (style.list != ListKind.Checklist) return null
+        if (!style.checkbox) return null
         val start = body.paragraphRange(p).first
         val line = layout.getLineForOffset(start)
         val box = ChecklistSpan.boxRect(style.indent * BodyTextMetrics.INDENT_STEP, layout.getLineBaseline(line).toFloat(), markerEm(start), tmpRect)
@@ -628,7 +628,7 @@ class BodyTextEngine(
         while (paragraphStart < end) {
             if (paragraphStart >= start) {
                 val style = body.paragraphStyleOrNull(p) ?: break
-                if (style.list != ListKind.None) {
+                if (style.hasMarker) {
                     val right = ParagraphSpan.leadingMargin(style, markerEm(paragraphStart))
                     if (right > 0f) {
                         val line = layout.getLineForOffset(paragraphStart)
@@ -787,7 +787,7 @@ class BodyTextEngine(
                     val start = layout.getLineStart(line)
                     if (line > 0 && start > 0 && text[start - 1] == '\n') p++
                     val st = body.paragraphStyleOrNull(p) ?: continue
-                    if (st.list == ListKind.Checklist && st.checked) {
+                    if (st.checkbox && st.checked) {
                         checkedLineList += line
                         checkedPath.addRect(-1000f, layout.getLineTop(line).toFloat(), layout.width + 1000f, layout.getLineBottom(line).toFloat(), Path.Direction.CW)
                     }

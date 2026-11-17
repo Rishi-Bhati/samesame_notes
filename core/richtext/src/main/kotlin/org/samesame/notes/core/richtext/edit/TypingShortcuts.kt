@@ -3,7 +3,7 @@ package org.samesame.notes.core.richtext.edit
 import org.samesame.notes.core.model.richtext.ListKind
 
 /** A list marker typed at the start of a line, ready to be consumed. */
-data class BlockMarker(val marker: String, val list: ListKind, val checked: Boolean)
+data class BlockMarker(val marker: String, val list: ListKind, val checked: Boolean, val checkbox: Boolean = false)
 
 /** Inline `*bold*`-style marker pair; [start, end) is the styled content in the line text. */
 data class InlineMarker(val start: Int, val end: Int, val kind: Kind) {
@@ -20,13 +20,15 @@ object TypingShortcuts {
     /** The list marker when [prefix] (line start up to the caret) is exactly a consumed marker, else null. */
     fun blockMarker(prefix: String): BlockMarker? {
         if (!block.matches(prefix)) return null
+        // A checkbox marker only sets the checkbox; a number or bullet only sets the list part (they combine on one paragraph).
+        val checkbox = prefix.startsWith("[")
         val list = when {
-            prefix.startsWith("[") -> ListKind.Checklist
+            checkbox -> ListKind.None
             prefix.first().isDigit() -> ListKind.Numbered
             else -> ListKind.Bullet
         }
         val checked = prefix.startsWith("[x") || prefix.startsWith("[X")
-        return BlockMarker(prefix, list, checked)
+        return BlockMarker(prefix, list, checked, checkbox)
     }
 
     /**

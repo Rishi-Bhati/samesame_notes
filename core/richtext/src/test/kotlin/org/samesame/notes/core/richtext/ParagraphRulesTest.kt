@@ -15,7 +15,7 @@ class ParagraphRulesTest {
 
     private val bullet = ParagraphStyle(list = ListKind.Bullet)
     private val numbered = ParagraphStyle(list = ListKind.Numbered)
-    private val checked = ParagraphStyle(list = ListKind.Checklist, checked = true)
+    private val checked = ParagraphStyle(checkbox = true, checked = true)
 
     @Test fun matchesRichTextOpsOnRandomEdits() {
         val rnd = Random(7)

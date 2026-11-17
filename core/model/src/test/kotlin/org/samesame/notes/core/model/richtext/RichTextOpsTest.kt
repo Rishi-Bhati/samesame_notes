@@ -77,12 +77,12 @@ class RichTextOpsTest {
     }
 
     @Test fun `newline splits paragraph and new one inherits list style unchecked`() {
-        val base = RichText("abcd", listOf(TextRun(4, plain)), listOf(ParagraphStyle(list = ListKind.Checklist, checked = true, indent = 1)))
+        val base = RichText("abcd", listOf(TextRun(4, plain)), listOf(ParagraphStyle(checkbox = true, checked = true, indent = 1)))
         val r = RichTextOps.insert(base, 2, "\n")
         assertThat(r.text).isEqualTo("ab\ncd")
         assertThat(r.paragraphs).containsExactly(
-            ParagraphStyle(list = ListKind.Checklist, checked = true, indent = 1),
-            ParagraphStyle(list = ListKind.Checklist, checked = false, indent = 1),
+            ParagraphStyle(checkbox = true, checked = true, indent = 1),
+            ParagraphStyle(checkbox = true, checked = false, indent = 1),
         ).inOrder()
         r.assertValid()
     }
@@ -273,15 +273,33 @@ class RichTextOpsTest {
         assertThat(r.paragraphs.all { it.list == ListKind.Bullet }).isTrue()
     }
 
-    @Test fun `toggleList switches kind and clears checked`() {
-        val chk = RichTextOps.setParagraphStyle(
-            RichTextOps.toggleList(three, 0, 0, ListKind.Checklist), 0, 0,
-        ) { it.copy(checked = true) }
-        assertThat(chk.paragraphs[0].checked).isTrue()
-        val num = RichTextOps.toggleList(chk, 0, 0, ListKind.Numbered)
-        assertThat(num.paragraphs[0]).isEqualTo(ParagraphStyle(list = ListKind.Numbered))
-        val off = RichTextOps.toggleList(chk, 0, 0, ListKind.Checklist)
-        assertThat(off.paragraphs[0]).isEqualTo(ParagraphStyle())
+    @Test fun `checkbox and list kind are independent parts of one paragraph`() {
+        val chk = RichTextOps.setParagraphStyle(RichTextOps.toggleCheckbox(three, 0, 0), 0, 0) { it.copy(checked = true) }
+        assertThat(chk.paragraphs[0]).isEqualTo(ParagraphStyle(checkbox = true, checked = true))
+        // a number on a checkbox paragraph keeps the checkbox and its checked state
+        val both = RichTextOps.toggleList(chk, 0, 0, ListKind.Numbered)
+        assertThat(both.paragraphs[0]).isEqualTo(ParagraphStyle(list = ListKind.Numbered, checkbox = true, checked = true))
+        // switching number -> bullet leaves the checkbox alone
+        assertThat(RichTextOps.toggleList(both, 0, 0, ListKind.Bullet).paragraphs[0])
+            .isEqualTo(ParagraphStyle(list = ListKind.Bullet, checkbox = true, checked = true))
+        // tapping the active number button removes only the number
+        assertThat(RichTextOps.toggleList(both, 0, 0, ListKind.Numbered).paragraphs[0]).isEqualTo(ParagraphStyle(checkbox = true, checked = true))
+        // tapping the checkbox button removes only the checkbox (and its checked state)
+        assertThat(RichTextOps.toggleCheckbox(both, 0, 0).paragraphs[0]).isEqualTo(ParagraphStyle(list = ListKind.Numbered))
+        // a checkbox on a numbered paragraph keeps the number
+        val num = RichTextOps.toggleList(three, 0, 0, ListKind.Numbered)
+        assertThat(RichTextOps.toggleCheckbox(num, 0, 0).paragraphs[0]).isEqualTo(ParagraphStyle(list = ListKind.Numbered, checkbox = true))
+    }
+
+    @Test fun `a v8 checklist reads as a checkbox and the current shape round trips`() {
+        val v8 = """{"text":"a","runs":[{"length":1}],"paragraphs":[{"align":"Left","indent":1,"list":"Checklist","checked":true}]}"""
+        val r = NoteJson.decodeFromString(RichText.serializer(), v8)
+        assertThat(r.paragraphs.single()).isEqualTo(ParagraphStyle(indent = 1, checkbox = true, checked = true))
+        val both = r.copy(paragraphs = listOf(ParagraphStyle(list = ListKind.Numbered, checkbox = true)))
+        assertThat(NoteJson.decodeFromString(RichText.serializer(), NoteJson.encodeToString(RichText.serializer(), both))).isEqualTo(both)
+        // defaults omitted by older writers still read
+        val bare = NoteJson.decodeFromString(RichText.serializer(), """{"text":"a","runs":[{"length":1}],"paragraphs":[{}]}""")
+        assertThat(bare.paragraphs.single()).isEqualTo(ParagraphStyle())
     }
 
     @Test fun `replace swaps range`() {
@@ -300,7 +318,7 @@ class RichTextOpsTest {
         val r = RichTextOps.insertObject(
             RichTextOps.toggleList(
                 RichTextOps.applyCharStyle(rt("hello\nworld", 11 to plain), 0, 3) { it.copy(bold = true, color = 0xFF112233) },
-                0, 0, ListKind.Checklist,
+                0, 0, ListKind.Numbered,
             ),
             2, "obj",
         )
