@@ -5,6 +5,42 @@ All notable user-facing changes to SameSame notes are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses
 pre-release alpha versions.
 
+## 0.2.2-alpha (unreleased)
+
+### Widgets
+
+- Note creator, single note, note list.
+- Background white/black/match dark mode and opacity.
+- Lock rules: a locked note never shows content on a widget and a note on a widget cannot be locked.
+
+### Calculate as you type
+
+- Type an expression and '=' to see the result faded inline.
+- Accept by swiping right on the keyboard spacebar, tapping it or Tab.
+- Units and conversions with examples '1 km + 102 m =' and '5 km in m ='.
+- Percentages.
+- Sum/total/avg of the lines above.
+- A setting to turn it off.
+
+### Files
+
+- Upload a whole folder with its subfolders.
+- Zip export of a folder, and of a note as Markdown or HTML with its linked files.
+- Your own drag order.
+- Favourites.
+- Tags and a short description per file, with filter chips and tag search.
+
+### Editor
+
+- Checkbox and number or bullet together on one line.
+- New text-size glide: the size under your finger is the one you get, with a live preview in the note.
+
+### Fixes
+
+- A picture shown in a note from Files now behaves like any picture: move, resize, rotate and the full menu, and keeps its Files link.
+- Checkboxes and list markers line up at every text size.
+- Smoother scrolling, with image caches sized to the phone's memory.
+
 ## 0.2.1-alpha (2026-11-12)
 
 ### Fixes
