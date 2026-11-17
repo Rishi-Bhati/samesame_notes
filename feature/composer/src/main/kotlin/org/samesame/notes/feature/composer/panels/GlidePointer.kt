@@ -1,6 +1,7 @@
 package org.samesame.notes.feature.composer.panels
 
 import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.min
 
@@ -103,12 +104,20 @@ internal class GlidePointer(
     private fun update() {
         if (suppressed) { highlighted = -1; return }
         if (!armed) { highlighted = lastRow; return }
-        val rowF = (fingerY - listTop) / rowPx + scroll
+        // The finger may be below / above the popup (it starts on the toolbar below the list): the highlight stays on the
+        // outermost row fully inside the viewport, so the highlighted number is always visible.
+        val rowF = ((fingerY - listTop) / rowPx + scroll).coerceIn(firstFullRow().toFloat(), lastFullRow() + 0.999f)
         val h = lastRow
         // Hysteresis: the finger has to be a few dp inside a neighbouring row before the highlight moves.
         if (rowF < h - hysteresisRows || rowF > h + 1 + hysteresisRows) lastRow = floor(rowF).toInt().coerceIn(0, count - 1)
         highlighted = lastRow
     }
+
+    /** First row that is fully inside the viewport for the current scroll. */
+    internal fun firstFullRow(): Int = ceil(scroll - EPS).toInt().coerceIn(0, count - 1)
+
+    /** Last row that is fully inside the viewport for the current scroll (never before [firstFullRow]). */
+    internal fun lastFullRow(): Int = (floor(scroll + visible + EPS).toInt() - 1).coerceIn(firstFullRow(), count - 1)
 
     private fun speed(depth: Float): Float {
         if (depth <= 0f) return 0f
@@ -118,6 +127,8 @@ internal class GlidePointer(
 
     companion object {
         /** Movement from the press point after which the highlight follows the finger and the bands work. */
+        private const val EPS = 1e-3f
+
         const val ARM_DP = 8f
 
         /** Extra travel past a row border before the highlight moves to the neighbouring row (no flicker on the border). */

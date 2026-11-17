@@ -166,3 +166,38 @@ class GlidePointerTest {
         assertThat(p.rowAt(rowPx * count)).isEqualTo(count - 1)
     }
 }
+
+/** The highlighted row must stay visible in the viewport wherever the finger is (the finger starts below the popup). */
+class GlidePointerVisibleTest {
+    private val rowPx = 36f
+
+    private fun pointer(scroll: Int, pressY: Float) = GlidePointer(
+        count = 30, visible = 9, scroll = scroll, rowPx = rowPx, listTop = 100f,
+        anchor = scroll + 8, pressY = pressY, pxPerDp = 1f,
+    )
+
+    @Test fun fingerBelowThePopupHighlightsTheLastVisibleRow() {
+        val p = pointer(scroll = 5, pressY = 100f + 8.5f * rowPx)
+        p.pointer(100f + 9 * rowPx + 120f)
+        assertThat(p.highlighted).isEqualTo(5 + 8)
+        assertThat(p.rowCentreY(p.highlighted)).isLessThan(100f + 9 * rowPx)
+    }
+
+    @Test fun fingerAboveThePopupHighlightsTheFirstVisibleRow() {
+        val p = pointer(scroll = 5, pressY = 100f + 8.5f * rowPx)
+        p.pointer(100f - 200f)
+        assertThat(p.highlighted).isEqualTo(5)
+    }
+
+    @Test fun highlightStaysFullyVisibleWhileTheBandScrolls() {
+        val p = pointer(scroll = 5, pressY = 100f + 8.5f * rowPx)
+        p.pointer(100f + 9 * rowPx + 60f)
+        repeat(200) {
+            p.advance(0.016f)
+            val c = p.rowCentreY(p.highlighted)
+            assertThat(c).isAtLeast(100f + rowPx / 2 - 0.5f)
+            assertThat(c).isAtMost(100f + 9 * rowPx - rowPx / 2 + 0.5f)
+        }
+        assertThat(p.highlighted).isEqualTo(29)
+    }
+}
