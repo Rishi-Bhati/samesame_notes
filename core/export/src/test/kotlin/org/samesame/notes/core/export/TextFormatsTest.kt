@@ -37,9 +37,9 @@ class TextFormatsTest {
 
     @Test fun markdownCheckboxWithNumberOrBullet() {
         val rt = rich(
-            Para(org.samesame.notes.core.model.richtext.ParagraphStyle(list = ListKind.Numbered, checkbox = true), "milk" to PLAIN),
-            Para(org.samesame.notes.core.model.richtext.ParagraphStyle(list = ListKind.Numbered, checkbox = true, checked = true), "eggs" to PLAIN),
-            Para(org.samesame.notes.core.model.richtext.ParagraphStyle(list = ListKind.Bullet, checkbox = true), "tea" to PLAIN),
+            Para(org.samesame.notes.core.model.richtext.ParagraphStyle(list = org.samesame.notes.core.model.richtext.ListKind.Numbered, checkbox = true), "milk" to PLAIN),
+            Para(org.samesame.notes.core.model.richtext.ParagraphStyle(list = org.samesame.notes.core.model.richtext.ListKind.Numbered, checkbox = true, checked = true), "eggs" to PLAIN),
+            Para(org.samesame.notes.core.model.richtext.ParagraphStyle(list = org.samesame.notes.core.model.richtext.ListKind.Bullet, checkbox = true), "tea" to PLAIN),
         )
         val md = MarkdownExport.render(sampleDoc(rt, title = ""), FakeAssets(), false).markdown
         assertThat(md).isEqualTo("1. [ ] milk\n2. [x] eggs\n- [ ] tea\n")

@@ -292,7 +292,7 @@ class RichTextOpsTest {
     }
 
     @Test fun `a v8 checklist reads as a checkbox and the current shape round trips`() {
-        val v8 = """{"text":"a","runs":[{"length":1}],"paragraphs":[{"align":"Left","indent":1,"list":"Checklist","checked":true}]}"""
+        val v8 = """{"text":"a","runs":[{"length":1,"style":{}}],"paragraphs":[{"align":"Left","indent":1,"list":"Checklist","checked":true}]}"""
         val r = NoteJson.decodeFromString(RichText.serializer(), v8)
         assertThat(r.paragraphs.single()).isEqualTo(ParagraphStyle(indent = 1, checkbox = true, checked = true))
         val both = r.copy(paragraphs = listOf(ParagraphStyle(list = ListKind.Numbered, checkbox = true)))
