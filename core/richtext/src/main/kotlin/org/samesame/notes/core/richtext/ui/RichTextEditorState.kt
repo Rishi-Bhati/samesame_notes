@@ -248,11 +248,16 @@ class RichTextEditorState(
     }
 
     internal fun createInputConnection(view: View, outAttrs: EditorInfo): InputConnection {
-        RichTextInputConnection.configure(outAttrs, body)
+        RichTextInputConnection.configure(outAttrs, body, mathGhostAtCaret())
         val sel = body.selection
         reportedSelection = intArrayOf(sel.start, sel.end, -1, -1)
         return RichTextInputConnection(view, body, inputHost)
     }
+
+    private val ghostJudge = org.samesame.notes.core.richtext.edit.math.GhostSelectionJudge()
+    private val ghostDoubleSpace = org.samesame.notes.core.richtext.edit.math.GhostDoubleSpace()
+    private val ghostSync = org.samesame.notes.core.richtext.edit.math.ImeGhostSync()
+    private var ghostResyncPosted = false
 
     private val inputHost = object : InputHost {
         override fun cut() = this@RichTextEditorState.cut()
@@ -262,6 +267,9 @@ class RichTextEditorState(
         override fun onImeChanged() = Unit
 
         override fun mathGhostAtCaret(): MathSuggestion? = this@RichTextEditorState.mathGhostAtCaret()
+
+        override val ghostJudge get() = this@RichTextEditorState.ghostJudge
+        override val ghostDoubleSpace get() = this@RichTextEditorState.ghostDoubleSpace
 
         override fun acceptMathGhostFromIme(reason: String): Boolean = this@RichTextEditorState.acceptMathGhost("ime:$reason")
     }
@@ -289,7 +297,18 @@ class RichTextEditorState(
 
     /** After undo/redo or any change the IME didn't make (doc §4.4). */
     fun restartInput() {
+        org.samesame.notes.core.richtext.input.ImeTrace.log("imm.restartInput()")
         inputView?.let { imm.restartInput(it) }
+    }
+
+    private fun scheduleGhostResync() {
+        val v = inputView ?: return
+        if (ghostResyncPosted) return
+        ghostResyncPosted = true
+        v.post {
+            ghostResyncPosted = false
+            if (inputView === v && !body.imeComposing && body.composition == null) restartInput()
+        }
     }
 
     private fun reportSelectionToIme() {
@@ -299,6 +318,9 @@ class RichTextEditorState(
         val now = intArrayOf(sel.start, sel.end, comp?.first ?: -1, comp?.let { it.last + 1 } ?: -1)
         if (now.contentEquals(reportedSelection)) return
         reportedSelection = now
+        org.samesame.notes.core.richtext.input.ImeTrace.log(
+            "imm.updateSelection(sel=${now[0]},${now[1]} comp=${now[2]},${now[3]}) len=${body.length} ghost=${mathGhostAtCaret()?.text}",
+        )
         imm.updateSelection(v, now[0], now[1], now[2], now[3])
     }
 
@@ -595,6 +617,10 @@ class RichTextEditorState(
         }
         if (next == mathGhost) return
         mathGhost = next
+        ghostJudge.reset()
+        // The keyboard clamps its spacebar glide to the text it believes follows the caret, so it has to be told whenever
+        // the ghost it can see appears, changes or goes (it only re-reads the text around the caret on a restart).
+        if (ghostSync.onGhost(next?.anchor ?: -1, next?.text, body.composition != null || body.imeComposing)) scheduleGhostResync()
         if (next != null) {
             Log.d("SsMath", "ghost anchor=${next.anchor} caret=${body.selection.min} text=${next.text}")
         }
@@ -623,6 +649,21 @@ class RichTextEditorState(
     }
 
     private fun tapAcceptsMathGhost(docX: Float, docY: Float): Boolean {
+        if (!ghostHitAtDoc(docX, docY)) return false
+        return acceptMathGhost("tap")
+    }
+
+    /** True when a view-px point lies on the ghost text (text mode, a ghost showing at the caret). */
+    fun ghostHitAt(p: Offset): Boolean {
+        if (!enabled) return false
+        val d = toDoc(p)
+        return ghostHitAtDoc(d.x, d.y)
+    }
+
+    /** A finger swipe right that began on the ghost. */
+    fun onGhostSwipe(): Boolean = acceptMathGhost("swipe")
+
+    private fun ghostHitAtDoc(docX: Float, docY: Float): Boolean {
         val ghost = mathGhostAtCaret() ?: return false
         val bounds = engine.mathGhostBounds(ghost.anchor, ghost.text) ?: return false
         val anchor = ghost.anchor.coerceIn(0, body.length)
@@ -634,8 +675,7 @@ class RichTextEditorState(
         val right = content.left + bounds.right
         val top = bounds.top + dy
         val bottom = bounds.bottom + dy
-        if (docX < left || docX > right || docY < top || docY > bottom) return false
-        return acceptMathGhost("tap")
+        return docX in left..right && docY in top..bottom
     }
 
     /** Template baseline shift used by [BodyTextEngine] when drawing a page; mirrors its internal rule alignment. */

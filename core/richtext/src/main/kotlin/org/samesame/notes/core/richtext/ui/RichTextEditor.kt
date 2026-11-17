@@ -73,6 +73,7 @@ fun Modifier.richTextGestures(state: RichTextEditorState): Modifier = pointerInp
             return@awaitEachGesture
         }
         val slop = viewConfiguration.touchSlop
+        val ghostOnDown = state.ghostHitAt(down.position)
         // 0 = up (tap), 1 = cancelled (moved / consumed / second finger), null = long press.
         val result = withTimeoutOrNull<Int>(viewConfiguration.longPressTimeoutMillis) {
             while (true) {
@@ -81,12 +82,18 @@ fun Modifier.richTextGestures(state: RichTextEditorState): Modifier = pointerInp
                 val ch = ev.changes.firstOrNull { it.id == down.id } ?: return@withTimeoutOrNull 1
                 if (ch.isConsumed) return@withTimeoutOrNull 1
                 if (!ch.pressed) return@withTimeoutOrNull 0
-                if ((ch.position - down.position).getDistance() > slop) return@withTimeoutOrNull 1
+                if ((ch.position - down.position).getDistance() > slop) {
+                    // A short horizontal drag to the right that began on the ghost accepts it (nothing is consumed, so scroll keeps working).
+                    val dx = ch.position.x - down.position.x
+                    val dy = ch.position.y - down.position.y
+                    return@withTimeoutOrNull if (ghostOnDown && dx > slop && kotlin.math.abs(dy) < dx * 0.6f) 2 else 1
+                }
             }
             @Suppress("UNREACHABLE_CODE")
             1
         }
         when (result) {
+            2 -> state.onGhostSwipe()
             0 -> {
                 val now = System.currentTimeMillis()
                 val isDouble = now - lastTapTime < viewConfiguration.doubleTapTimeoutMillis &&
