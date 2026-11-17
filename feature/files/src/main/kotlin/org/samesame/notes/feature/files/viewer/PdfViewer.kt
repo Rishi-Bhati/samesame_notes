@@ -108,7 +108,7 @@ internal fun PdfViewer(
 private fun PdfPageList(document: PdfPages, listState: androidx.compose.foundation.lazy.LazyListState) {
     val density = LocalDensity.current
     val cache = remember(document) {
-        object : LruCache<Long, Bitmap>(96 * 1024 * 1024) {
+        object : LruCache<Long, Bitmap>(org.samesame.notes.feature.files.cacheBudget(96 * 1024 * 1024, 6)) {
             override fun sizeOf(key: Long, value: Bitmap) = value.byteCount
         }
     }
