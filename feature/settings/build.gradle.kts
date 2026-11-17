@@ -10,4 +10,5 @@ dependencies {
     implementation(projects.feature.lock)
     implementation(projects.feature.share)
     implementation(libs.androidx.activity.compose)
+    implementation(libs.kotlinx.serialization.json)
 }

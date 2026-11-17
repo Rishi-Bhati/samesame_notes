@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Used only by Settings > About > Check for updates: one HTTPS request to the public releases API, made when the user taps the button. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
         android:name=".SameSameApplication"
         android:allowBackup="true"

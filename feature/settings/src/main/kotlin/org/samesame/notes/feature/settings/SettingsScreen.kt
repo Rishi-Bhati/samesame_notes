@@ -1,6 +1,19 @@
 package org.samesame.notes.feature.settings
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.samesame.notes.feature.settings.update.LatestRelease
+import org.samesame.notes.feature.settings.update.UpdateChecker
+import org.samesame.notes.feature.settings.update.UpdateResult
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -370,6 +383,8 @@ private fun AboutPage(onBack: () -> Unit, onLicences: () -> Unit) {
     val version = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull().orEmpty()
     }
+    var state by remember { mutableStateOf<UpdateUi>(UpdateUi.Idle) }
+    val scope = rememberCoroutineScope()
     SettingsScaffold(
         title = null, onBack = onBack,
         actions = {
@@ -387,6 +402,53 @@ private fun AboutPage(onBack: () -> Unit, onLicences: () -> Unit) {
                     fontSize = fixedSp(16f), lineHeight = fixedSp(21f),
                     color = colors.textSecondary, modifier = Modifier.padding(top = 9.dp),
                 )
+                val status = when (val st = state) {
+                    UpdateUi.UpToDate -> stringResource(R.string.feature_settings_update_latest)
+                    is UpdateUi.Available -> stringResource(R.string.feature_settings_update_available, st.release.displayVersion)
+                    UpdateUi.Error -> stringResource(R.string.feature_settings_update_error)
+                    UpdateUi.RateLimited -> stringResource(R.string.feature_settings_update_rate_limited)
+                    else -> null
+                }
+                if (status != null) {
+                    Text(
+                        status, style = SameSameText.LargeSubtitle.fixed(), fontSize = fixedSp(14f), lineHeight = fixedSp(19f),
+                        color = colors.textSecondary, textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(top = 28.dp, start = 32.dp, end = 32.dp)
+                            .semantics { liveRegion = LiveRegionMode.Polite },
+                    )
+                }
+                val checking = state == UpdateUi.Checking
+                val available = state as? UpdateUi.Available
+                AppPillButton(
+                    stringResource(
+                        when {
+                            checking -> R.string.feature_settings_update_checking
+                            available != null -> R.string.feature_settings_update_download
+                            else -> R.string.feature_settings_update_check
+                        },
+                    ),
+                    {
+                        if (available != null) {
+                            try {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(available.release.url)))
+                            } catch (_: ActivityNotFoundException) {
+                                Toast.makeText(context, R.string.feature_settings_update_no_browser, Toast.LENGTH_SHORT).show()
+                            }
+                        } else if (!checking) {
+                            state = UpdateUi.Checking
+                            scope.launch {
+                                val result = withContext(Dispatchers.IO) { UpdateChecker(version).check() }
+                                state = when (result) {
+                                    UpdateResult.UpToDate -> UpdateUi.UpToDate
+                                    is UpdateResult.Available -> UpdateUi.Available(result.release)
+                                    UpdateResult.Failed -> UpdateUi.Error
+                                    UpdateResult.RateLimited -> UpdateUi.RateLimited
+                                }
+                            }
+                        }
+                    },
+                    Modifier.padding(top = 14.dp).width(222.dp).height(44.dp),
+                )
             }
             AppPillButton(
                 stringResource(R.string.feature_settings_licences), onLicences,
@@ -394,6 +456,15 @@ private fun AboutPage(onBack: () -> Unit, onLicences: () -> Unit) {
             )
         }
     }
+}
+
+private sealed interface UpdateUi {
+    data object Idle : UpdateUi
+    data object Checking : UpdateUi
+    data object UpToDate : UpdateUi
+    data class Available(val release: LatestRelease) : UpdateUi
+    data object Error : UpdateUi
+    data object RateLimited : UpdateUi
 }
 
 // ---- style of new notes (#67, #70, #71) --------------------------------------------------------

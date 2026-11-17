@@ -59,6 +59,14 @@
     <string name="feature_settings_app_name">SameSame notes</string>
     <string name="feature_settings_version">Version %1$s</string>
     <string name="feature_settings_licences">Open source licences</string>
+    <string name="feature_settings_update_check">Check for updates</string>
+    <string name="feature_settings_update_checking">Checking&#8230;</string>
+    <string name="feature_settings_update_download">Download</string>
+    <string name="feature_settings_update_latest">You have the latest version.</string>
+    <string name="feature_settings_update_available">Version %1$s is available.</string>
+    <string name="feature_settings_update_error">Couldn&#8217;t check for updates. Check your connection and try again.</string>
+    <string name="feature_settings_update_rate_limited">Couldn&#8217;t check for updates right now. Try again later.</string>
+    <string name="feature_settings_update_no_browser">No browser found to open the download page.</string>
     <string name="feature_settings_about_info">About</string>
     <string name="feature_settings_privacy_heading">Your notes stay on your device</string>
     <string name="feature_settings_privacy_body">SameSame notes stores your notes only on this device. It has no account, no analytics, no advertising and no network access, so nothing you write is sent anywhere. Notes you lock are protected by the method you choose, and you can export or delete your notes at any time.</string>
