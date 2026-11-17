@@ -157,4 +157,5 @@
     <string name="feature_notes_search_clear_history">Clear search history</string>
     <string name="feature_notes_search_delete_recent">Clear</string>
     <string name="feature_notes_files">Files</string>
+    <string name="feature_notes_widget_cant_lock">A note shown on a widget can\'t be locked.</string>
 </resources>

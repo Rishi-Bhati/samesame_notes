@@ -64,7 +64,11 @@ internal class DefaultNoteRepository @Inject constructor(
     private val previewCache: PreviewDiskCache? = null,
     /** Files backlinks (`file_refs`), rebuilt on every save; null in tests that don't need them. */
     private val fileRefs: DefaultFilesRepository? = null,
+    /** The notes shown by home-screen widgets (they can't be locked); null in tests that don't need it. */
+    private val widgetPins: WidgetPinStore? = null,
 ) : NoteRepository {
+
+    override fun isOnWidget(ids: List<NoteId>): Boolean = widgetPins != null && ids.any { widgetPins.isPinned(it) }
 
     /** The backlinks last written per note, so an autosave that didn't change them doesn't rewrite the rows. */
     private val lastFileRefs = java.util.concurrent.ConcurrentHashMap<String, Map<org.samesame.notes.core.model.files.FileId, Map<org.samesame.notes.core.model.files.FileRefKind, Int>>>()
@@ -736,6 +740,8 @@ internal class DefaultNoteRepository @Inject constructor(
     }
 
     override suspend fun lockNotes(ids: List<NoteId>, token: org.samesame.notes.core.security.LockToken) {
+        // A note on a widget is never locked (the widget would keep its content); callers check first and show a message.
+        widgetPins?.let { pins -> ids.filter(pins::isPinned).takeIf { it.isNotEmpty() }?.let { throw NotePinnedToWidgetException(it) } }
         val master = token.masterKey()
         runCatching { maintenance.secureDelete() } // the blanked title/preview and search row are zeroed on disk
         try {

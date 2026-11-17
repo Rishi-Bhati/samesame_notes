@@ -41,6 +41,9 @@ interface NoteRepository {
         }
     fun search(query: String): Flow<List<Note>>
 
+    /** Whether a home-screen widget shows any of [ids]. Such notes can't be locked (the lock is refused). */
+    fun isOnWidget(ids: List<NoteId>): Boolean = false
+
     /**
      * Creates an empty note. Page style, layout, template and background come from "Style of new notes"
      * ([org.samesame.notes.core.model.AppSettings.newNote]); an explicit [pageMode] overrides the page style only.

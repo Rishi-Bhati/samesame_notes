@@ -502,6 +502,9 @@ class NotesViewModel @Inject constructor(
         notes.setFavorite(ids, !selected.all { it.isFavorite })
     }
 
+    /** Whether a home-screen widget shows any selected note (those can't be locked). */
+    fun selectionOnWidget(): Boolean = notes.isOnWidget(selection.value.toList())
+
     /** Locks the selected notes with the verified [token] (closed afterwards). */
     fun lockSelection(token: org.samesame.notes.core.security.LockToken) = viewModelScope.launch {
         try {

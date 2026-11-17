@@ -8,6 +8,9 @@ object Limits {
     const val MAX_TOOLBAR_ITEMS = 11
     const val MAX_SEARCH_QUERY_LENGTH = 199
 
+    /** Rows the note-list widget shows (RemoteViews collections stay small and cheap to rebuild). */
+    const val WIDGET_LIST_MAX_ROWS = 30
+
     // Editor v2 (docs/editor-architecture.md, WP-A)
     const val MAX_UNDO_STEPS = 200
     const val MAX_ZOOM = 3f

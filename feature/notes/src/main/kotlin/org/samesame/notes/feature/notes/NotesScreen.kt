@@ -564,7 +564,14 @@ internal fun NotesScreen(
                         // Which items show follows the reference rules (SelectionMenu.kt): no Duplicate with a locked note, ...
                         moreItems.forEach { item ->
                             when (item) {
-                                SelectionMenuItem.Lock -> AppMenuItem(stringResource(R.string.feature_notes_more_lock), { moreMenu = false; lockAction = LockAction.Lock })
+                                SelectionMenuItem.Lock -> AppMenuItem(stringResource(R.string.feature_notes_more_lock), {
+                                    moreMenu = false
+                                    if (viewModel.selectionOnWidget()) {
+                                        android.widget.Toast.makeText(context, R.string.feature_notes_widget_cant_lock, android.widget.Toast.LENGTH_LONG).show()
+                                    } else {
+                                        lockAction = LockAction.Lock
+                                    }
+                                })
                                 SelectionMenuItem.Unlock -> AppMenuItem(stringResource(R.string.feature_notes_more_unlock), { moreMenu = false; confirmUnlock = true })
                                 SelectionMenuItem.SaveAsFile -> AppMenuItem(stringResource(R.string.feature_notes_more_save_as_file), { moreMenu = false; beginTransfer(TransferKind.Save) })
                                 SelectionMenuItem.Duplicate -> AppMenuItem(stringResource(R.string.feature_notes_more_duplicate), { moreMenu = false; viewModel.duplicateSelection() })

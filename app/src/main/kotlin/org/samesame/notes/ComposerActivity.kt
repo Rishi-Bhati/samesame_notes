@@ -28,6 +28,8 @@ class ComposerActivity : FragmentActivity() {
             finish()
             return
         }
+        // A new note started from a home-screen widget button: keypad, pen, camera, image or voice (null = just open).
+        val startAction = intent.getStringExtra(EXTRA_START_ACTION)
         val launchTheme = ThemeModeCache.read(this)
         enableEdgeToEdge()
         applyLaunchAppearance(resolveDark(launchTheme, systemDark()))
@@ -37,13 +39,14 @@ class ComposerActivity : FragmentActivity() {
             SystemBarAppearance(dark)
             SameSameTheme(darkTheme = dark) {
                 // The editor lives in this activity, outside the navigation host, so it gets the Files entry points here.
-                ProvideLibraryFiles { ComposerRoute(noteId = noteId, onBack = { finish() }) }
+                ProvideLibraryFiles { ComposerRoute(noteId = noteId, onBack = { finish() }, startAction = startAction) }
             }
         }
     }
 
     companion object {
         const val EXTRA_NOTE_ID = "org.samesame.notes.extra.NOTE_ID"
+        const val EXTRA_START_ACTION = "org.samesame.notes.extra.START_ACTION"
 
         fun intent(context: Context, noteId: String): Intent =
             Intent(context, ComposerActivity::class.java).putExtra(EXTRA_NOTE_ID, noteId)

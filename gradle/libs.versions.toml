@@ -16,6 +16,7 @@ camerax = "1.6.2"
 exifinterface = "1.4.2"
 composeBom = "2026.09.00"
 datastore = "1.2.1"
+glance = "1.2.0"
 graphicsCore = "1.0.4"
 hiltAndroidx = "1.4.0"
 # 1.1 alpha: custom BrushTip/BrushPaint (calligraphy nibs, textured pencils) are public API only from 1.1.
@@ -57,6 +58,7 @@ androidx-graphics-core = { module = "androidx.graphics:graphics-core", version.r
 androidx-input-motionprediction = { module = "androidx.input:input-motionprediction", version.ref = "motionPrediction" }
 androidx-media3-session = { module = "androidx.media3:media3-session", version.ref = "media3" }
 androidx-profileinstaller = { module = "androidx.profileinstaller:profileinstaller", version.ref = "profileInstaller" }
+androidx-glance-appwidget = { module = "androidx.glance:glance-appwidget", version.ref = "glance" }
 androidx-work-runtime = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
 
 # CameraX (feature:camera)
