@@ -254,6 +254,8 @@ private fun MainPage(
             GroupCard {
                 SettingsRow(stringResource(R.string.feature_settings_show_links), checked = settings.showLinks, onChecked = { v -> update { it.copy(showLinks = v) } })
                 RowDivider()
+                SettingsRow(stringResource(R.string.feature_settings_calculate_as_you_type), checked = settings.calculateAsYouType, onChecked = { v -> update { it.copy(calculateAsYouType = v) } })
+                RowDivider()
                 // Files (0.2.0): what pasting a link to a picture of the Files library does.
                 Box {
                     SettingsRow(

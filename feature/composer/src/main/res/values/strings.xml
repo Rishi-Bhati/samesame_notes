@@ -190,6 +190,7 @@
     <string name="feature_composer_remove_anchor">Remove anchor</string>
     <string name="feature_composer_text_share">Share</string>
     <string name="feature_composer_text_web_search">Web search</string>
+    <string name="feature_composer_calculate">Calculate</string>
     <string name="feature_composer_no_image_editor">No app to edit images</string>
     <string name="feature_composer_image_edit_failed">Couldn\'t update the image.</string>
     <string name="feature_composer_voice_title">Voice recording</string>

@@ -68,6 +68,10 @@ data class TextDecorations(
     val searchMatches: List<IntRange> = emptyList(),
     /** Index into [searchMatches] of the focused hit (painted stronger), or -1. */
     val searchCurrent: Int = -1,
+    /** Inline math result drawn after [mathGhostAnchor] (body offset). Not part of the text. */
+    val mathGhostText: String? = null,
+    /** Body offset the [mathGhostText] is anchored after (usually the caret, right after `=`). */
+    val mathGhostAnchor: Int = -1,
 )
 
 /**
@@ -546,12 +550,13 @@ class BodyTextEngine(
         canvas.restoreToCount(save)
     }
 
-    /** Live part over the glyphs: the marker of an empty styled last paragraph (follows the typing style) and the caret. */
+    /** Live part over the glyphs: empty-last-paragraph marker, the math ghost, and the caret. */
     fun drawPageOver(canvas: Canvas, pageIndex: Int, decorations: TextDecorations, inPageSpace: Boolean = true) {
         val sel = body.selection
         val empty = emptyLastParagraph()
         val caret = decorations.caretVisible && sel.collapsed
-        if (empty == null && !caret) return
+        val ghost = decorations.mathGhostText?.takeIf { decorations.mathGhostAnchor >= 0 }
+        if (empty == null && !caret && ghost == null) return
         val save = enterPage(canvas, pageIndex, inPageSpace)
         if (save < 0) return
         val pag = pagination()
@@ -567,6 +572,9 @@ class BodyTextEngine(
                 }
             }
         }
+        if (ghost != null) {
+            drawMathGhost(canvas, pageIndex, decorations.mathGhostAnchor, ghost)
+        }
         if (caret) {
             val line = layout.getLineForOffset(sel.min)
             if (pag.sliceForLine(line).pageIndex == pageIndex) {
@@ -579,6 +587,44 @@ class BodyTextEngine(
             }
         }
         canvas.restoreToCount(save)
+    }
+
+    /** Draws the inline math suggestion at [anchor] (body offset) on its page, without changing the layout. */
+    private fun drawMathGhost(canvas: Canvas, pageIndex: Int, anchor: Int, text: String) {
+        if (text.isEmpty() || body.length == 0) return
+        val a = anchor.coerceIn(0, body.length)
+        val line = layout.getLineForOffset(a)
+        val slice = pagination().sliceForLine(line)
+        if (slice.pageIndex != pageIndex) return
+        onPageSurface(pageIndex) {
+            val x = layout.getPrimaryHorizontal(a)
+            val baseline = layout.getLineBaseline(line).toFloat()
+            tmpPaint.set(paint)
+            tmpPaint.style = Paint.Style.FILL
+            tmpPaint.color = blend(drawColors.text, drawColors.page, GHOST_ALPHA)
+            tmpPaint.textSize = paint.textSize
+            tmpPaint.typeface = paint.typeface
+            canvas.drawText(text, x, baseline, tmpPaint)
+        }
+    }
+
+    /**
+     * Bounds of the math ghost [text] at [anchor] in layout (column) space, or null when it is not on a laid-out line.
+     * Used to accept the suggestion on tap.
+     */
+    fun mathGhostBounds(anchor: Int, text: String): RectF? {
+        if (text.isEmpty() || body.length == 0 || layout.lineCount == 0) return null
+        val a = anchor.coerceIn(0, body.length)
+        val line = layout.getLineForOffset(a)
+        tmpPaint.set(paint)
+        tmpPaint.textSize = paint.textSize
+        tmpPaint.typeface = paint.typeface
+        val x = layout.getPrimaryHorizontal(a)
+        val w = tmpPaint.measureText(text)
+        val top = layout.getLineTop(line).toFloat()
+        val bottom = layout.getLineBottom(line).toFloat()
+        if (w <= 0f) return null
+        return RectF(x, top, x + w, bottom)
     }
 
     // ---------------------------------------------------------------- static version (page layer caching)
@@ -977,3 +1023,6 @@ private val KEEP_COLOUR: (Int) -> Int = { it }
 
 /** Guard for the tap-extension correction loop (each step makes progress or returns). */
 private const val MAX_TAP_STEPS = 512
+
+/** Opacity of the inline math suggestion: faded but readable in light and dark themes. */
+private const val GHOST_ALPHA = 0.45f

@@ -70,6 +70,18 @@ object Limits {
     /** Nesting depth of grouped objects in a .sdocx page. */
     const val MAX_SDOCX_OBJECT_DEPTH = 32
 
+    // Calculate as you type (F6). Caps keep a typed expression from producing a huge result or a slow parse.
+    /** Longest line prefix (characters before the caret) that is evaluated at all. */
+    const val MATH_MAX_EXPRESSION_LENGTH = 240
+    /** Largest exponent accepted by `^` in either direction; every result is also checked against the digit caps. */
+    const val MATH_MAX_EXPONENT = 64
+    /** Digits before the decimal point of a result; a bigger magnitude counts as overflow. */
+    const val MATH_MAX_RESULT_DIGITS = 40
+    /** Decimal places a result is rounded to before trailing zeros are stripped. */
+    const val MATH_MAX_DECIMALS = 10
+    /** Lines above the caret that `sum` / `avg` read. */
+    const val MATH_MAX_AGGREGATE_LINES = 200
+
     // Files library (0.2.0, docs/architecture/files-feature.md 1.2). Files in the Recycle bin reuse TRASH_RETENTION_DAYS.
     /** Size of one file imported into Files. */
     const val MAX_LIBRARY_FILE_BYTES = 2L * 1024 * 1024 * 1024

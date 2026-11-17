@@ -3,10 +3,13 @@ package org.samesame.notes.core.richtext.input
 import android.os.Build
 import android.text.Editable
 import android.text.InputType
+import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.ExtractedText
+import android.view.inputmethod.ExtractedTextRequest
 import org.samesame.notes.core.model.richtext.OBJECT_CHAR
 import org.samesame.notes.core.richtext.BodyText
 
@@ -24,6 +27,12 @@ interface InputHost {
 
     /** Called after every IME call that may have changed text, selection or composition. */
     fun onImeChanged()
+
+    /** The inline math suggestion shown at the collapsed caret, if any. */
+    fun mathGhostAtCaret(): org.samesame.notes.core.richtext.edit.math.MathSuggestion? = null
+
+    /** Inserts the math suggestion at the caret as real text. Returns true when accepted. */
+    fun acceptMathGhostFromIme(reason: String): Boolean = false
 }
 
 /**
@@ -89,7 +98,17 @@ class RichTextInputConnection(
 
     override fun finishComposingText(): Boolean = edit { super.finishComposingText() }
 
-    override fun setSelection(start: Int, end: Int): Boolean = edit { super.setSelection(start, end) }
+    override fun setSelection(start: Int, end: Int): Boolean = edit {
+        val ghost = host.mathGhostAtCaret()
+        if (ghost != null) {
+            val caret = body.selection
+            Log.d("SsMath", "ime setSelection req=$start,$end caret=${caret.start},${caret.end} anchor=${ghost.anchor} len=${body.length}")
+            if (caret.collapsed && start == end && start > caret.end) {
+                if (host.acceptMathGhostFromIme("setSelection")) return@edit true
+            }
+        }
+        super.setSelection(start, end)
+    }
 
     override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean = edit {
         val sel = body.selection
@@ -111,9 +130,25 @@ class RichTextInputConnection(
             KeyEvent.KEYCODE_DEL -> body.deleteBackward()
             KeyEvent.KEYCODE_FORWARD_DEL -> body.deleteForward()
             KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> body.insertNewline()
-            KeyEvent.KEYCODE_TAB -> if (event.isShiftPressed) body.outdent() else body.indent()
+            KeyEvent.KEYCODE_TAB -> {
+                val ghost = host.mathGhostAtCaret()
+                if (ghost != null) {
+                    Log.d("SsMath", "ime key TAB anchor=${ghost.anchor} caret=${sel.start},${sel.end}")
+                    host.acceptMathGhostFromIme("tab")
+                } else {
+                    if (event.isShiftPressed) body.outdent() else body.indent()
+                }
+            }
             KeyEvent.KEYCODE_DPAD_LEFT -> body.setSelection(if (sel.collapsed) (sel.min - 1).coerceAtLeast(0) else sel.min)
-            KeyEvent.KEYCODE_DPAD_RIGHT -> body.setSelection(if (sel.collapsed) (sel.max + 1).coerceAtMost(body.length) else sel.max)
+            KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                val ghost = host.mathGhostAtCaret()
+                if (ghost != null) {
+                    Log.d("SsMath", "ime key DPAD_RIGHT anchor=${ghost.anchor} caret=${sel.start},${sel.end}")
+                    host.acceptMathGhostFromIme("dpad_right")
+                } else {
+                    body.setSelection(if (sel.collapsed) (sel.max + 1).coerceAtMost(body.length) else sel.max)
+                }
+            }
             KeyEvent.KEYCODE_MOVE_HOME -> body.setSelection(0)
             KeyEvent.KEYCODE_MOVE_END -> body.setSelection(body.length)
             else -> {
@@ -139,6 +174,47 @@ class RichTextInputConnection(
     override fun performEditorAction(actionCode: Int): Boolean = edit {
         body.insertNewline()
         true
+    }
+
+    override fun getTextBeforeCursor(n: Int, flags: Int): CharSequence? {
+        if (n <= 0) return ""
+        return super.getTextBeforeCursor(n, flags)
+    }
+
+    override fun getTextAfterCursor(n: Int, flags: Int): CharSequence? {
+        if (n <= 0) return ""
+        val ghost = host.mathGhostAtCaret()
+        if (ghost != null) {
+            Log.d("SsMath", "ime getTextAfterCursor n=$n caret=${body.selection.start},${body.selection.end}")
+            return ghost.text.take(n)
+        }
+        return super.getTextAfterCursor(n, flags)
+    }
+
+    override fun getSelectedText(flags: Int): CharSequence? {
+        val ghost = host.mathGhostAtCaret()
+        if (ghost != null && !body.selection.collapsed) return super.getSelectedText(flags)
+        return super.getSelectedText(flags)
+    }
+
+    override fun getExtractedText(request: ExtractedTextRequest?, flags: Int): ExtractedText? {
+        val base = super.getExtractedText(request, flags)
+        val ghost = host.mathGhostAtCaret() ?: return base
+        Log.d("SsMath", "ime getExtractedText caret=${body.selection.start},${body.selection.end} anchor=${ghost.anchor}")
+        if (base == null) {
+            val et = ExtractedText()
+            val text = body.editable.toString() + ghost.text
+            et.text = text
+            et.partialStartOffset = -1
+            et.partialEndOffset = -1
+            et.startOffset = 0
+            et.selectionStart = body.selection.start
+            et.selectionEnd = body.selection.end
+            et.flags = 0
+            return et
+        }
+        base.text = base.text?.toString().orEmpty() + ghost.text
+        return base
     }
 
     override fun closeConnection() {
