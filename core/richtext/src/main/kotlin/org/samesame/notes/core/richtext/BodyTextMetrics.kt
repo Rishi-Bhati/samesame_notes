@@ -42,9 +42,20 @@ object BodyTextMetrics {
      * larger run into the text.) [em] is the scaled text size, see [fontSizePu].
      */
     fun markerWidth(em: Float): Float = Math.round(MARKER_WIDTH * em / DEFAULT_TEXT_SIZE_PU).toFloat()
-    /** Extra column of a paragraph that has a checkbox AND a bullet/number: the number or bullet sits right of the box. */
-    fun numberColumnWidth(em: Float): Float = Math.round(0.95f * em).toFloat()
+    /**
+     * Extra column of a paragraph that has a checkbox AND a bullet/number. It starts at the end of the checkbox column
+     * ([markerWidth]) — the same place a plain checkbox's text starts — and is a digit plus [numberTextGap] wide, so a
+     * right-aligned number never starts inside the checkbox's gutter.
+     */
+    fun numberColumnWidth(em: Float): Float = Math.round(1.05f * em).toFloat()
     fun markerInset(em: Float): Float = MARKER_INSET * em / DEFAULT_TEXT_SIZE_PU
+
+    /** Gap between a checkbox and the text (or number column) that follows it — the reference's box-to-text gap. */
+    fun checkboxTextGap(em: Float): Float = markerWidth(em) - markerInset(em) - CHECKBOX_SIZE_EM * em
+    /** Gap between a right-aligned list number and its text; the same as on a plain numbered line. */
+    fun numberTextGap(em: Float): Float = em * 0.35f
+    /** Right edge of the number in a column starting at [left]; independent of the number's digit count. */
+    fun numberRightEdge(left: Float, em: Float, columnWidth: Float): Float = left + columnWidth - numberTextGap(em)
 
     /** Text size in page units for a model font size (null = note default). The one conversion for runs and markers alike. */
     fun fontSizePu(fontSize: Float?): Float =

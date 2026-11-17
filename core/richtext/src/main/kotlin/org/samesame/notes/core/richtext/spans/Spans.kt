@@ -10,7 +10,6 @@ import android.text.style.AlignmentSpan
 import android.text.style.LeadingMarginSpan
 import android.text.style.MetricAffectingSpan
 import android.text.style.ReplacementSpan
-import org.samesame.notes.core.model.Limits
 import org.samesame.notes.core.model.richtext.CharStyle
 import org.samesame.notes.core.model.richtext.ListKind
 import org.samesame.notes.core.model.richtext.ParagraphStyle
@@ -133,15 +132,23 @@ class ParagraphSpan(val style: ParagraphStyle, private val env: TextRenderEnv) :
             TextAlign.Right -> Layout.Alignment.ALIGN_OPPOSITE
         }
 
-        /** Draws the marker of [style] whose box starts at [left]; used for spans and for the empty last paragraph. */
+        /**
+         * Draws the marker of [style] whose checkbox (or bullet/number) starts at [left]; used for spans and for the empty last paragraph.
+         * Combined items get a checkbox column then a number column; both markers end where the text column starts, so the gaps match
+         * a plain checkbox line and a plain numbered line respectively.
+         */
         fun drawMarker(c: Canvas, p: Paint, left: Float, baseline: Float, em: Float, style: ParagraphStyle, number: Int, env: TextRenderEnv) {
             // Checkbox first, then the bullet/number, then the text.
             if (style.checkbox) ChecklistSpan.draw(c, p, left, baseline, em, style.checked, env.pageColor)
             val combined = style.checkbox
+            val markerLeft = left + if (combined) BodyTextMetrics.markerWidth(em) else 0f
             when (style.list) {
                 ListKind.None -> Unit
-                ListKind.Bullet -> ListMarkerSpan.drawBullet(c, p, if (combined) left + BodyTextMetrics.markerWidth(em) else left, baseline, em)
-                ListKind.Numbered -> ListMarkerSpan.drawNumber(c, p, if (combined) left + BodyTextMetrics.numberColumnWidth(em) else left, baseline, em, number)
+                ListKind.Bullet -> ListMarkerSpan.drawBullet(c, p, markerLeft, baseline, em)
+                ListKind.Numbered -> ListMarkerSpan.drawNumber(
+                    c, p, markerLeft, baseline, em, number,
+                    if (combined) BodyTextMetrics.numberColumnWidth(em) else BodyTextMetrics.markerWidth(em),
+                )
             }
         }
     }
@@ -160,12 +167,13 @@ object ListMarkerSpan {
         c.drawCircle(cx, cy, em * m.BULLET_RADIUS_EM, tmp)
     }
 
-    fun drawNumber(c: Canvas, p: Paint, left: Float, baseline: Float, em: Float, number: Int) {
+    /** Draws [number] right-aligned at the end of its [columnWidth], leaving [BodyTextMetrics.numberTextGap] before the text. */
+    fun drawNumber(c: Canvas, p: Paint, left: Float, baseline: Float, em: Float, number: Int, columnWidth: Float) {
         tmp.set(p)
         tmp.textSize = em
         tmp.textAlign = Paint.Align.RIGHT
         // Right-aligned so the text column stays put as numbers grow.
-        c.drawText("$number.", left + BodyTextMetrics.markerWidth(em) - em * 0.35f, baseline, tmp)
+        c.drawText("$number.", BodyTextMetrics.numberRightEdge(left, em, columnWidth), baseline, tmp)
     }
 }
 

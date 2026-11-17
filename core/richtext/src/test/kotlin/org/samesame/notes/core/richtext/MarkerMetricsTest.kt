@@ -3,6 +3,9 @@ package org.samesame.notes.core.richtext
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 import org.samesame.notes.core.model.Limits
+import org.samesame.notes.core.model.richtext.ListKind
+import org.samesame.notes.core.model.richtext.ParagraphStyle
+import org.samesame.notes.core.richtext.spans.ParagraphSpan
 import kotlin.math.roundToInt
 
 /** Pure metrics shared by the editor's marker drawing and its leading margin. */
@@ -65,5 +68,42 @@ class MarkerMetricsTest {
             assertThat(BodyTextMetrics.markerWidth(em)).isEqualTo(expected)
             assertThat(BodyTextMetrics.markerInset(em)).isGreaterThan(0f)
         }
+    }
+
+    @Test fun combinedLeadingMarginIsCheckboxColumnPlusNumberColumn() {
+        val combined = ParagraphStyle(checkbox = true, list = ListKind.Numbered)
+        val numbered = ParagraphStyle(list = ListKind.Numbered)
+        for (pt in listOf(10f, 17f, 32f)) {
+            val em = fontSizePu(pt)
+            assertThat(ParagraphSpan.leadingMargin(combined, em)).isEqualTo(
+                BodyTextMetrics.markerWidth(em) + BodyTextMetrics.numberColumnWidth(em),
+            )
+            assertThat(ParagraphSpan.leadingMargin(numbered, em)).isEqualTo(BodyTextMetrics.markerWidth(em))
+        }
+    }
+
+    @Test fun combinedNumberColumnStartsAtTheCheckboxTextEdge() {
+        // The number column starts where a plain checkbox's text starts; the gap after the box is the plain
+        // checkbox-to-text gap, and the right-aligned number leaves the plain numbered line's gap before the text.
+        for (pt in listOf(10f, 17f, 32f)) {
+            val em = fontSizePu(pt)
+            val checkboxColumn = BodyTextMetrics.markerWidth(em)
+            val numberColumn = BodyTextMetrics.numberColumnWidth(em)
+            assertThat(BodyTextMetrics.checkboxTextGap(em)).isGreaterThan(0f)
+            assertThat(numberColumn).isGreaterThan(BodyTextMetrics.numberTextGap(em))
+            // A one-digit number plus its period ("1.") advances ~0.65 em; it must fit inside the number column.
+            assertThat(numberColumn - BodyTextMetrics.numberTextGap(em) - 0.65f * em).isAtLeast(0f)
+            // The number's right edge is the same for every number, so the column stays aligned as digits grow.
+            assertThat(BodyTextMetrics.numberRightEdge(checkboxColumn, em, numberColumn))
+                .isEqualTo(checkboxColumn + numberColumn - BodyTextMetrics.numberTextGap(em))
+        }
+    }
+
+    @Test fun indentIsAddedBeforeBothMarkerColumns() {
+        val em = fontSizePu(17f)
+        val combined = ParagraphStyle(checkbox = true, list = ListKind.Numbered, indent = 2)
+        assertThat(ParagraphSpan.leadingMargin(combined, em)).isEqualTo(
+            2 * BodyTextMetrics.INDENT_STEP + BodyTextMetrics.markerWidth(em) + BodyTextMetrics.numberColumnWidth(em),
+        )
     }
 }
