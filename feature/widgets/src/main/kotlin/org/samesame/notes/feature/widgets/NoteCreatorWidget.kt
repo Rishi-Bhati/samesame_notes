@@ -11,6 +11,7 @@ import androidx.glance.ImageProvider
 import androidx.glance.LocalContext
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
+import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
@@ -23,10 +24,11 @@ import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.size
 import dev.oneuiproject.oneui.R as Oui
 
-/** A row of buttons that each start a new note in a mode: keyboard, pen, camera, image, voice. */
+/** A row of buttons that each start a new note in a mode: keyboard, pen, brush, image, voice. */
 class NoteCreatorWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        provideContent { NoteCreatorContent() }
+        val style = WidgetStyleStore(context).get(GlanceAppWidgetManager(context).getAppWidgetId(id))
+        provideContent { NoteCreatorContent(widgetPalette(style)) }
     }
 }
 
@@ -35,16 +37,16 @@ private data class CreatorButton(val action: StartAction, val icon: Int, val lab
 private val creatorButtons = listOf(
     CreatorButton(StartAction.Keypad, Oui.drawable.ic_oui_keyboard, R.string.widget_creator_keypad),
     CreatorButton(StartAction.Pen, Oui.drawable.ic_oui_pen_fountain, R.string.widget_creator_pen),
-    CreatorButton(StartAction.Camera, Oui.drawable.ic_oui_camera_outline, R.string.widget_creator_camera),
+    CreatorButton(StartAction.Brush, Oui.drawable.ic_oui_brush_outline, R.string.widget_creator_brush),
     CreatorButton(StartAction.Image, Oui.drawable.ic_oui_image_outline, R.string.widget_creator_image),
     CreatorButton(StartAction.Voice, R.drawable.ic_widget_mic, R.string.widget_creator_voice),
 )
 
 @Composable
-private fun NoteCreatorContent() {
+private fun NoteCreatorContent(p: WidgetPalette) {
     val context = LocalContext.current
     Row(
-        modifier = GlanceModifier.fillMaxSize().cornerRadius(24.dp).background(WidgetColors.surface),
+        modifier = GlanceModifier.fillMaxSize().cornerRadius(24.dp).background(p.surface),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         creatorButtons.forEach { button ->
@@ -54,7 +56,7 @@ private fun NoteCreatorContent() {
             ) {
                 Image(
                     ImageProvider(button.icon), contentDescription = context.getString(button.label),
-                    modifier = GlanceModifier.size(24.dp), colorFilter = ColorFilter.tint(WidgetColors.icon),
+                    modifier = GlanceModifier.size(24.dp), colorFilter = ColorFilter.tint(p.icon),
                 )
             }
         }
@@ -63,4 +65,10 @@ private fun NoteCreatorContent() {
 
 class NoteCreatorWidgetReceiver : WidgetReceiverBase() {
     override val glanceAppWidget: GlanceAppWidget = NoteCreatorWidget()
+
+    override fun onDeleted(context: Context, appWidgetIds: IntArray) {
+        val styles = WidgetStyleStore(context)
+        appWidgetIds.forEach(styles::clear)
+        super.onDeleted(context, appWidgetIds)
+    }
 }

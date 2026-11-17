@@ -46,13 +46,16 @@ class SingleNoteWidget : GlanceAppWidget() {
         val note = noteId?.let { runCatching { ep.notes().observeNote(it).first() }.getOrNull() }
         val state = WidgetContent.single(pinned = noteId != null, note = note)
         // Nothing but a ready note reaches the renderer: a locked or missing note never produces a bitmap.
-        val page = (state as? SingleNoteState.Ready)?.let { WidgetBitmaps.page(ep.notes(), it.noteId) }
-        provideContent { SingleNoteContent(widgetId, state, page) }
+        // The page is drawn dark when the widget's background is dark (black, or "match" in night mode).
+        val style = WidgetStyleStore(context).get(widgetId)
+        val night = (context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
+        val page = (state as? SingleNoteState.Ready)?.let { WidgetBitmaps.page(ep.notes(), it.noteId, dark = style.isDark(night)) }
+        provideContent { SingleNoteContent(widgetId, state, page, widgetPalette(style)) }
     }
 }
 
 @Composable
-private fun SingleNoteContent(widgetId: Int, state: SingleNoteState, page: Bitmap?) {
+private fun SingleNoteContent(widgetId: Int, state: SingleNoteState, page: Bitmap?, p: WidgetPalette) {
     val context = LocalContext.current
     val tap = when (state) {
         is SingleNoteState.Ready -> actionStartActivity(WidgetIntents.openNote(context, state.noteId.value))
@@ -60,28 +63,32 @@ private fun SingleNoteContent(widgetId: Int, state: SingleNoteState, page: Bitma
         SingleNoteState.Locked, SingleNoteState.Gone -> actionStartActivity(WidgetIntents.openApp(context))
     }
     Box(
-        modifier = GlanceModifier.fillMaxSize().cornerRadius(16.dp).background(WidgetColors.surface).clickable(tap),
+        modifier = GlanceModifier.fillMaxSize().cornerRadius(16.dp).background(p.surface).clickable(tap),
         contentAlignment = Alignment.Center,
     ) {
         when {
+            // The page sits inside the (possibly translucent) background, which shows around it.
             state is SingleNoteState.Ready && page != null ->
-                Image(ImageProvider(page), contentDescription = state.title, modifier = GlanceModifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            state is SingleNoteState.Ready -> Message(state.title.ifBlank { context.getString(R.string.widget_untitled) }, null)
-            state == SingleNoteState.Locked -> Message(context.getString(R.string.widget_locked_note), Oui.drawable.ic_oui_lock)
-            state == SingleNoteState.Gone -> Message(context.getString(R.string.widget_note_gone), null)
-            else -> Message(context.getString(R.string.widget_choose_note), Oui.drawable.ic_oui_notes)
+                Image(
+                    ImageProvider(page), contentDescription = state.title,
+                    modifier = GlanceModifier.fillMaxSize().padding(6.dp).cornerRadius(10.dp), contentScale = ContentScale.Crop,
+                )
+            state is SingleNoteState.Ready -> Message(state.title.ifBlank { context.getString(R.string.widget_untitled) }, null, p)
+            state == SingleNoteState.Locked -> Message(context.getString(R.string.widget_locked_note), Oui.drawable.ic_oui_lock, p)
+            state == SingleNoteState.Gone -> Message(context.getString(R.string.widget_note_gone), null, p)
+            else -> Message(context.getString(R.string.widget_choose_note), Oui.drawable.ic_oui_notes, p)
         }
     }
 }
 
 @Composable
-private fun Message(text: String, icon: Int?) {
+private fun Message(text: String, icon: Int?, p: WidgetPalette) {
     Column(modifier = GlanceModifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         if (icon != null) {
-            Image(ImageProvider(icon), contentDescription = null, modifier = GlanceModifier.size(24.dp), colorFilter = ColorFilter.tint(WidgetColors.icon))
+            Image(ImageProvider(icon), contentDescription = null, modifier = GlanceModifier.size(24.dp), colorFilter = ColorFilter.tint(p.icon))
             Spacer(GlanceModifier.height(6.dp))
         }
-        Text(text, style = TextStyle(color = WidgetColors.textSecondary, fontSize = 13.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center), maxLines = 3)
+        Text(text, style = TextStyle(color = p.textSecondary, fontSize = 13.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center), maxLines = 3)
     }
 }
 
@@ -91,6 +98,8 @@ class SingleNoteWidgetReceiver : WidgetReceiverBase() {
     override fun onDeleted(context: Context, appWidgetIds: IntArray) {
         val pins = WidgetEntryPoint.get(context).pins()
         appWidgetIds.forEach(pins::unpin)
+        val styles = WidgetStyleStore(context)
+        appWidgetIds.forEach(styles::clear)
         super.onDeleted(context, appWidgetIds)
     }
 }

@@ -52,20 +52,21 @@ class NoteListWidget : GlanceAppWidget() {
         val filter = if (folderId != null) NoteFilter.InFolder(folderId) else NoteFilter.All
         val notes = if (folderGone) emptyList() else runCatching { ep.notes().observeNotes(filter, SortOrder()).first() }.getOrDefault(emptyList())
         val rows = WidgetContent.rows(notes)
+        val style = WidgetStyleStore(context).get(widgetId)
         val title = when {
             folderGone -> context.getString(R.string.widget_list_title)
             folder != null -> folder.name
             else -> context.getString(R.string.widget_list_title)
         }
         val times = rows.associate { it.noteId.value to DateUtils.formatDateTime(context, it.modifiedAt, DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_ABBREV_ALL) }
-        provideContent { NoteListContent(widgetId, title, rows, times, folderGone) }
+        provideContent { NoteListContent(widgetId, title, rows, times, folderGone, widgetPalette(style)) }
     }
 }
 
 @Composable
-private fun NoteListContent(widgetId: Int, title: String, rows: List<ListRow>, times: Map<String, String>, folderGone: Boolean) {
+private fun NoteListContent(widgetId: Int, title: String, rows: List<ListRow>, times: Map<String, String>, folderGone: Boolean, p: WidgetPalette) {
     val context = LocalContext.current
-    Column(modifier = GlanceModifier.fillMaxSize().cornerRadius(16.dp).background(WidgetColors.surface)) {
+    Column(modifier = GlanceModifier.fillMaxSize().cornerRadius(16.dp).background(p.surface)) {
         Row(
             modifier = GlanceModifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -73,7 +74,7 @@ private fun NoteListContent(widgetId: Int, title: String, rows: List<ListRow>, t
             Text(
                 title,
                 modifier = GlanceModifier.defaultWeight().clickable(actionStartActivity(NoteListConfigureActivity.intent(context, widgetId))),
-                style = TextStyle(color = WidgetColors.text, fontSize = 16.sp, fontWeight = FontWeight.Bold),
+                style = TextStyle(color = p.text, fontSize = 16.sp, fontWeight = FontWeight.Bold),
                 maxLines = 1,
             )
             Box(
@@ -82,7 +83,7 @@ private fun NoteListContent(widgetId: Int, title: String, rows: List<ListRow>, t
             ) {
                 Image(
                     ImageProvider(Oui.drawable.ic_oui_add), contentDescription = context.getString(R.string.widget_new_note),
-                    modifier = GlanceModifier.size(22.dp), colorFilter = ColorFilter.tint(WidgetColors.accent),
+                    modifier = GlanceModifier.size(22.dp), colorFilter = ColorFilter.tint(p.accent),
                 )
             }
         }
@@ -90,14 +91,14 @@ private fun NoteListContent(widgetId: Int, title: String, rows: List<ListRow>, t
             Box(modifier = GlanceModifier.fillMaxSize().clickable(actionStartActivity(WidgetIntents.openApp(context))), contentAlignment = Alignment.Center) {
                 Text(
                     context.getString(if (folderGone) R.string.widget_folder_gone else R.string.widget_list_empty),
-                    style = TextStyle(color = WidgetColors.textSecondary, fontSize = 13.sp, textAlign = TextAlign.Center),
+                    style = TextStyle(color = p.textSecondary, fontSize = 13.sp, textAlign = TextAlign.Center),
                     modifier = GlanceModifier.padding(16.dp),
                 )
             }
         } else {
             LazyColumn(modifier = GlanceModifier.fillMaxSize()) {
                 items(rows, itemId = { it.noteId.value.hashCode().toLong() }) { row ->
-                    NoteRow(row, times[row.noteId.value].orEmpty())
+                    NoteRow(row, times[row.noteId.value].orEmpty(), p)
                 }
             }
         }
@@ -105,7 +106,7 @@ private fun NoteListContent(widgetId: Int, title: String, rows: List<ListRow>, t
 }
 
 @Composable
-private fun NoteRow(row: ListRow, time: String) {
+private fun NoteRow(row: ListRow, time: String, p: WidgetPalette) {
     val context = LocalContext.current
     Row(
         modifier = GlanceModifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
@@ -115,17 +116,17 @@ private fun NoteRow(row: ListRow, time: String) {
         Column(modifier = GlanceModifier.defaultWeight()) {
             Text(
                 row.title.ifBlank { context.getString(R.string.widget_untitled) },
-                style = TextStyle(color = WidgetColors.text, fontSize = 15.sp, fontWeight = FontWeight.Medium),
+                style = TextStyle(color = p.text, fontSize = 15.sp, fontWeight = FontWeight.Medium),
                 maxLines = 1,
             )
-            if (time.isNotEmpty()) Text(time, style = TextStyle(color = WidgetColors.textSecondary, fontSize = 12.sp), maxLines = 1)
+            if (time.isNotEmpty()) Text(time, style = TextStyle(color = p.textSecondary, fontSize = 12.sp), maxLines = 1)
         }
         if (row.locked) {
             Spacer(GlanceModifier.width(8.dp))
-            Image(ImageProvider(Oui.drawable.ic_oui_lock), contentDescription = context.getString(R.string.widget_locked_note), modifier = GlanceModifier.size(16.dp), colorFilter = ColorFilter.tint(WidgetColors.icon))
+            Image(ImageProvider(Oui.drawable.ic_oui_lock), contentDescription = context.getString(R.string.widget_locked_note), modifier = GlanceModifier.size(16.dp), colorFilter = ColorFilter.tint(p.icon))
         } else if (row.favorite) {
             Spacer(GlanceModifier.width(8.dp))
-            Image(ImageProvider(Oui.drawable.ic_oui_favorite_on), contentDescription = null, modifier = GlanceModifier.size(16.dp), colorFilter = ColorFilter.tint(WidgetColors.accent))
+            Image(ImageProvider(Oui.drawable.ic_oui_favorite_on), contentDescription = null, modifier = GlanceModifier.size(16.dp), colorFilter = ColorFilter.tint(p.accent))
         }
     }
 }
@@ -136,6 +137,8 @@ class NoteListWidgetReceiver : WidgetReceiverBase() {
     override fun onDeleted(context: Context, appWidgetIds: IntArray) {
         val config = WidgetListConfig(context)
         appWidgetIds.forEach(config::clear)
+        val styles = WidgetStyleStore(context)
+        appWidgetIds.forEach(styles::clear)
         super.onDeleted(context, appWidgetIds)
     }
 }

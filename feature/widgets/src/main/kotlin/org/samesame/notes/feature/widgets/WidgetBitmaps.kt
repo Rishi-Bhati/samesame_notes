@@ -16,8 +16,8 @@ internal object WidgetBitmaps {
     const val MAX_BITMAP_BYTES = 1_500_000
 
     /** The note's first page as a bitmap that is safe to put into a widget, or null (locked, missing, render failed). */
-    suspend fun page(notes: NoteRepository, id: NoteId): Bitmap? {
-        val png = runCatching { notes.renderPreview(id, RENDER_WIDTH_PX, darkTheme = false) }.getOrNull() ?: return null
+    suspend fun page(notes: NoteRepository, id: NoteId, dark: Boolean = false): Bitmap? {
+        val png = runCatching { notes.renderPreview(id, RENDER_WIDTH_PX, darkTheme = dark) }.getOrNull() ?: return null
         val decoded = runCatching { BitmapFactory.decodeByteArray(png, 0, png.size) }.getOrNull() ?: return null
         return fit(decoded)
     }

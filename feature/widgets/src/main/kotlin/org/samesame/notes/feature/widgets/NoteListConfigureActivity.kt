@@ -20,6 +20,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -41,27 +44,52 @@ class NoteListConfigureActivity : ComponentActivity() {
         if (widgetId == AppWidgetManager.INVALID_APPWIDGET_ID) { finish(); return }
         val ep = WidgetEntryPoint.get(this)
         val config = WidgetListConfig(this)
+        val styles = WidgetStyleStore(this)
         setConfigContent {
             val context = LocalContext.current
             val scope = rememberCoroutineScope()
             val foldersFlow = remember { ep.folders().observeFolders() }
             val folders by foldersFlow.collectAsStateWithLifecycle(initialValue = emptyList())
-            val current = config.folderOf(widgetId)
-            fun choose(folder: FolderId?) = scope.launch {
-                config.set(widgetId, folder)
-                runCatching { NoteListWidget().update(context, GlanceAppWidgetManager(context).getGlanceIdBy(widgetId)) }
-                ep.updater().ensureStarted()
-                setConfigureResult(widgetId, ok = true)
-                finish()
-            }
-            Column(Modifier.fillMaxSize()) {
-                ConfigTitle(stringResource(R.string.widget_pick_folder_title))
-                LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
-                    item(key = "recent") { FolderPickRow(stringResource(R.string.widget_list_title), 0, current == null) { choose(null) } }
-                    items(folders, key = { it.id.value }) { folder: Folder ->
-                        FolderPickRow(folder.name, folder.depth, current == folder.id) { choose(folder.id) }
+            val notesFlow = remember { ep.notes().observeNotes(org.samesame.notes.core.model.NoteFilter.All, org.samesame.notes.core.model.SortOrder()) }
+            val allNotes by notesFlow.collectAsStateWithLifecycle(initialValue = emptyList())
+            // A configured widget starts on its settings; a new one starts by choosing what to show.
+            var picking by rememberSaveable { mutableStateOf(!styles.has(widgetId)) }
+            var folder by rememberSaveable { mutableStateOf(config.folderOf(widgetId)?.value) }
+            var background by rememberSaveable { mutableStateOf(styles.get(widgetId).background.ordinal) }
+            var opacity by rememberSaveable { mutableStateOf(styles.get(widgetId).opacity) }
+            val style = WidgetStyle(WidgetBackground.entries[background], opacity)
+            if (picking) {
+                Column(Modifier.fillMaxSize()) {
+                    ConfigTitle(stringResource(R.string.widget_pick_folder_title))
+                    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
+                        item(key = "recent") { FolderPickRow(stringResource(R.string.widget_list_title), 0, folder == null) { folder = null; picking = false } }
+                        items(folders, key = { it.id.value }) { f: Folder ->
+                            FolderPickRow(f.name, f.depth, folder == f.id.value) { folder = f.id.value; picking = false }
+                        }
                     }
                 }
+            } else {
+                val heading = folders.firstOrNull { it.id.value == folder }?.name ?: stringResource(R.string.widget_list_title)
+                val sample = remember(allNotes, folder) {
+                    WidgetContent.rows(allNotes.filter { folder == null || it.folderId?.value == folder }, 3).map { it.title }
+                }
+                WidgetSettingsScreen(
+                    title = stringResource(R.string.widget_settings_title),
+                    style = style,
+                    onStyle = { background = it.background.ordinal; opacity = it.opacity },
+                    extra = { ChangeButton(R.string.widget_change_folder, { picking = true }, Modifier.weight(1f)) },
+                    onDone = {
+                        scope.launch {
+                            config.set(widgetId, folder?.let(::FolderId))
+                            styles.set(widgetId, style)
+                            runCatching { NoteListWidget().update(context, GlanceAppWidgetManager(context).getGlanceIdBy(widgetId)) }
+                            ep.updater().ensureStarted()
+                            setConfigureResult(widgetId, ok = true)
+                            finish()
+                        }
+                    },
+                    preview = { s, dark -> NoteListPreview(heading, sample, s, dark) },
+                )
             }
         }
     }

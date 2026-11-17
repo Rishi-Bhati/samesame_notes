@@ -34,6 +34,7 @@ class WidgetUpdater @Inject constructor(
 
     @Synchronized
     fun ensureStarted() {
+        if (lastNight == null) onConfigurationChanged()
         if (job?.isActive == true) return
         if (!hasWidgets()) return
         prunePins()
@@ -48,6 +49,21 @@ class WidgetUpdater @Inject constructor(
     @Synchronized
     fun stopIfNoWidgets() {
         if (!hasWidgets()) { job?.cancel(); job = null }
+    }
+
+    private var lastNight: Boolean? = null
+
+    /**
+     * The system's day/night mode may have changed: a widget that matches dark mode shows a page rendered for the old mode,
+     * so redraw them all (the app's `onConfigurationChanged` calls this).
+     */
+    @Synchronized
+    fun onConfigurationChanged() {
+        val night = (context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+        val changed = lastNight != null && lastNight != night
+        lastNight = night
+        if (changed && hasWidgets()) scope.launch { updateAll() }
     }
 
     /** Redraws every widget now. Safe to call from anywhere (a failed redraw is skipped, the next change retries). */

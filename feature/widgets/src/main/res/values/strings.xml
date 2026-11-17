@@ -9,7 +9,7 @@
 
     <string name="widget_creator_keypad">New note with keyboard</string>
     <string name="widget_creator_pen">New handwritten note</string>
-    <string name="widget_creator_camera">New note with a photo</string>
+    <string name="widget_creator_brush">New brush note</string>
     <string name="widget_creator_image">New note with a picture</string>
     <string name="widget_creator_voice">New voice note</string>
 
@@ -28,4 +28,13 @@
     <string name="widget_pick_locked">A locked note can\'t be shown on a widget.</string>
     <string name="widget_pick_already">That note is already on a widget.</string>
     <string name="widget_cant_lock">A note shown on a widget can\'t be locked.</string>
+    <string name="widget_style_background">Background colour</string>
+    <string name="widget_style_white">White</string>
+    <string name="widget_style_black">Black</string>
+    <string name="widget_style_match">Match dark mode</string>
+    <string name="widget_style_opacity">Background opacity</string>
+    <string name="widget_done">Done</string>
+    <string name="widget_change_note">Change note</string>
+    <string name="widget_change_folder">Change folder</string>
+    <string name="widget_settings_title">Widget settings</string>
 </resources>
