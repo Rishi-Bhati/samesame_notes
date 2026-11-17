@@ -54,6 +54,7 @@ import org.samesame.notes.feature.composer.panels.EraserPanel
 import org.samesame.notes.feature.composer.panels.EraserPanelModel
 import org.samesame.notes.feature.composer.panels.FontSizeHoldState
 import org.samesame.notes.feature.composer.panels.FontSizeMenu
+import org.samesame.notes.feature.composer.panels.GlideSizePicker
 import org.samesame.notes.feature.composer.panels.FontSizePick
 import org.samesame.notes.feature.composer.panels.TextSizeCatalog
 import org.samesame.notes.feature.composer.panels.PanelCard
@@ -203,13 +204,15 @@ internal fun ComposerPanelLayer(
                     onClose = ::close,
                 )
             }
-            Panel.FontSize -> {
+            Panel.FontSize -> if (fontSizeHold.gliding) {
+                // Press-and-glide on the size button: the popup is placed so the current row started under the finger.
+                GlideSizePicker(hold = fontSizeHold, sample = body.selection.collapsed)
+            } else {
                 // #31: right edge 56.4 dp from the screen edge, bottom 4.6 dp below the toolbar top (it overlaps the toolbar).
                 FontSizeMenu(
                     sizes = TextSizeCatalog.menuSizes(cs.fontSize),
                     selectedSize = TextSizeCatalog.selectedSize(cs.fontSize),
                     selectedHeading = TextSizeCatalog.headingFor(cs.fontSize, cs.bold),
-                    hold = fontSizeHold,
                     onPick = onFontSizePick,
                     modifier = Modifier.align(Alignment.BottomEnd).padding(end = 56.4.dp).offset(y = 4.6.dp),
                 )

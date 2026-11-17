@@ -26,6 +26,7 @@
     <string name="feature_composer_heading_2_short">H2</string>
     <string name="feature_composer_heading_3_short">H3</string>
     <string name="feature_composer_body">Body</string>
+    <string name="feature_composer_font_size_sample" translatable="false">Aa</string>
     <string name="feature_composer_close">Close</string>
     <string name="feature_composer_done">Done</string>
     <string name="feature_composer_cancel">Cancel</string>

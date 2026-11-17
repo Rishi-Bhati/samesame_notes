@@ -91,6 +91,7 @@ import org.samesame.notes.feature.composer.input.InputMode
 import org.samesame.notes.feature.composer.input.InputSettings
 import org.samesame.notes.feature.composer.input.InputTool
 import org.samesame.notes.feature.composer.panels.FontSizeHoldState
+import org.samesame.notes.feature.composer.panels.FontSizePreview
 import org.samesame.notes.feature.composer.panels.FontSizePick
 import org.samesame.notes.feature.composer.panels.TextSizeCatalog
 import org.samesame.notes.feature.composer.panels.fontSizeButtonLabel
@@ -517,16 +518,18 @@ internal fun ComposerEditor(
     val activeBody = editor?.body ?: body
     val activeState = editor?.state ?: textState
     val fontSizeHold = remember { FontSizeHoldState() }
+    // Live preview of a size glide: the selected text shows the highlighted size without an edit; the glide's end
+    // restores it (synchronously, before the release applies the pick as one normal style change).
+    val fontSizePreview = remember(activeBody) { FontSizePreview(activeBody) }
+    SideEffect {
+        fontSizeHold.onHighlight = fontSizePreview::show
+        fontSizeHold.onGlideEnd = fontSizePreview::restore
+    }
     // Picking a heading is a plain character style (size + bold), so the note format does not change.
     fun applyFontSizePick(pick: FontSizePick) {
         session.breakTypingBurst()
         fontSizeHold.notePick(pick)
-        val (size, bold) = when (pick) {
-            is FontSizePick.Heading -> pick.heading.size.toFloat() to true
-            FontSizePick.Body -> Limits.DEFAULT_FONT_SIZE to false
-            is FontSizePick.Size -> pick.pt.toFloat() to false
-        }
-        activeBody.applyCharStyle { it.copy(fontSize = size, bold = bold) }
+        activeBody.applyCharStyle(FontSizePreview.transform(pick))
         session.dispatch(ToolbarIntent.ClosePanel)
     }
     val editorContext = LocalContext.current.applicationContext
@@ -2304,6 +2307,7 @@ internal fun ComposerEditor(
                                 TextSizeCatalog.selectedSize(cs.fontSize),
                                 TextSizeCatalog.headingFor(cs.fontSize, cs.bold),
                             ),
+                            fontSizeHeading = TextSizeCatalog.headingFor(cs.fontSize, cs.bold),
                             textColor = cs.color?.toColor() ?: androidx.compose.ui.graphics.Color.Unspecified,
                             highlightColor = cs.highlight?.toColor() ?: androidx.compose.ui.graphics.Color.Unspecified,
                             canUndo = editor?.canUndo ?: chrome.undo.canUndo,

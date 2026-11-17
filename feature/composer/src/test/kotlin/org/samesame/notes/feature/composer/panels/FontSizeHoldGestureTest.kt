@@ -5,7 +5,7 @@ import org.junit.Test
 import org.samesame.notes.feature.composer.panels.FontSizeHoldGesture.Release
 import org.samesame.notes.feature.composer.panels.FontSizeHoldGesture.Start
 
-/** E3 (rc1 round 5): how a press on the font-size button starts and what lifting the finger does. */
+/** How a press on the font-size button starts and what lifting the finger does (direct-pointing glide). */
 class FontSizeHoldGestureTest {
 
     private val slop = 16f
@@ -33,49 +33,69 @@ class FontSizeHoldGestureTest {
         assertThat(FontSizeHoldGesture.start(pressed = true, distance = 400f, touchSlop = slop, timedOut = false)).isEqualTo(Start.Glide)
     }
 
-    @Test fun releaseAwayFromTheToolbarAppliesTheHighlight() {
-        assertThat(FontSizeHoldGesture.release(highlighted = 5, leftButton = true, overToolbar = false)).isEqualTo(Release.Apply)
-        // Below the toolbar (over the keyboard) too: larger sizes are below the applied one.
-        assertThat(FontSizeHoldGesture.release(highlighted = 20, leftButton = true, overToolbar = false)).isEqualTo(Release.Apply)
+    @Test fun releaseOnARowAppliesIt() {
+        assertThat(FontSizeHoldGesture.release(highlighted = 5, moved = true, outside = false)).isEqualTo(Release.Apply)
+        assertThat(FontSizeHoldGesture.release(highlighted = 20, moved = true, outside = false)).isEqualTo(Release.Apply)
     }
 
     /** A hold without moving (or a wobble that stays on the button) leaves the popup open. */
-    @Test fun releaseWithoutLeavingTheButtonKeepsThePopupOpen() {
-        assertThat(FontSizeHoldGesture.release(highlighted = 13, leftButton = false, overToolbar = true)).isEqualTo(Release.KeepOpen)
-        assertThat(FontSizeHoldGesture.release(highlighted = -1, leftButton = false, overToolbar = true)).isEqualTo(Release.KeepOpen)
+    @Test fun releaseWithoutMovingKeepsThePopupOpen() {
+        assertThat(FontSizeHoldGesture.release(highlighted = 13, moved = false, outside = false)).isEqualTo(Release.KeepOpen)
+        assertThat(FontSizeHoldGesture.release(highlighted = -1, moved = false, outside = false)).isEqualTo(Release.KeepOpen)
     }
 
-    /** Glided away and back onto the toolbar (the button included): a change of mind. */
-    @Test fun releaseBackOverTheToolbarCancels() {
-        assertThat(FontSizeHoldGesture.release(highlighted = -1, leftButton = true, overToolbar = true)).isEqualTo(Release.Cancel)
-        assertThat(FontSizeHoldGesture.release(highlighted = 13, leftButton = true, overToolbar = true)).isEqualTo(Release.Cancel)
+    /** Glided off the popup sideways: a change of mind, whatever is highlighted. */
+    @Test fun releaseOutsideThePopupCancels() {
+        assertThat(FontSizeHoldGesture.release(highlighted = 13, moved = true, outside = true)).isEqualTo(Release.Cancel)
+        assertThat(FontSizeHoldGesture.release(highlighted = -1, moved = true, outside = true)).isEqualTo(Release.Cancel)
         // Nothing to apply (the popup never reported its rows).
-        assertThat(FontSizeHoldGesture.release(highlighted = -1, leftButton = true, overToolbar = false)).isEqualTo(Release.Cancel)
+        assertThat(FontSizeHoldGesture.release(highlighted = -1, moved = true, outside = false)).isEqualTo(Release.Cancel)
     }
 
-    /** The hold state derives the highlight from the glide alone and hides it while the finger is back over the toolbar. */
-    @Test fun holdStateHighlightsFromTheAppliedRow() {
+    @Test fun sidewaysTravelCountsAsOutsideOnlyPastTheSlack() {
+        val slack = 24f
+        assertThat(FontSizeHoldGesture.outside(x = 500f, left = 400f, right = 700f, slackPx = slack)).isFalse()
+        assertThat(FontSizeHoldGesture.outside(x = 400f, left = 400f, right = 700f, slackPx = slack)).isFalse()
+        assertThat(FontSizeHoldGesture.outside(x = 700f, left = 400f, right = 700f, slackPx = slack)).isFalse()
+        assertThat(FontSizeHoldGesture.outside(x = 400f - slack, left = 400f, right = 700f, slackPx = slack)).isFalse()
+        assertThat(FontSizeHoldGesture.outside(x = 400f - slack - 1f, left = 400f, right = 700f, slackPx = slack)).isTrue()
+        assertThat(FontSizeHoldGesture.outside(x = 700f + slack + 1f, left = 400f, right = 700f, slackPx = slack)).isTrue()
+    }
+
+    /** Vertical travel never cancels: the edge bands and the toolbar below the bottom band are part of the control. */
+    @Test fun verticalTravelStaysInside() {
+        assertThat(FontSizeHoldGesture.outside(x = 550f, left = 400f, right = 700f, slackPx = 24f)).isFalse()
+    }
+
+    /** The hold state starts on the anchor row, then highlights the row physically under the finger. */
+    @Test fun holdStateFollowsTheFingerAndClears() {
         val hold = FontSizeHoldState()
-        var t = 0L
-        fun frame() { t += 16_666_667L; hold.frame(t) }
+        val sizes = TextSizeCatalog.SIZES
+        val rowPx = 36f
+        val anchor = FontSizeRows.SIZE_START + 3
         assertThat(hold.highlighted).isEqualTo(-1)
-        // The glide starts before the popup has reported: nothing yet, then the applied row once it has.
-        hold.startGlide(1650f, 2.625f)
-        frame()
+        hold.startGlide(
+            sizes = sizes, anchor = anchor, fingerY = 1000f, minTop = 100f, maxBottom = 1400f,
+            rowPx = rowPx, topPad = 8f, bottomPad = 8f, pxPerDp = 2.625f,
+        )
+        assertThat(hold.gliding).isTrue()
+        assertThat(hold.highlighted).isEqualTo(anchor)
+        assertThat(hold.moved).isFalse()
+        val listTop = hold.placement!!.listTop(8f)
+        val y = 1000f - rowPx * 3f
+        hold.glideTo(y)
+        assertThat(hold.moved).isTrue()
+        val expected = ((y - listTop) / rowPx).toInt().coerceIn(0, FontSizeRows.count(sizes) - 1)
+        assertThat(hold.highlighted).isEqualTo(expected)
+        assertThat(hold.highlightedPick).isEqualTo(FontSizeRows.pick(expected, sizes))
+        // Far off the popup sideways: no highlight, the note shows no preview.
+        hold.glideTo(y, suppressed = true)
         assertThat(hold.highlighted).isEqualTo(-1)
-        hold.listCount = TextSizeCatalog.SIZES.size
-        hold.selectedRow = FontSizeRows.anchorRow(TextSizeCatalog.Heading.H2, 24, TextSizeCatalog.SIZES)
-        hold.neutralY = 1000f
-        frame()
-        assertThat(hold.highlighted).isEqualTo(1)
-        hold.glideTo(1650f, suppressed = true); frame(); assertThat(hold.highlighted).isEqualTo(-1)
-        hold.glideTo(1650f); frame(); assertThat(hold.highlighted).isEqualTo(1)
-        assertThat(FontSizeRows.pick(hold.highlighted, TextSizeCatalog.SIZES)).isEqualTo(FontSizePick.Heading(TextSizeCatalog.Heading.H2))
+        hold.glideTo(y)
+        assertThat(hold.highlighted).isEqualTo(expected)
         hold.endGlide()
+        assertThat(hold.gliding).isFalse()
         assertThat(hold.highlighted).isEqualTo(-1)
-        hold.clear()
-        hold.startGlide(0f, 2.625f)
-        frame()
-        assertThat(hold.highlighted).isEqualTo(-1)
+        assertThat(hold.highlightedPick).isNull()
     }
 }

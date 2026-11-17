@@ -7,7 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -37,7 +37,6 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -55,7 +54,9 @@ import org.samesame.notes.feature.composer.R
 import org.samesame.notes.feature.composer.panels.ComposerPreviews
 import org.samesame.notes.feature.composer.panels.DarkToolbarColors
 import org.samesame.notes.feature.composer.panels.FontSizeHoldGesture
-import org.samesame.notes.feature.composer.panels.GlideJoystick
+import org.samesame.notes.feature.composer.panels.GlideBottomPad
+import org.samesame.notes.feature.composer.panels.GlideRowHeight
+import org.samesame.notes.feature.composer.panels.GlideTopPad
 import org.samesame.notes.feature.composer.panels.FontSizeHoldState
 import org.samesame.notes.feature.composer.panels.FontSizePick
 import org.samesame.notes.feature.composer.panels.FontSizeRows
@@ -68,6 +69,8 @@ data class TextToolbarModel(
     val fontSize: Int = 17,
     /** "17" or the heading label ("H1"..). */
     val fontSizeLabel: String = fontSize.toString(),
+    /** The heading look of the current text, if any (where a press-and-glide on the size button starts). */
+    val fontSizeHeading: TextSizeCatalog.Heading? = null,
     val textColor: Color = Color.Unspecified,
     val highlightColor: Color = Color.Unspecified,
     val canUndo: Boolean = true,
@@ -93,6 +96,9 @@ internal val ToolbarHeight = 42.dp
 /** Handwriting toggle circle: 38 dp, left edge 7.2 dp from the screen edge (#26: x 19..118 px). */
 internal val ToggleSize = 38.dp
 internal val ToggleStart = 7.2.dp
+
+/** The glide popup keeps this much clear below the status bar. */
+private val GlideTopMargin = 8.dp
 
 /** First cell starts 54.3 dp from the left in both toolbars (#26: centre 206.5 px less half a cell). */
 private val TextCellsStart = 54.3.dp
@@ -150,7 +156,7 @@ fun TextToolbar(
     val c = toolbarColors()
     val haptic = LocalHapticFeedback.current
     val fontSizeCoords = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<LayoutCoordinates?>(null) }
-    val imeInsets = androidx.compose.foundation.layout.WindowInsets.ime
+    val safeTop = androidx.compose.foundation.layout.WindowInsets.safeDrawing
     val toolbarCoords = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<LayoutCoordinates?>(null) }
     // The gesture survives recompositions (the popup opening recomposes this toolbar), so read the latest callbacks.
     val tapFontSize = androidx.compose.runtime.rememberUpdatedState(onFontSize)
@@ -158,6 +164,7 @@ fun TextToolbar(
     val pickFontSize = androidx.compose.runtime.rememberUpdatedState(onFontSizePick)
     val cancelFontSize = androidx.compose.runtime.rememberUpdatedState(onFontSizeCancel)
     val currentFontSize = androidx.compose.runtime.rememberUpdatedState(model.fontSize)
+    val currentHeading = androidx.compose.runtime.rememberUpdatedState(model.fontSizeHeading)
     val fontSizeName = stringResource(R.string.feature_composer_font_size)
     ToolbarSurface(modifier) {
         Row(Modifier.fillMaxSize().onGloballyPositioned { toolbarCoords.value = it }, verticalAlignment = Alignment.CenterVertically) {
@@ -227,36 +234,41 @@ fun TextToolbar(
                                         FontSizeHoldGesture.Start.Glide -> Unit
                                     }
                                     // Glide: the popup is (or becomes) open and this same pointer drives it until it lifts
-                                    // (Compose keeps sending it to this node outside its bounds). The highlight starts on the
-                                    // applied row and travels at a speed set by the finger's distance from the popup's
-                                    // centre (GlideJoystick); release applies it, see FontSizeHoldGesture.release.
+                                    // (Compose keeps sending it to this node outside its bounds). Direct pointing: the glide
+                                    // popup is placed so the current row starts under the finger and the row under the finger
+                                    // is highlighted (GlideLayout, GlidePointer); release applies it (FontSizeHoldGesture.release).
                                     val sizes = TextSizeCatalog.menuSizes(currentFontSize.value.toFloat())
+                                    val anchor = FontSizeRows.anchorRow(currentHeading.value, currentFontSize.value, sizes, fontSizeHold.lastPickBody)
                                     holdOpen.value()
                                     var release = FontSizeHoldGesture.Release.Cancel
                                     var picked: FontSizePick? = null
-                                    var leftButton = false
                                     val toRoot = { p: Offset -> fontSizeCoords.value?.localToRoot(p) ?: p }
                                     val toolbarBottom = toolbarCoords.value?.boundsInRoot()?.bottom ?: 0f
-                                    val rootHeight = toolbarCoords.value?.findRootCoordinates()?.size?.height?.toFloat() ?: 0f
-                                    val keyboardUp = GlideJoystick.neutralAtPress(imeInsets.getBottom(this), toolbarBottom, rootHeight, pxPerDp)
-                                    fontSizeHold.startGlide(toRoot(down.position).y, pxPerDp, neutralAtPress = keyboardUp)
+                                    val minTop = safeTop.getTop(this) + GlideTopMargin.toPx()
+                                    fontSizeHold.startGlide(
+                                        sizes = sizes, anchor = anchor, fingerY = toRoot(down.position).y,
+                                        minTop = minTop, maxBottom = toolbarBottom,
+                                        rowPx = GlideRowHeight.toPx(), topPad = GlideTopPad.toPx(), bottomPad = GlideBottomPad.toPx(),
+                                        pxPerDp = pxPerDp,
+                                    )
+                                    val slack = FontSizeHoldGesture.SIDE_SLACK_DP * pxPerDp
                                     try {
                                         while (true) {
                                             val event = awaitPointerEvent()
                                             val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                                            val p = change.position
-                                            if (p.x < 0f || p.y < 0f || p.x >= size.width || p.y >= size.height) leftButton = true
-                                            val finger = toRoot(p)
-                                            val overToolbar = toolbarCoords.value?.boundsInRoot()?.let { finger.y >= it.top && finger.y < it.bottom } ?: false
-                                            fontSizeHold.glideTo(finger.y, suppressed = leftButton && overToolbar)
+                                            val finger = toRoot(change.position)
+                                            val popup = fontSizeHold.popupBounds
+                                            val outside = popup != null && FontSizeHoldGesture.outside(finger.x, popup.left, popup.right, slack)
+                                            fontSizeHold.glideTo(finger.y, suppressed = outside)
                                             if (!change.pressed) {
-                                                release = FontSizeHoldGesture.release(fontSizeHold.highlighted, leftButton, overToolbar)
-                                                picked = FontSizeRows.pick(fontSizeHold.highlighted, sizes)
+                                                release = FontSizeHoldGesture.release(fontSizeHold.highlighted, fontSizeHold.moved, outside)
+                                                picked = fontSizeHold.highlightedPick
                                                 break
                                             }
                                             change.consume()
                                         }
                                     } finally {
+                                        // Ends the glide and restores the live preview before a pick is applied below.
                                         fontSizeHold.endGlide()
                                     }
                                     when (release) {

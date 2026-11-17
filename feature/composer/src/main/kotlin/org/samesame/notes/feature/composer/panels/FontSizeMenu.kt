@@ -16,48 +16,33 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.samesame.notes.core.designsystem.theme.SameSameTheme
 import org.samesame.notes.feature.composer.R
-import kotlinx.coroutines.flow.collectLatest
 
-private val MenuWidth = 152.dp
+internal val FontSizeMenuWidth = 152.dp
 private val RowHeight = 44.dp
 private val MenuMaxHeight = 428.dp
-private val MenuShape = RoundedCornerShape(26.dp)
+internal val FontSizeMenuShape = RoundedCornerShape(26.dp)
 
 /**
  * Font-size dropdown (`#31`): heading presets and Body first, then the full range of point sizes (scrolls); the
- * current size / heading is drawn in the accent colour. The popup reports its applied row and its centre to [hold];
- * the font-size button's press-and-glide then scrolls the highlight from the applied row at a speed set by the finger's
- * distance from that centre ([GlideJoystick]).
+ * current size / heading is drawn in the accent colour. Opened by a tap on the toolbar's size button; a press-and-glide
+ * shows [GlideSizePicker] instead.
  */
 @Composable
 internal fun FontSizeMenu(
     sizes: List<Int>,
     selectedSize: Int,
     selectedHeading: TextSizeCatalog.Heading?,
-    hold: FontSizeHoldState,
     onPick: (FontSizePick) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -65,98 +50,67 @@ internal fun FontSizeMenu(
     val selectedRow = selectedHeading?.ordinal
         ?: if (selectedSize == TextSizeCatalog.BODY_SIZE) FontSizeRows.BODY_INDEX else -1
     val listScroll = rememberScrollState()
-    DisposableEffect(hold) { onDispose { hold.clear() } }
-    SideEffect {
-        hold.listCount = sizes.size
-        hold.selectedRow = FontSizeRows.anchorRow(selectedHeading, selectedSize, sizes, hold.lastPickBody)
-    }
-    // During a glide the popup drives the joystick from the frame clock and the list follows its fractional position
-    // (the highlighted size row stays centred, so the sizes slide under a still band); the scroll never feeds back.
-    val rowHeightPx = with(LocalDensity.current) { RowHeight.toPx() }
-    var listViewport by remember { mutableIntStateOf(0) }
-    LaunchedEffect(hold, listScroll) {
-        snapshotFlow { hold.gliding }.collectLatest { gliding ->
-            if (!gliding) return@collectLatest
-            val onFrame: (Long) -> Unit = { nanos ->
-                hold.frame(nanos)
-                val i = hold.position - FontSizeRows.SIZE_START
-                val viewport = listViewport
-                if (hold.position >= 0f && viewport > 0) {
-                    val target = GlideScrollPad.centredScroll(i, rowHeightPx, viewport.toFloat(), listScroll.maxValue.toFloat())
-                    listScroll.dispatchRawDelta(target - listScroll.value)
-                }
-            }
-            while (true) withFrameNanos(onFrame)
-        }
-    }
-    // The same rounded surface as the other toolbar popups (26 dp corners, light 0.5 dp stroke).
-    Column(
-        modifier.width(MenuWidth).heightIn(max = MenuMaxHeight)
-            .onGloballyPositioned { hold.neutralY = it.boundsInRoot().center.y }
-            .shadow(8.dp, MenuShape).clip(MenuShape)
-            .background(if (SameSameTheme.colors.isDark) Color(0xFF171717) else Color(0xFFFCFCFC))
-            .then(if (SameSameTheme.colors.isDark) Modifier else Modifier.border(0.5.dp, Color(0xFFC7C7C7), MenuShape))
-            .padding(top = 8.dp, bottom = 14.dp),
-    ) {
+    FontSizeMenuSurface(modifier.width(FontSizeMenuWidth).heightIn(max = MenuMaxHeight), bottomPad = 14.dp) {
         TextSizeCatalog.Heading.entries.forEach { heading ->
-            MenuRow(
-                index = heading.ordinal,
-                selected = heading.ordinal == selectedRow,
-                hold = hold,
-                accent = accent,
-                onClick = { onPick(FontSizePick.Heading(heading)) },
-            ) { Text(stringResource(heading.label()), fontSize = 15.sp, color = rowColor(heading.ordinal == selectedRow, accent)) }
+            MenuRow(selected = heading.ordinal == selectedRow, held = false, height = RowHeight, accent = accent,
+                onClick = { onPick(FontSizePick.Heading(heading)) }) {
+                Text(stringResource(heading.label()), fontSize = 15.sp, color = rowColor(heading.ordinal == selectedRow, accent))
+            }
         }
-        MenuRow(
-            index = FontSizeRows.BODY_INDEX,
-            selected = FontSizeRows.BODY_INDEX == selectedRow,
-            hold = hold,
-            accent = accent,
-            onClick = { onPick(FontSizePick.Body) },
-        ) { Text(stringResource(R.string.feature_composer_body), fontSize = 15.sp, color = rowColor(FontSizeRows.BODY_INDEX == selectedRow, accent)) }
-        Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 3.dp).height(1.dp).background(accent.copy(alpha = 0.35f)))
-        Column(
-            Modifier
-                .onSizeChanged { listViewport = it.height }
-                .verticalScroll(listScroll),
-        ) {
-            sizes.forEachIndexed { i, size ->
-                val index = FontSizeRows.SIZE_START + i
+        MenuRow(selected = FontSizeRows.BODY_INDEX == selectedRow, held = false, height = RowHeight, accent = accent,
+            onClick = { onPick(FontSizePick.Body) }) {
+            Text(stringResource(R.string.feature_composer_body), fontSize = 15.sp, color = rowColor(FontSizeRows.BODY_INDEX == selectedRow, accent))
+        }
+        MenuDivider(accent)
+        Column(Modifier.verticalScroll(listScroll)) {
+            sizes.forEach { size ->
                 val selected = selectedHeading == null && selectedSize == size
-                MenuRow(
-                    index = index,
-                    selected = selected,
-                    hold = hold,
-                    accent = accent,
-                    onClick = { onPick(FontSizePick.Size(size)) },
-                ) { Text(size.toString(), fontSize = 15.sp, color = rowColor(selected, accent)) }
+                MenuRow(selected = selected, held = false, height = RowHeight, accent = accent, onClick = { onPick(FontSizePick.Size(size)) }) {
+                    Text(size.toString(), fontSize = 15.sp, color = rowColor(selected, accent))
+                }
             }
         }
     }
 }
 
+/** The rounded surface shared by the tap menu and the glide popup (26 dp corners, light 0.5 dp stroke in light mode). */
 @Composable
-private fun rowColor(selected: Boolean, accent: Color): Color =
+internal fun FontSizeMenuSurface(modifier: Modifier, bottomPad: Dp, topPad: Dp = 8.dp, content: @Composable () -> Unit) {
+    Column(
+        modifier.shadow(8.dp, FontSizeMenuShape).clip(FontSizeMenuShape)
+            .background(if (SameSameTheme.colors.isDark) Color(0xFF171717) else Color(0xFFFCFCFC))
+            .then(if (SameSameTheme.colors.isDark) Modifier else Modifier.border(0.5.dp, Color(0xFFC7C7C7), FontSizeMenuShape))
+            .padding(top = topPad, bottom = bottomPad),
+    ) { content() }
+}
+
+@Composable
+internal fun MenuDivider(accent: Color) {
+    Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 3.dp).height(1.dp).background(accent.copy(alpha = 0.35f)))
+}
+
+@Composable
+internal fun rowColor(selected: Boolean, accent: Color): Color =
     if (selected) accent else MaterialTheme.colorScheme.onSurface
 
-private fun TextSizeCatalog.Heading.label(): Int = when (this) {
+internal fun TextSizeCatalog.Heading.label(): Int = when (this) {
     TextSizeCatalog.Heading.H1 -> R.string.feature_composer_heading_1
     TextSizeCatalog.Heading.H2 -> R.string.feature_composer_heading_2
     TextSizeCatalog.Heading.H3 -> R.string.feature_composer_heading_3
 }
 
+/** One row of either popup; [held] draws the glide's highlight band behind it. */
 @Composable
-private fun MenuRow(
-    index: Int,
+internal fun MenuRow(
     selected: Boolean,
-    hold: FontSizeHoldState,
+    held: Boolean,
+    height: Dp,
     accent: Color,
     onClick: () -> Unit,
     label: @Composable () -> Unit,
 ) {
-    val held = hold.highlighted == index
     Box(
-        Modifier.fillMaxWidth().height(RowHeight)
+        Modifier.fillMaxWidth().height(height)
             .then(if (held) Modifier.padding(horizontal = 4.dp) else Modifier)
             .clip(RoundedCornerShape(if (held) 8.dp else 0.dp))
             .background(if (held) accent.copy(alpha = 0.16f) else Color.Transparent)
@@ -186,7 +140,6 @@ private fun FontSizeMenuPreview() = PreviewFrame {
         sizes = TextSizeCatalog.SIZES,
         selectedSize = 17,
         selectedHeading = null,
-        hold = androidx.compose.runtime.remember { FontSizeHoldState() },
         onPick = {},
     )
 }

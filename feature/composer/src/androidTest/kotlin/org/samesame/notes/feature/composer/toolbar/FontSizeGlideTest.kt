@@ -10,14 +10,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
-import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -27,15 +29,20 @@ import org.samesame.notes.feature.composer.R
 import org.samesame.notes.feature.composer.panels.FontSizeHoldState
 import org.samesame.notes.feature.composer.panels.FontSizeMenu
 import org.samesame.notes.feature.composer.panels.FontSizePick
+import org.samesame.notes.feature.composer.panels.FontSizeRows
+import org.samesame.notes.feature.composer.panels.GlideRowHeight
+import org.samesame.notes.feature.composer.panels.GlideSizePicker
+import org.samesame.notes.feature.composer.panels.GlideTopPad
 import org.samesame.notes.feature.composer.panels.TextSizeCatalog
 
 /**
- * rel 0.2.0: press-and-hold on the font-size button opens the size popup and the same pointer keeps driving it as a
- * joystick around the popup's vertical centre: nothing moves until the finger reaches the centre, then the highlight
- * travels at a speed set by the distance from it (finger above = up the list), and stops when the finger returns to the
- * centre. The release applies the highlighted row; back over the toolbar cancels; a stationary hold leaves it open.
+ * rel 0.2.2: press-and-glide on the font-size button is DIRECT POINTING. The popup opens so the current size row sits
+ * under the finger and the row physically under the finger is highlighted (GlideLayout / GlidePointer); only the top and
+ * bottom edge bands auto-scroll. Release applies the highlighted row in one normal size change; sliding far off the popup
+ * sideways cancels; a stationary hold leaves the popup open; a plain tap keeps the dropdown list (parity).
  *
- * The frame loop runs for the whole glide, so the clock is advanced by hand (autoAdvance off).
+ * These drive the real toolbar gesture and observe [FontSizeHoldState]. The popup's frame loop runs for the whole glide,
+ * so the clock is advanced by hand (autoAdvance off). Compile-only; run on a device via the rel022 glide device job.
  */
 @RunWith(AndroidJUnit4::class)
 class FontSizeGlideTest {
@@ -46,24 +53,23 @@ class FontSizeGlideTest {
     private val picks = mutableListOf<FontSizePick>()
     private val hold = FontSizeHoldState()
 
-    // Joystick constants (internal to the panels package), restated in dp.
-    private val deadZoneDp = 16f
-    private val fullSpeedDp = 16f + 136f
-
-    private fun setUp() {
+    private fun setUp(sample: Boolean = true) {
         rule.setContent {
             SameSameTheme {
-                // Popup at the top, toolbar at the bottom: opening the popup must not move the button.
+                // Toolbar at the bottom (as in the app); the font-size button therefore starts at the bottom of the popup.
                 Box(Modifier.fillMaxSize()) {
                     if (open) {
-                        FontSizeMenu(
-                            sizes = TextSizeCatalog.SIZES,
-                            selectedSize = 17,
-                            selectedHeading = null,
-                            hold = hold,
-                            onPick = { picks += it; open = false },
-                            modifier = Modifier.align(Alignment.TopEnd).testTag(MENU),
-                        )
+                        if (hold.gliding) {
+                            GlideSizePicker(hold = hold, sample = sample, modifier = Modifier.testTag(GLIDE))
+                        } else {
+                            FontSizeMenu(
+                                sizes = TextSizeCatalog.SIZES,
+                                selectedSize = 17,
+                                selectedHeading = null,
+                                onPick = { picks += it; open = false },
+                                modifier = Modifier.align(Alignment.TopEnd).testTag(MENU),
+                            )
+                        }
                     }
                     TextToolbar(
                         model = TextToolbarModel(),
@@ -85,6 +91,7 @@ class FontSizeGlideTest {
 
     private val fontSize get() = rule.activity.getString(R.string.feature_composer_font_size)
     private val button get() = rule.onNodeWithContentDescription(fontSize)
+    private val sampleText get() = rule.activity.getString(R.string.feature_composer_font_size_sample)
 
     private fun advance(ms: Long) {
         rule.mainClock.advanceTimeBy(ms)
@@ -92,28 +99,19 @@ class FontSizeGlideTest {
     }
 
     private fun px(dp: Float): Float = with(rule.density) { dp.dp.toPx() }
+    private val rowPx get() = with(rule.density) { GlideRowHeight.toPx() }
 
-    /** Vertical offset from the button's centre to the popup's centre (px, negative: the popup is above). */
-    private fun toCentre(): Float {
-        val menu = rule.onNodeWithTag(MENU).getBoundsInRoot()
-        val btn = button.getBoundsInRoot()
-        return with(rule.density) { ((menu.top + menu.bottom) / 2 - (btn.top + btn.bottom) / 2).toPx() }
-    }
-
-    /** Hold the button past the long-press timeout (the popup opens), then glide up to the popup's centre in steps. */
-    private fun holdAndGlideToCentre(): Float {
+    /** Press and wait out the long-press timeout: the glide popup opens and the current row is highlighted. */
+    private fun holdToOpen() {
         button.performTouchInput { down(center) }
         advance(1_000)
         assertTrue("hold must open the popup", open)
-        val dy = toCentre()
-        for (i in 1..10) {
-            button.performTouchInput { moveTo(center + Offset(0f, dy * i / 10f)) }
-            advance(32)
-        }
-        return dy
+        assertTrue("hold must start a glide", hold.gliding)
     }
 
-    private fun moveToCentrePlus(dy: Float, offsetPx: Float) = button.performTouchInput { moveTo(center + Offset(0f, dy + offsetPx)) }
+    /** Move the still-down finger by [dy] px vertically (negative = up) from the button centre. */
+    private fun moveBy(dx: Float = 0f, dy: Float = 0f) =
+        button.performTouchInput { moveTo(center + Offset(dx, dy)) }
 
     private fun release() {
         button.performTouchInput { up() }
@@ -127,84 +125,100 @@ class FontSizeGlideTest {
         assertTrue(open)
         button.performTouchInput { down(center); up() }
         advance(100)
-        assertTrue(!open)
+        assertFalse(open)
     }
 
     @Test fun stationaryHoldOpensThePopupAndReleaseKeepsItOpen() {
         setUp()
-        button.performTouchInput { down(center) }
-        advance(1_000)
-        assertTrue("hold must open the popup", open)
+        holdToOpen()
         release()
-        assertTrue("release on the button must leave the popup open", open)
+        assertTrue("release without moving must leave the popup open", open)
         assertTrue(picks.isEmpty())
     }
 
-    /** Gliding up from the button to the centre moves nothing: lifting there applies the applied size again. */
-    @Test fun nothingMovesUntilTheCentreAndRestingThereKeepsTheSize() {
+    /** The current size row starts highlighted under the finger (the anchor), before any movement. */
+    @Test fun currentRowStartsUnderTheFinger() {
         setUp()
-        val dy = holdAndGlideToCentre()
-        val atCentre = hold.highlighted
-        assertTrue("the glide starts on the applied row", atCentre >= 0)
-        advance(1_500)
-        assertEquals(atCentre, hold.highlighted)
-        moveToCentrePlus(dy, px(deadZoneDp / 2))
-        advance(1_000)
-        assertEquals(atCentre, hold.highlighted)
+        holdToOpen()
+        val sizes = TextSizeCatalog.SIZES
+        val anchor = FontSizeRows.anchorRow(null, 17, sizes)
+        assertEquals(anchor, hold.highlighted)
+        assertEquals(FontSizePick.Size(17), hold.highlightedPick)
+        val placement = hold.placement!!
+        val fingerY = with(rule.density) {
+            val b = button.getBoundsInRoot()
+            ((b.top + b.bottom) / 2f).toPx()
+        }
+        val centre = placement.listTop(with(rule.density) { GlideTopPad.toPx() }) + (anchor - placement.scroll + 0.5f) * rowPx
+        // When the anchor row fits it is exactly under the finger; when the popup is clamped it is within a row.
+        assertTrue("anchor row under the finger", kotlin.math.abs(centre - fingerY) <= rowPx + 2f)
         release()
-        assertEquals(listOf<FontSizePick>(FontSizePick.Size(17)), picks)
     }
 
-    /** Held far above the centre the list runs to Heading 1 and stays there. */
-    @Test fun holdingAboveTheCentreScrollsToHeading1() {
+    /** Glide a couple of rows up: the highlighted row is the one under the finger and release applies just that pick. */
+    @Test fun releaseAppliesTheHighlightedRow() {
         setUp()
-        val dy = holdAndGlideToCentre()
-        moveToCentrePlus(dy, -px(fullSpeedDp + 20f))
-        advance(2_500)
+        holdToOpen()
+        moveBy(dy = -2f * rowPx)
+        advance(32)
+        val target = hold.highlighted
+        assertTrue("a row must be highlighted", target >= 0)
+        val pick = hold.highlightedPick!!
         release()
-        assertEquals(listOf<FontSizePick>(FontSizePick.Heading(TextSizeCatalog.Heading.H1)), picks)
+        assertEquals(listOf(pick), picks)
+        assertFalse("release applies and closes the popup", open)
     }
 
-    /** Held far below the centre the list runs to the largest size in one gesture. */
-    @Test fun holdingBelowTheCentreScrollsToTheLargestSize() {
+    /** Sliding far off the popup sideways hides the highlight, restores the preview and cancels on release. */
+    @Test fun glidingOffTheSideCancelsWithoutChangingTheSize() {
         setUp()
-        val dy = holdAndGlideToCentre()
-        moveToCentrePlus(dy, px(fullSpeedDp + 20f))
+        holdToOpen()
+        moveBy(dy = -2f * rowPx)
+        advance(32)
+        assertTrue(hold.highlighted >= 0)
+        moveBy(dx = -px(500f), dy = -2f * rowPx)
+        advance(32)
+        assertEquals("no highlight while outside the popup", -1, hold.highlighted)
+        release()
+        assertTrue("cancel must not apply a pick", picks.isEmpty())
+        assertFalse(open)
+    }
+
+    /** Resting deep in the bottom edge band auto-scrolls to the largest size, applied on release. */
+    @Test fun bottomEdgeBandScrollsToTheLargestSize() {
+        setUp()
+        holdToOpen()
+        moveBy(dy = 3f * rowPx)
         advance(2_500)
+        assertEquals(FontSizeRows.SIZE_START + TextSizeCatalog.SIZES.lastIndex, hold.highlighted)
         release()
         assertEquals(listOf<FontSizePick>(FontSizePick.Size(TextSizeCatalog.SIZES.last())), picks)
     }
 
-    /** Just past the dead zone until the highlight moves once, then back to the centre: exactly one step (17 -> 16). */
-    @Test fun aSingleStepIsPrecise() {
+    /** Resting in the top edge band auto-scrolls back to the first heading. */
+    @Test fun topEdgeBandScrollsBackToTheStart() {
         setUp()
-        val dy = holdAndGlideToCentre()
-        val start = hold.highlighted
-        moveToCentrePlus(dy, -px(deadZoneDp + 12f))
-        var waited = 0
-        while (hold.highlighted == start && waited < 2_000) { advance(16); waited += 16 }
-        moveToCentrePlus(dy, 0f)
-        advance(600)
-        assertEquals(start - 1, hold.highlighted)
+        holdToOpen()
+        moveBy(dy = -20f * rowPx)
+        advance(2_500)
+        assertEquals(0, hold.highlighted)
         release()
-        assertEquals(listOf<FontSizePick>(FontSizePick.Size(16)), picks)
+        assertEquals(listOf<FontSizePick>(FontSizePick.Heading(TextSizeCatalog.Heading.H1)), picks)
     }
 
-    @Test fun glideBackOntoTheToolbarCancels() {
-        setUp()
-        val dy = holdAndGlideToCentre()
-        moveToCentrePlus(dy, -px(60f))
-        advance(300)
-        // Back onto the toolbar: having left the button, this is a change of mind.
-        button.performTouchInput { moveTo(center) }
-        advance(100)
-        assertEquals(-1, hold.highlighted)
+    /** At a caret the note cannot show the size, so the sample chip ("Aa" at the highlighted size) is shown. */
+    @Test fun sampleChipIsShownDuringAGlide() {
+        setUp(sample = true)
+        holdToOpen()
+        rule.onNodeWithText(sampleText).assertIsDisplayed()
+        moveBy(dy = -rowPx)
+        advance(32)
+        rule.onNodeWithText(sampleText).assertIsDisplayed()
         release()
-        assertTrue("release back on the toolbar must close the popup", !open)
-        assertTrue(picks.isEmpty())
     }
 
     private companion object {
         const val MENU = "font_size_menu"
+        const val GLIDE = "font_size_glide"
     }
 }
