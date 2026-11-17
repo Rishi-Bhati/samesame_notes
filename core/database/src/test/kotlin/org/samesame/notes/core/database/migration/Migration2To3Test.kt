@@ -94,7 +94,7 @@ class Migration2To3Test {
     )
 
     private fun openRoom(): SameSameDatabase = Room.databaseBuilder(context, SameSameDatabase::class.java, dbFile.absolutePath)
-        .addMigrations(SameSameDatabase.MIGRATION_1_2, SameSameDatabase.MIGRATION_2_3)
+        .addMigrations(SameSameDatabase.MIGRATION_1_2, SameSameDatabase.MIGRATION_2_3, SameSameDatabase.MIGRATION_3_4)
         .build().also { room = it }
 
     @Test fun `migration 2 to 3 validates and keeps every note, folder, tag, search entry and view state`() = runBlocking<Unit> {
@@ -110,7 +110,7 @@ class Migration2To3Test {
         room = null
 
         val after = SQLiteDatabase.openDatabase(dbFile.path, null, SQLiteDatabase.OPEN_READONLY).use { raw ->
-            assertThat(raw.version).isEqualTo(3)
+            assertThat(raw.version).isEqualTo(4)
             oldTables.map { dump(raw, it) }
         }
         assertThat(after).isEqualTo(before)
