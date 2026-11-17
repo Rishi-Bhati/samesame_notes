@@ -69,7 +69,7 @@
     <string name="feature_settings_update_no_browser">No browser found to open the download page.</string>
     <string name="feature_settings_about_info">About</string>
     <string name="feature_settings_privacy_heading">Your notes stay on your device</string>
-    <string name="feature_settings_privacy_body">SameSame notes stores your notes only on this device. It has no account, no analytics, no advertising and no network access, so nothing you write is sent anywhere. Notes you lock are protected by the method you choose, and you can export or delete your notes at any time.</string>
+    <string name="feature_settings_privacy_body">SameSame notes stores your notes only on this device. It has no account, no analytics and no advertising, and nothing you write is sent anywhere. The app goes online only when you tap Check for updates in About, to ask GitHub for the latest version number. Notes you lock are protected by the method you choose, and you can export or delete your notes at any time.</string>
     <!-- Bulk import / export -->
     <string name="feature_settings_import_notes">Import notes</string>
     <string name="feature_settings_export_notes">Export notes</string>
