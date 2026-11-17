@@ -35,6 +35,11 @@ class FolderUploaderTest {
         var onFirstImport: CompletableDeferred<Unit>? = null
 
         override fun observeFolders() = folders
+        override fun observeTags(): kotlinx.coroutines.flow.Flow<List<String>> = kotlinx.coroutines.flow.flowOf(emptyList())
+        override suspend fun moveFileWithin(id: FileId, targetIndex: Int) = Unit
+        override suspend fun moveFolderWithin(id: FileFolderId, targetIndex: Int) = Unit
+        override suspend fun setDescription(id: FileId, description: String) = Unit
+        override suspend fun setTags(id: FileId, tags: List<String>) = Unit
         override suspend fun createFolder(name: String, parentId: FileFolderId?, color: Long?): FileFolderId {
             val id = FileFolderId("f${folders.value.size + 1}")
             folders.value += FileFolder(id, parentId, name, null, 0, 0, 0, 0, 0)
