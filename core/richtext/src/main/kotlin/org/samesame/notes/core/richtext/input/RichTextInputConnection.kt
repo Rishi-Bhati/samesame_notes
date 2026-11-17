@@ -152,7 +152,10 @@ class RichTextInputConnection(
     }
 
     override fun deleteSurroundingTextInCodePoints(beforeLength: Int, afterLength: Int): Boolean =
-        edit("deleteSurroundingTextInCodePoints", "$beforeLength,$afterLength") { super.deleteSurroundingTextInCodePoints(beforeLength, afterLength) }
+        edit("deleteSurroundingTextInCodePoints", "$beforeLength,$afterLength") {
+            host.ghostDoubleSpace.onDelete(SystemClock.uptimeMillis())
+            super.deleteSurroundingTextInCodePoints(beforeLength, afterLength)
+        }
 
     override fun sendKeyEvent(event: KeyEvent): Boolean = edit("sendKeyEvent", "action=${event.action} key=${KeyEvent.keyCodeToString(event.keyCode)} meta=${event.metaState}") {
         if (event.action != KeyEvent.ACTION_DOWN) return@edit true

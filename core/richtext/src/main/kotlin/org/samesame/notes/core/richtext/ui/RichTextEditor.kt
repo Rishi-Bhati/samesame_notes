@@ -83,10 +83,14 @@ fun Modifier.richTextGestures(state: RichTextEditorState): Modifier = pointerInp
                 if (ch.isConsumed) return@withTimeoutOrNull 1
                 if (!ch.pressed) return@withTimeoutOrNull 0
                 if ((ch.position - down.position).getDistance() > slop) {
-                    // A short horizontal drag to the right that began on the ghost accepts it (nothing is consumed, so scroll keeps working).
+                    // A short horizontal drag to the right that began on the ghost accepts it.
                     val dx = ch.position.x - down.position.x
                     val dy = ch.position.y - down.position.y
-                    return@withTimeoutOrNull if (ghostOnDown && dx > slop && kotlin.math.abs(dy) < dx * 0.6f) 2 else 1
+                    if (ghostOnDown && dx > slop && kotlin.math.abs(dy) < dx * 0.6f) {
+                        ch.consume()
+                        return@withTimeoutOrNull 2
+                    }
+                    return@withTimeoutOrNull 1
                 }
             }
             @Suppress("UNREACHABLE_CODE")

@@ -122,6 +122,14 @@ class MathGhostInputTest {
     fun noResyncWhileComposing() {
         val s = ImeGhostSync()
         assertFalse(s.onGhost(5, " 1", true))
-        assertTrue(s.onGhost(-1, null, false))
+        assertFalse(s.onGhost(-1, null, true))
+    }
+
+    @Test
+    fun resyncsAfterCompositionEndsWithGhost() {
+        val s = ImeGhostSync()
+        assertFalse(s.onGhost(5, " 1", composing = true))
+        assertTrue(s.onGhost(5, " 1", composing = false))
+        assertFalse(s.onGhost(5, " 1", composing = false))
     }
 }
