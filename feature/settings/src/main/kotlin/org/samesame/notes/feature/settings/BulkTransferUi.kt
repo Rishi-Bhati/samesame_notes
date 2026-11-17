@@ -139,10 +139,11 @@ internal fun ExportNotesPage(viewModel: BulkTransferViewModel, onBack: () -> Uni
     var chooseFormat by rememberSaveable { mutableStateOf(false) }
     var format by rememberSaveable { mutableStateOf<ExportFormat?>(null) }
     var includeFiles by remember { mutableStateOf(true) }
+    var linkFilesAsZip by remember { mutableStateOf(false) }
     val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
         val f = format
         format = null
-        if (tree != null && f != null) viewModel.export(selection.ordered(selectable), f, tree, includeFiles)
+        if (tree != null && f != null) viewModel.export(selection.ordered(selectable), f, tree, includeFiles, linkFilesAsZip)
     }
     val count = selection.selected.size
     val colors = SameSameTheme.colors
@@ -188,6 +189,7 @@ internal fun ExportNotesPage(viewModel: BulkTransferViewModel, onBack: () -> Uni
             onConfirm = { f -> chooseFormat = false; format = f; folderPicker.launch(null) },
             linkedFilesBytes = linkedBytes,
             onIncludeLinkedFilesChange = { includeFiles = it },
+            onLinkFilesAsZipChange = { linkFilesAsZip = it },
         )
     }
 }

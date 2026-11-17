@@ -71,8 +71,11 @@ fun SaveAsFileDialog(
     linkedFilesBytes: Long = 0L,
     /** Called with the checkbox state (default on) whenever it changes. */
     onIncludeLinkedFilesChange: (Boolean) -> Unit = {},
+    /** md/HTML: write a zip with the linked library files and relative links that work on a PC. */
+    onLinkFilesAsZipChange: (Boolean) -> Unit = {},
 ) {
     var includeFiles by remember { mutableStateOf(true) }
+    var linkFilesAsZip by remember { mutableStateOf(false) }
     val rows = SaveFormats.filter { it.first in formats }
     var selected by remember { mutableStateOf(rows.firstOrNull()?.first ?: ExportFormat.SSNOTE) }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -102,6 +105,16 @@ fun SaveAsFileDialog(
                             Text(stringResource(label), color = MaterialTheme.colorScheme.onSurface, fontSize = 17.sp, modifier = Modifier.weight(1f))
                             if (selected == format) Icon(AppIcons.Check, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurface)
                         }
+                    }
+                }
+                if (selected == ExportFormat.MARKDOWN || selected == ExportFormat.HTML) {
+                    Row(
+                        Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 24.dp)
+                            .clickable(role = Role.Checkbox) { linkFilesAsZip = !linkFilesAsZip; onLinkFilesAsZipChange(linkFilesAsZip) },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(stringResource(R.string.feature_share_link_files_as_zip), color = MaterialTheme.colorScheme.onSurface, fontSize = 17.sp, modifier = Modifier.weight(1f))
+                        if (linkFilesAsZip) Icon(AppIcons.Check, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurface)
                     }
                 }
                 if (selected == ExportFormat.SSNOTE && linkedFilesBytes > 0) {
