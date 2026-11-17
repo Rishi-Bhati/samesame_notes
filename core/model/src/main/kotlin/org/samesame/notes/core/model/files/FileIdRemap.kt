@@ -1,5 +1,6 @@
 package org.samesame.notes.core.model.files
 
+import org.samesame.notes.core.model.document.FloatingObject
 import org.samesame.notes.core.model.document.ImageObject
 import org.samesame.notes.core.model.document.NoteDocument
 import org.samesame.notes.core.model.richtext.RichText
@@ -22,6 +23,21 @@ object FileIdRemap {
             } else o
         }
         return doc.copy(body = body, inlineObjects = objects)
+    }
+
+    /** The JSON of a floating page object ([org.samesame.notes.core.model.document.FloatingObject]) with its picture's library id remapped. */
+    fun remapFloatingJson(json: String, map: Map<String, String>): String {
+        if (map.isEmpty() || !json.contains("libraryFileId\":\"")) return json
+        val lower = map.entries.associate { it.key.lowercase() to it.value }
+        return try {
+            val f = FloatingObject.fromJson(json)
+            val img = f.obj as? ImageObject ?: return json
+            val id = img.libraryFileId?.lowercase() ?: return json
+            val new = lower[id] ?: return json
+            f.copy(obj = img.copy(libraryFileId = new)).toJson()
+        } catch (e: Exception) {
+            json
+        }
     }
 
     fun remapText(rt: RichText, map: Map<String, String>): RichText {

@@ -428,7 +428,7 @@ class BodyTextEngine(
     }
 
     private fun emptyLineX(style: ParagraphStyle): Float {
-        val margin = ParagraphSpan.leadingMargin(style)
+        val margin = ParagraphSpan.leadingMargin(style, fontSizePu(body.typingStyle?.fontSize))
         return when (style.align) {
             TextAlign.Left -> margin
             TextAlign.Center -> margin + (layout.width - margin) / 2f
@@ -629,7 +629,7 @@ class BodyTextEngine(
             if (paragraphStart >= start) {
                 val style = body.paragraphStyleOrNull(p) ?: break
                 if (style.list != ListKind.None) {
-                    val right = ParagraphSpan.leadingMargin(style)
+                    val right = ParagraphSpan.leadingMargin(style, markerEm(paragraphStart))
                     if (right > 0f) {
                         val line = layout.getLineForOffset(paragraphStart)
                         path.addRect(

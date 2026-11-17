@@ -48,7 +48,6 @@ import org.samesame.notes.core.richtext.ui.RichTextEditorState
 import org.samesame.notes.feature.composer.R
 import org.samesame.notes.feature.composer.session.EditorSession
 import org.samesame.notes.feature.composer.text.ExtendedTextToolbar
-import java.util.UUID
 
 /**
  * Library file links in the body (docs/architecture/files-feature.md 2.3, 2.4): the paste interception and its chooser,
@@ -147,12 +146,19 @@ internal class FileLinkController(
         }
     }
 
-    /** A picture ready to go into the text. */
-    private class Shown(val obj: ImageObject)
+    /** A picture ready to be put on the page: its bytes and the library file it came from. */
+    private class Shown(val bytes: ByteArray, val extension: String, val fileId: String)
 
     /**
-     * Replaces `[start, end)` by [parts] (one undo step): link runs, and pictures copied into the bundle first. A picture
-     * that can't be read goes in as a link (with a message).
+     * Puts a picture on the current page exactly like Insert > Image does (bytes, extension, library file id, nth picture of
+     * this insertion); set by the screen. Null leaves pictures out (they go in as links).
+     */
+    var placePicture: (suspend (ByteArray, String, String, Int) -> Boolean)? = null
+
+    /**
+     * Replaces `[start, end)` by [parts] (one undo step for the text): link runs go into the text, pictures are copied into the
+     * bundle and put on the page as normal pictures (move, resize, rotate and the object menu all work). A picture that can't
+     * be read goes in as a link (with a message).
      */
     private suspend fun insertParts(parts: List<FileLinkPaste.Part>, start: Int, end: Int) {
         var failed = false
@@ -168,27 +174,28 @@ internal class FileLinkController(
         val len = body.length
         val s = start.coerceIn(0, len)
         val e = end.coerceIn(s, len)
-        var pictures = 0
+        val pictures = ready.filterIsInstance<Shown>()
+        val linkParts = ready.filterIsInstance<FileLinkPaste.Part.Link>()
         session.group {
             body.setSelection(s, e)
             val style = body.currentCharStyle()
-            ready.forEachIndexed { i, p ->
+            linkParts.forEachIndexed { i, p ->
                 if (i > 0) body.insertRich(FileLinkPaste.plain(FileLinkPaste.SEPARATOR, style))
-                when (p) {
-                    is FileLinkPaste.Part.Link -> body.insertRich(FileLinkPaste.linkRun(p.label, p.uri, style))
-                    is Shown -> {
-                        session.changeInlineObject(p.obj.id, p.obj)
-                        body.insertObject(p.obj.id)
-                        pictures++
-                    }
-                }
+                body.insertRich(FileLinkPaste.linkRun(p.label, p.uri, style))
             }
+            // A picture-only insertion still replaces the selection (e.g. the link it was made from).
+            if (linkParts.isEmpty() && e > s) body.replace(s, e, "")
+        }
+        var placed = 0
+        val place = placePicture
+        for (p in pictures) {
+            if (place != null && place(p.bytes, p.extension, p.fileId, placed)) placed++ else failed = true
         }
         if (failed) snackbar.showSnackbar(strings.showFailed)
-        if (pictures > 0 && locked && !FileTips.lockedTipSeen(context)) lockedTip = true
+        if (placed > 0 && locked && !FileTips.lockedTipSeen(context)) lockedTip = true
     }
 
-    /** Copies [file] into the bundle and builds its inline picture, or null when it can't be read or decoded. */
+    /** Reads [file] (size-limited) and checks it decodes as a picture, or null when it can't be read or decoded. */
     private suspend fun showable(file: LibraryFile): Shown? {
         val bytes = runCatching { links.readBytes(file, Limits.MAX_SHOW_IN_NOTE_BYTES) }.getOrNull() ?: return null
         val (w, h) = withContext(Dispatchers.Default) {
@@ -197,10 +204,7 @@ internal class FileLinkController(
             o.outWidth to o.outHeight
         }
         if (w <= 0 || h <= 0) return null
-        val media = runCatching { session.storeMedia(bytes, FileLinkPaste.mediaExtension(file)) }.getOrNull()
-        if (media.isNullOrEmpty()) return null
-        val (wPu, hPu) = FileLinkPaste.inlineSize(w, h, Limits.PAGE_WIDTH_PU * INLINE_WIDTH_FRACTION)
-        return Shown(ImageObject(UUID.randomUUID().toString(), media, wPu, hPu, libraryFileId = file.id.value))
+        return Shown(bytes, FileLinkPaste.mediaExtension(file), file.id.value)
     }
 
     // ------------------------------------------------------------------------------------------ taps
@@ -322,6 +326,14 @@ internal class FileLinkController(
         }
     }
 
+    /** The link run "Show as link" puts in place of a picture shown from [fileId]: the file's current name, or its id when it is gone. */
+    suspend fun linkRunFor(fileId: FileId): org.samesame.notes.core.model.richtext.RichText {
+        val file = runCatching { links.resolve(listOf(fileId))[fileId] }.getOrNull()
+        val label = file?.displayName ?: fileId.value
+        val uri = if (file != null) FileLinks.format(file) else FileLinks.format(fileId, "")
+        return FileLinkPaste.linkRun(label, uri, body.currentCharStyle())
+    }
+
     private fun showAsLink(offset: Int, objectId: String, fileId: FileId) {
         scope.launch {
             val file = runCatching { links.resolve(listOf(fileId))[fileId] }.getOrNull()
@@ -366,10 +378,6 @@ internal class FileLinkController(
 
     fun dispose() = menu.hide()
 
-    private companion object {
-        /** A shown picture is at most this part of the page width, like Insert > Image. */
-        const val INLINE_WIDTH_FRACTION = 0.7f
-    }
 }
 
 /** One-time tips of the Files features (device-local, like the editor's other guides). */

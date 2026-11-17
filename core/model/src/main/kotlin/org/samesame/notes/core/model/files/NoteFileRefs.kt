@@ -2,6 +2,7 @@ package org.samesame.notes.core.model.files
 
 import org.samesame.notes.core.model.document.ImageObject
 import org.samesame.notes.core.model.document.NoteDocument
+import org.samesame.notes.core.model.document.NoteObject
 import org.samesame.notes.core.model.richtext.OBJECT_CHAR
 import org.samesame.notes.core.model.richtext.RichText
 
@@ -11,8 +12,8 @@ import org.samesame.notes.core.model.richtext.RichText
  *   `samesame://file/...` text outside such a run;
  * - [FileRefKind.Inline]: each picture in the body that was shown from a library file (`ImageObject.libraryFileId`).
  *
- * Only the body is scanned: floating objects live in the page files, which a save doesn't always rewrite. A picture moved
- * off the text (Remove anchor) therefore stops counting as a use; the file itself is never affected.
+ * [of] scans the body only. A "Show in note" picture is a normal floating picture on a page (page file, see
+ * `ImageObject.libraryFileId`); the data layer collects those with [pictureIds] and adds them with [plusPictures].
  */
 object NoteFileRefs {
     fun of(doc: NoteDocument): Map<FileId, Map<FileRefKind, Int>> {
@@ -44,6 +45,22 @@ object NoteFileRefs {
             }
         }
         return counts
+    }
+
+    /** The library file of each shown-from-Files picture among [objects] (one entry per picture, lower-case), in order. */
+    fun pictureIds(objects: Iterable<NoteObject>): List<FileId> =
+        objects.mapNotNull { (it as? ImageObject)?.libraryFileId?.lowercase()?.let(::FileId) }
+
+    /** [base] plus one [FileRefKind.Inline] use for each of [pictures] (floating pictures shown from Files). */
+    fun plusPictures(base: Map<FileId, Map<FileRefKind, Int>>, pictures: Collection<FileId>): Map<FileId, Map<FileRefKind, Int>> {
+        if (pictures.isEmpty()) return base
+        val out = HashMap<FileId, Map<FileRefKind, Int>>(base)
+        for (id in pictures) {
+            val m = HashMap(out[id].orEmpty())
+            m[FileRefKind.Inline] = (m[FileRefKind.Inline] ?: 0) + 1
+            out[id] = m
+        }
+        return out
     }
 
     /** Stored link runs `[start, end)` with their URI, adjacent runs with the same URI joined. */

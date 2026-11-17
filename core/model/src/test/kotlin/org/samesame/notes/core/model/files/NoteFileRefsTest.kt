@@ -52,4 +52,19 @@ class NoteFileRefsTest {
         val web = RichText("site", listOf(TextRun(4, CharStyle(link = "https://example.com"))))
         assertThat(NoteFileRefs.of(NoteDocument(id = "n", pages = emptyList(), body = web))).isEmpty()
     }
+
+    @Test fun `floating pictures shown from Files count as inline uses`() {
+        val objects = listOf(
+            ImageObject("f1", "media/x.png", 10f, 10f, libraryFileId = a.value.uppercase()),
+            ImageObject("f2", "media/y.png", 10f, 10f), // a normal picture
+            ImageObject("f3", "media/z.png", 10f, 10f, libraryFileId = a.value),
+        )
+        val ids = NoteFileRefs.pictureIds(objects)
+        assertThat(ids).containsExactly(a, a)
+        val base = mapOf(a to mapOf(FileRefKind.Link to 1), b to mapOf(FileRefKind.Link to 2))
+        val merged = NoteFileRefs.plusPictures(base, ids)
+        assertThat(merged.getValue(a)).containsExactly(FileRefKind.Link, 1, FileRefKind.Inline, 2)
+        assertThat(merged.getValue(b)).isEqualTo(base.getValue(b))
+        assertThat(NoteFileRefs.plusPictures(base, emptyList())).isSameInstanceAs(base)
+    }
 }

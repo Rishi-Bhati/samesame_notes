@@ -311,15 +311,19 @@ class EditorSession(
 
     /**
      * Writes image [bytes] into the bundle ([extension] e.g. "png") and puts a floating image on
-     * [pageId] centred at [centerPu] (page space). One command.
+     * [pageId] centred at [centerPu] (page space). One command. [libraryFileId] is the Files entry a "Show in note" picture came
+     * from (null for every other picture); the picture is otherwise exactly a normal inserted one.
      */
-    suspend fun insertImage(pageId: String, bytes: ByteArray, extension: String, widthPu: Float, heightPu: Float, centerPu: Offset): Boolean {
+    suspend fun insertImage(
+        pageId: String, bytes: ByteArray, extension: String, widthPu: Float, heightPu: Float, centerPu: Offset,
+        libraryFileId: String? = null,
+    ): Boolean {
         val media = mediaSink(bytes, extension)
         if (media.isEmpty()) return false
         val rect = RectPu(centerPu.x - widthPu / 2f, centerPu.y - heightPu / 2f, centerPu.x + widthPu / 2f, centerPu.y + heightPu / 2f)
         val objectId = randomElementId()
         // A new image goes to the bottom layer (below text and ink) so the user can write on top of it.
-        val json = FloatingObject(ImageObject(objectId.value.toString(), media, widthPu, heightPu), rect, wrap = TextWrap.Behind).toJson()
+        val json = FloatingObject(ImageObject(objectId.value.toString(), media, widthPu, heightPu, libraryFileId = libraryFileId), rect, wrap = TextWrap.Behind).toJson()
         return editElements(pageId) { listOf(ObjectElement(objectId, json, box(rect.left, rect.top, rect.right, rect.bottom))) + it }
     }
 
@@ -634,6 +638,7 @@ class EditorSession(
             showSaveImage = onlyObjects && objects.all { it.obj is ImageObject || it.obj is PaintingObject },
             // Play: one voice object.
             showPlay = only is VoiceObject,
+            libraryFileId = (only as? ImageObject)?.libraryFileId,
         )
     }
 
@@ -1065,4 +1070,6 @@ data class ObjectMenuState(
     val showLassoCrop: Boolean = false,
     val showEditImage: Boolean = false,
     val showAnchor: Boolean = false,
+    /** The one selected picture was shown from this Files entry (Show as link / Open in Files rows). */
+    val libraryFileId: String? = null,
 )

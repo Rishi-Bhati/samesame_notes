@@ -74,7 +74,11 @@ internal fun typeIconRes(file: LibraryFile): Int = when (file.category) {
     FileCategory.Other -> if (file.ext == "apk") Oui.drawable.ic_oui_file_type_apk else Oui.drawable.ic_oui_file_type_etc
 }
 
-private val thumbCache = object : android.util.LruCache<String, Bitmap>(24 * 1024 * 1024) {
+/** A bitmap cache never takes more than 1/[divisor] of the app's heap (a low-RAM phone has a small one), at most [maxBytes]. */
+internal fun cacheBudget(maxBytes: Int, divisor: Int): Int =
+    minOf(maxBytes.toLong(), Runtime.getRuntime().maxMemory() / divisor).toInt().coerceAtLeast(4 * 1024 * 1024)
+
+private val thumbCache = object : android.util.LruCache<String, Bitmap>(cacheBudget(24 * 1024 * 1024, 16)) {
     override fun sizeOf(key: String, value: Bitmap) = value.byteCount
 }
 private val failedThumbs: MutableSet<String> = ConcurrentHashMap.newKeySet()

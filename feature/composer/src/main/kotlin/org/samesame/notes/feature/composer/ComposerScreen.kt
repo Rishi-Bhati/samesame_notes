@@ -1183,31 +1183,36 @@ internal fun ComposerEditor(
     }
     // Image and Camera (`#53`) share this path: the picture is inserted on the current page, centred in the viewport.
     // [afterInsert] runs once the bytes are read (the camera deletes its capture then).
-    fun insertImageFrom(uri: Uri, afterInsert: () -> Unit = {}) {
+    /** Puts [bytes] on the current page as a normal picture; [libraryFileId] is set for "Show in note" pictures from Files. */
+    suspend fun insertImageBytes(bytes: ByteArray, ext: String, libraryFileId: String? = null, nth: Int = 0): Boolean {
         val pageIndex = currentPage
-        val pageId = doc.pages.getOrNull(pageIndex)?.id
-        if (pageId == null) { afterInsert(); return }
+        val pageId = doc.pages.getOrNull(pageIndex)?.id ?: return false
+        val (w, h) = withContext(Dispatchers.IO) {
+            val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o)
+            o.outWidth to o.outHeight
+        }
+        val aspect = if (w > 0 && h > 0) w.toFloat() / h.toFloat() else 1f
+        val widthPu = Limits.PAGE_WIDTH_PU * 0.7f
+        // Several pictures at once are staggered so none hides another.
+        val center = viewport.visibleDoc.center - latestLayout.pageOrigin(pageIndex) + Offset(nth * 48f, nth * 48f)
+        return session.insertImage(pageId, bytes, ext, widthPu, widthPu / aspect, center, libraryFileId)
+    }
+    fun insertImageFrom(uri: Uri, afterInsert: () -> Unit = {}) {
         scope.launch {
             try {
                 val bytes = withContext(Dispatchers.IO) { context.contentResolver.openInputStream(uri)?.use { it.readBytes() } }
                 if (bytes != null) {
-                    val (w, h) = withContext(Dispatchers.IO) {
-                        val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o)
-                        o.outWidth to o.outHeight
-                    }
-                    val aspect = if (w > 0 && h > 0) w.toFloat() / h.toFloat() else 1f
-                    val widthPu = Limits.PAGE_WIDTH_PU * 0.7f
-                    val center = viewport.visibleDoc.center - latestLayout.pageOrigin(pageIndex)
                     val ext = context.contentResolver.getType(uri)?.substringAfterLast('/')
                         ?.let { if (it == "jpeg") "jpg" else it } ?: "png"
-                    session.insertImage(pageId, bytes, ext, widthPu, widthPu / aspect, center)
+                    insertImageBytes(bytes, ext)
                 }
             } finally {
                 afterInsert()
             }
         }
     }
+    fileLinkController?.placePicture = { bytes, ext, fileId, nth -> insertImageBytes(bytes, ext, fileId, nth) }
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) insertImageFrom(uri)
     }
@@ -1603,6 +1608,41 @@ internal fun ComposerEditor(
             }
         }
         if (session.chrome.value.toolbar.mode == EditorMode.Text) textState.requestInput()
+    }
+    /** The Files entry of the one selected floating picture shown from Files, with its page and element. */
+    fun selectedFilesPicture(): Triple<String, org.samesame.notes.core.ink.page.ElementId, org.samesame.notes.core.model.document.FloatingObject>? {
+        val (pageId, picked) = session.anchorableSelection() ?: return null
+        val (id, f) = picked.singleOrNull() ?: return null
+        if ((f.obj as? org.samesame.notes.core.model.document.ImageObject)?.libraryFileId == null) return null
+        return Triple(pageId, id, f)
+    }
+    fun openSelectedPictureInFiles() {
+        val (_, _, f) = selectedFilesPicture() ?: return
+        val fileId = (f.obj as org.samesame.notes.core.model.document.ImageObject).libraryFileId ?: return
+        fileLinkController?.navigation?.openInFiles(org.samesame.notes.core.model.files.FileId(fileId))
+    }
+    /** Show as link on a floating Files picture: the picture goes and a link to the file stands in the text where it was. */
+    fun showSelectedPictureAsLink() {
+        val (pageId, id, f) = selectedFilesPicture() ?: return
+        val controller = fileLinkController ?: return
+        val fileId = (f.obj as org.samesame.notes.core.model.document.ImageObject).libraryFileId ?: return
+        val pageIndex = doc.pages.indexOfFirst { it.id == pageId }
+        if (pageIndex < 0 || pageIndex >= latestLayout.pageCount) return
+        val origin = latestLayout.pageOrigin(pageIndex)
+        val left = origin.x + f.rect.left
+        val top = origin.y + f.rect.top
+        session.clearSelection()
+        scope.launch {
+            val run = controller.linkRunFor(org.samesame.notes.core.model.files.FileId(fileId))
+            session.group {
+                val end = textState.engine.caret(body.length)
+                val feeds = AnchorToText.lineFeedsNeeded(end.bottom, top, end.bottom - end.top)
+                if (feeds > 0) body.replace(body.length, body.length, "\n".repeat(feeds))
+                body.setSelection(textState.engine.hitTest(left, top + 1f))
+                body.insertRich(run)
+                session.removeObjectElements(pageId, setOf(id))
+            }
+        }
     }
     /** Delete the text selection (used for inline objects, whose one U+FFFC character removes the object). */
     fun deleteTextSelection() {
@@ -2452,6 +2492,9 @@ internal fun ComposerEditor(
                 onShare = ::shareSelection,
                 onSaveImage = ::saveSelectedImages,
                 onPlay = ::playSelectedVoice,
+                onShowAsLink = ::showSelectedPictureAsLink,
+                onOpenInFiles = ::openSelectedPictureInFiles,
+                canOpenInFiles = fileLinkController?.navigation != null,
                 filesAllowed = !locked,
             ),
         )
@@ -2721,6 +2764,8 @@ private fun SelectionMenuFor(
         onShare = if (menu.showShare && fileActions.filesAllowed) close(fileActions.onShare) else null,
         onSaveImage = if (menu.showSaveImage && fileActions.filesAllowed) close(fileActions.onSaveImage) else null,
         onPlay = if (menu.showPlay) close(fileActions.onPlay) else null,
+        onShowAsLink = if (menu.libraryFileId != null && fileActions.filesAllowed) close(fileActions.onShowAsLink) else null,
+        onOpenInFiles = if (menu.libraryFileId != null && fileActions.canOpenInFiles) close(fileActions.onOpenInFiles) else null,
     )
     val behind = menu.behind
     if (menu.isObjects) {
@@ -2767,5 +2812,8 @@ private class SelectionFileActions(
     val onShare: () -> Unit = {},
     val onSaveImage: () -> Unit = {},
     val onPlay: () -> Unit = {},
+    val onShowAsLink: () -> Unit = {},
+    val onOpenInFiles: () -> Unit = {},
+    val canOpenInFiles: Boolean = false,
     val filesAllowed: Boolean = true,
 )

@@ -26,6 +26,7 @@ import org.samesame.notes.core.document.PageSpec as PageSpecV1View
 import org.samesame.notes.core.ink.page.InkElement
 import org.samesame.notes.core.ink.page.ElementId
 import org.samesame.notes.core.ink.page.PageContent
+import org.samesame.notes.core.ink.page.floating
 import org.samesame.notes.core.model.document.NoteDocument
 import org.samesame.notes.core.model.document.TemplateRef
 import org.samesame.notes.core.model.document.ViewState
@@ -72,6 +73,45 @@ internal class DefaultNoteRepository @Inject constructor(
 
     /** The backlinks last written per note, so an autosave that didn't change them doesn't rewrite the rows. */
     private val lastFileRefs = java.util.concurrent.ConcurrentHashMap<String, Map<org.samesame.notes.core.model.files.FileId, Map<org.samesame.notes.core.model.files.FileRefKind, Int>>>()
+
+    /** Per note and page: the library file of each "Show in note" picture floating on it (page files hold floating objects). */
+    private val pagePictureIds = ConcurrentHashMap<String, ConcurrentHashMap<String, List<org.samesame.notes.core.model.files.FileId>>>()
+
+    private fun pictureIdsOf(page: PageContent): List<org.samesame.notes.core.model.files.FileId> =
+        org.samesame.notes.core.model.files.NoteFileRefs.pictureIds(
+            page.elements.filterIsInstance<org.samesame.notes.core.ink.page.ObjectElement>()
+                // Cheap guard: only an object whose JSON names a library file is parsed.
+                .filter { it.json.contains("libraryFileId\":\"") }
+                .mapNotNull { it.floating()?.obj },
+        )
+
+    /**
+     * Backlink counts of [doc]: the body's, plus the floating pictures shown from Files. Pages that changed ([dirty]) are
+     * re-read from the snapshot, the others from the cache, which is filled from the page files once per process.
+     */
+    private suspend fun noteFileRefs(
+        id: String, doc: NoteDocument, dirty: List<PageContent> = emptyList(),
+    ): Map<org.samesame.notes.core.model.files.FileId, Map<org.samesame.notes.core.model.files.FileRefKind, Int>> {
+        val cache = pagePictureIds.getOrPut(id) { ConcurrentHashMap() }
+        for (page in dirty) cache[page.pageId] = pictureIdsOf(page)
+        val live = doc.pages.mapTo(HashSet()) { it.id }
+        cache.keys.retainAll(live)
+        val pictures = ArrayList<org.samesame.notes.core.model.files.FileId>()
+        for (pageId in live) {
+            val ids = cache[pageId] ?: run {
+                // A page file that never mentions a library id (the usual note) is not decoded at all.
+                val read = if (documents.pageFileMentions(id, pageId, "libraryFileId\":\"")) {
+                    runCatching { pictureIdsOf(documents.readPage(id, pageId)) }.getOrDefault(emptyList())
+                } else emptyList()
+                cache[pageId] = read
+                read
+            }
+            pictures += ids
+        }
+        return org.samesame.notes.core.model.files.NoteFileRefs.plusPictures(
+            org.samesame.notes.core.model.files.NoteFileRefs.of(doc), pictures,
+        )
+    }
 
     override fun observeNotes(filter: NoteFilter, sort: SortOrder): Flow<List<Note>> {
         val rows = when (filter) {
@@ -462,14 +502,14 @@ internal class DefaultNoteRepository @Inject constructor(
     /** The library files [id] links to or shows inline, ready to bundle into a v3 `.ssnote`. Empty without Files support. */
     private suspend fun linkedSources(id: NoteId): List<org.samesame.notes.core.document.LinkedFileSource> {
         val files = fileRefs ?: return emptyList()
-        val refs = org.samesame.notes.core.model.files.NoteFileRefs.of(currentDocument(id.value)).keys
+        val refs = noteFileRefs(id.value, currentDocument(id.value)).keys
         return if (refs.isEmpty()) emptyList() else files.linkedFileSources(refs)
     }
 
     override suspend fun linkedFilesBytes(id: NoteId): Long {
         if (documents.isLocked(id.value)) return 0L
         val files = fileRefs ?: return 0L
-        val refs = org.samesame.notes.core.model.files.NoteFileRefs.of(currentDocument(id.value)).keys
+        val refs = noteFileRefs(id.value, currentDocument(id.value)).keys
         return if (refs.isEmpty()) 0L else files.linkedFilesBytes(refs)
     }
 
@@ -500,7 +540,7 @@ internal class DefaultNoteRepository @Inject constructor(
             ),
         )
         searchDao.replace(NoteSearchEntity(noteId = doc.id, title = doc.title, body = plain, inkText = ""))
-        fileRefs?.let { runCatching { it.replaceNoteRefs(NoteId(doc.id), org.samesame.notes.core.model.files.NoteFileRefs.of(doc)) } }
+        fileRefs?.let { runCatching { it.replaceNoteRefs(NoteId(doc.id), noteFileRefs(doc.id, doc)) } }
         legacyViewState?.let {
             viewStateDao.upsert(NoteViewStateEntity(doc.id, it.pageIndex, it.offsetInPage, it.zoom))
         }
@@ -530,7 +570,7 @@ internal class DefaultNoteRepository @Inject constructor(
         val refsSink = fileRefs
         if (refsSink != null) {
             runCatching {
-                val refs = org.samesame.notes.core.model.files.NoteFileRefs.of(doc)
+                val refs = noteFileRefs(id.value, doc, snapshot.dirtyPages)
                 if (lastFileRefs[id.value] != refs) {
                     refsSink.replaceNoteRefs(id, refs)
                     lastFileRefs[id.value] = refs

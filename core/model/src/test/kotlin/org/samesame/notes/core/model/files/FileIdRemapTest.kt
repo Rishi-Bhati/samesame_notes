@@ -37,4 +37,20 @@ class FileIdRemapTest {
         val doc = NoteDocument(id = "n", pages = listOf(PageSpec("p")))
         assertThat(FileIdRemap.apply(doc, emptyMap())).isSameInstanceAs(doc)
     }
+
+    @Test fun `remaps the library id inside a floating picture's JSON only`() {
+        val f = org.samesame.notes.core.model.document.FloatingObject(
+            ImageObject("i", "media/a.png", 1f, 1f, libraryFileId = old.uppercase()),
+            org.samesame.notes.core.model.document.RectPu(0f, 0f, 5f, 5f), rotationDeg = 30f,
+        )
+        val out = org.samesame.notes.core.model.document.FloatingObject.fromJson(FileIdRemap.remapFloatingJson(f.toJson(), mapOf(old to new)))
+        assertThat((out.obj as ImageObject).libraryFileId).isEqualTo(new)
+        assertThat(out.rotationDeg).isEqualTo(30f)
+        assertThat(out.rect).isEqualTo(f.rect)
+        val untouched = f.copy(obj = (f.obj as ImageObject).copy(libraryFileId = other)).toJson()
+        assertThat(FileIdRemap.remapFloatingJson(untouched, mapOf(old to new))).isSameInstanceAs(untouched)
+        val plain = f.copy(obj = (f.obj as ImageObject).copy(libraryFileId = null)).toJson()
+        assertThat(FileIdRemap.remapFloatingJson(plain, mapOf(old to new))).isSameInstanceAs(plain)
+        assertThat(FileIdRemap.remapFloatingJson("not json libraryFileId\":\"", mapOf(old to new))).isEqualTo("not json libraryFileId\":\"")
+    }
 }
