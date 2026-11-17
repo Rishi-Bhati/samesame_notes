@@ -25,8 +25,9 @@ class GlideLayoutTest {
         // The viewport and the popup stay on screen; only the bottom padding may overhang.
         assertThat(p.top).isAtLeast(100f)
         assertThat(p.listTop(topPad) + p.visible * rowPx).isAtMost(1100f)
-        assertThat(GlideLayout.height(p.visible, rowPx, topPad, bottomPad))
-            .isEqualTo(p.top + topPad + p.visible * rowPx + bottomPad)
+        // The content bottom sits exactly at the screen edge; only the bottom padding overhangs it.
+        assertThat(p.top + GlideLayout.height(p.visible, rowPx, topPad, bottomPad) - bottomPad)
+            .isEqualTo(1100f)
     }
 
     /** Finger at the bottom of the screen: the anchor row is the bottom-most visible row (the viewport ends there). */
