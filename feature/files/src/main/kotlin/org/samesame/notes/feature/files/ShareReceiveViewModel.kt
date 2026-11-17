@@ -94,6 +94,16 @@ class ShareReceiveViewModel @Inject constructor(
         }
     }
 
+    /** Shared plain text: one new note (title = the subject), then the editor opens. */
+    fun startText(shared: SharedText) {
+        if (started) return
+        started = true
+        job = viewModelScope.launch {
+            val id = runCatching { notes.importText(shared.body, shared.title).value }.getOrNull()
+            if (id != null) eventChannel.send(ReceiveEvent.OpenNote(id)) else eventChannel.send(ReceiveEvent.NoteFailed)
+        }
+    }
+
     fun rename(index: Int, name: String) = state.update { s -> s.copy(items = s.items.mapIndexed { i, it -> if (i == index) it.copy(name = name) else it }) }
     fun setNewNote(value: Boolean) = state.update { it.copy(toNewNote = value && it.canNewNote) }
     fun setFolder(id: FileFolderId?) = state.update { it.copy(folderId = id) }
