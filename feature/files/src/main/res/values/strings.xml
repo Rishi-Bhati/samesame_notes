@@ -22,6 +22,8 @@
     <string name="feature_files_sort_type">Type</string>
     <string name="feature_files_sort_custom">Custom</string>
     <string name="feature_files_sort_direction">Sort direction</string>
+    <string name="feature_files_filter_favorites">Favourites</string>
+    <string name="feature_files_filter_clear">Clear filters</string>
     <string name="feature_files_empty">No files</string>
     <string name="feature_files_empty_hint">Tap Upload or share files to SameSame</string>
     <string name="feature_files_empty_search">No results</string>
@@ -79,6 +81,11 @@
     <string name="feature_files_info_added">Added</string>
     <string name="feature_files_info_source">Source</string>
     <string name="feature_files_info_location">Location</string>
+    <string name="feature_files_info_description">Description</string>
+    <string name="feature_files_info_description_hint">Add a short description</string>
+    <string name="feature_files_info_tags">Tags</string>
+    <string name="feature_files_info_tags_hint">Separate tags with commas</string>
+    <string name="feature_files_info_favorite">Favourite</string>
     <string name="feature_files_info_used_in">Used in %1$d notes</string>
     <string name="feature_files_info_not_used">Not used in any note</string>
     <string name="feature_files_info_in_bin">(in Recycle bin)</string>

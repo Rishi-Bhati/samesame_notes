@@ -195,13 +195,24 @@ internal fun InfoDialog(
     onDismiss: () -> Unit,
     onCopyLink: () -> Unit,
     onOpenNote: (NoteId) -> Unit,
+    onSaveDescription: ((String) -> Unit)? = null,
+    onSaveTags: ((List<String>) -> Unit)? = null,
+    onToggleFavorite: (() -> Unit)? = null,
 ) {
     val colors = SameSameTheme.colors
+    var favorite by remember(file.id) { mutableStateOf(file.isFavorite) }
+    var description by remember(file.id) { mutableStateOf(TextFieldValue(file.description)) }
+    var tagsText by remember(file.id) { mutableStateOf(TextFieldValue(file.tags.joinToString(", "))) }
+    // The one confirm button is "Copy link"; edits are committed when the sheet closes either way.
+    fun save() {
+        onSaveDescription?.invoke(description.text)
+        onSaveTags?.invoke(tagsText.text.split(',').map { it.trim() }.filter { it.isNotEmpty() })
+    }
     AppDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { save(); onDismiss() },
         dismissLabel = stringResource(R.string.feature_files_close),
         confirmLabel = stringResource(R.string.feature_files_action_copy_link),
-        onConfirm = onCopyLink,
+        onConfirm = { save(); onCopyLink() },
         title = stringResource(R.string.feature_files_info_title),
         atBottom = true,
     ) {
@@ -211,6 +222,34 @@ internal fun InfoDialog(
         InfoRow(stringResource(R.string.feature_files_info_added), FilesFormat.date(file.createdAt))
         file.sourceApp?.let { InfoRow(stringResource(R.string.feature_files_info_source), it) }
         InfoRow(stringResource(R.string.feature_files_info_location), locationPath.ifEmpty { stringResource(R.string.feature_files_root_folder) })
+        val toggle = onToggleFavorite
+        if (toggle != null) {
+            Row(
+                Modifier.fillMaxWidth().clickable { favorite = !favorite; toggle() }.padding(top = 10.dp, bottom = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    if (favorite) AppIcons.StarFilled else AppIcons.Star, null,
+                    tint = if (favorite) colors.accent else colors.textSecondary, modifier = Modifier.size(20.dp),
+                )
+                Text(
+                    stringResource(R.string.feature_files_info_favorite), style = SameSameText.ListBody, color = colors.textPrimary,
+                    modifier = Modifier.padding(start = 10.dp),
+                )
+            }
+        }
+        if (onSaveDescription != null) {
+            InfoTextField(
+                stringResource(R.string.feature_files_info_description), stringResource(R.string.feature_files_info_description_hint),
+                description, { description = it },
+            )
+        }
+        if (onSaveTags != null) {
+            InfoTextField(
+                stringResource(R.string.feature_files_info_tags), stringResource(R.string.feature_files_info_tags_hint),
+                tagsText, { tagsText = it },
+            )
+        }
         Text(
             if (usage.isEmpty()) stringResource(R.string.feature_files_info_not_used) else stringResource(R.string.feature_files_info_used_in, usage.size),
             style = SameSameText.CardTitle, color = colors.textPrimary, modifier = Modifier.padding(top = 12.dp),
@@ -227,6 +266,27 @@ internal fun InfoDialog(
                 modifier = Modifier.fillMaxWidth().clickable { onOpenNote(u.noteId) }.padding(vertical = 6.dp),
             )
         }
+    }
+}
+
+@Composable
+private fun InfoTextField(label: String, hint: String, value: TextFieldValue, onChange: (TextFieldValue) -> Unit) {
+    val colors = SameSameTheme.colors
+    Column(Modifier.fillMaxWidth().padding(top = 10.dp)) {
+        Text(label, fontSize = 12.sp, color = colors.textTertiary, fontWeight = FontWeight.Bold)
+        BasicTextField(
+            value = value, onValueChange = onChange, singleLine = true,
+            textStyle = SameSameText.ListBody.copy(color = colors.textPrimary),
+            cursorBrush = SolidColor(colors.accent),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            decorationBox = { inner ->
+                Box {
+                    if (value.text.isEmpty()) Text(hint, style = SameSameText.ListBody, color = colors.textTertiary)
+                    inner()
+                }
+            },
+        )
     }
 }
 

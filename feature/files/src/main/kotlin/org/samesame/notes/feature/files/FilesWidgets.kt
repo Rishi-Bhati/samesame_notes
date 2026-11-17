@@ -12,7 +12,10 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -46,6 +49,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.oneuiproject.oneui.R as Oui
+import kotlin.math.roundToInt
 import org.samesame.notes.core.designsystem.component.SelectionCircle
 import org.samesame.notes.core.designsystem.icon.AppIcons
 import org.samesame.notes.core.designsystem.theme.FolderColors
@@ -162,6 +166,9 @@ internal fun FileGridItem(
             )
             if (selected) Box(Modifier.matchParentSize().border(1.5.dp, colors.accent, RoundedCornerShape(12.dp)))
             if (selecting) SelectionCircle(selected, Modifier.align(Alignment.TopStart).padding(8.dp))
+            if (file.isFavorite && !selecting) {
+                Icon(AppIcons.StarFilled, null, tint = colors.accent, modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(14.dp))
+            }
             if (daysLeft != null) {
                 Box(
                     Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(21.dp)
@@ -250,7 +257,14 @@ internal fun FileFolderCard(
 
 /** "Sort glyph + field | direction arrow", right-aligned. */
 @Composable
-internal fun FilesSortRow(label: String, ascending: Boolean, onLabelClick: () -> Unit, onToggleDirection: () -> Unit, modifier: Modifier = Modifier) {
+internal fun FilesSortRow(
+    label: String,
+    ascending: Boolean,
+    onLabelClick: () -> Unit,
+    onToggleDirection: () -> Unit,
+    modifier: Modifier = Modifier,
+    showDirection: Boolean = true,
+) {
     val colors = SameSameTheme.colors
     Row(
         modifier.fillMaxWidth().height(26.dp),
@@ -260,12 +274,75 @@ internal fun FilesSortRow(label: String, ascending: Boolean, onLabelClick: () ->
             Icon(AppIcons.Sort, null, tint = colors.textTertiary, modifier = Modifier.size(18.dp))
             Text(label, fontSize = cappedSp(13f), color = colors.textTertiary, modifier = Modifier.padding(start = 6.dp))
         }
-        Box(Modifier.padding(start = 14.9.dp).width(1.dp).height(16.dp).background(colors.divider))
-        Box(
-            Modifier.width(38.dp).fillMaxHeight().clickable(onClick = onToggleDirection).padding(end = 4.dp),
-            contentAlignment = Alignment.CenterEnd,
-        ) {
-            Icon(if (ascending) AppIcons.ArrowUp else AppIcons.ArrowDown, null, tint = colors.textTertiary, modifier = Modifier.size(18.dp))
+        if (showDirection) {
+            Box(Modifier.padding(start = 14.9.dp).width(1.dp).height(16.dp).background(colors.divider))
+            Box(
+                Modifier.width(38.dp).fillMaxHeight().clickable(onClick = onToggleDirection).padding(end = 4.dp),
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                Icon(if (ascending) AppIcons.ArrowUp else AppIcons.ArrowDown, null, tint = colors.textTertiary, modifier = Modifier.size(18.dp))
+            }
         }
     }
+}
+
+/** The Favourites and tag filter chips above the Files list. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun FilesFilterChips(
+    favoritesOnly: Boolean,
+    tagFilter: String?,
+    allTags: List<String>,
+    onFavorites: () -> Unit,
+    onTag: (String) -> Unit,
+    onClear: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (allTags.isEmpty() && !favoritesOnly) return
+    FlowRow(
+        modifier.fillMaxWidth().padding(bottom = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        FilterChip(
+            label = stringResource(R.string.feature_files_filter_favorites),
+            active = favoritesOnly,
+            star = true,
+            onClick = onFavorites,
+        )
+        allTags.forEach { tag -> FilterChip(label = tag, active = tag == tagFilter, onClick = { onTag(tag) }) }
+        if (favoritesOnly || tagFilter != null) {
+            FilterChip(label = stringResource(R.string.feature_files_filter_clear), active = false, onClick = onClear)
+        }
+    }
+}
+
+@Composable
+private fun FilterChip(label: String, active: Boolean, star: Boolean = false, onClick: () -> Unit) {
+    val colors = SameSameTheme.colors
+    val foreground = if (active) colors.accent else colors.textSecondary
+    Row(
+        Modifier.clip(RoundedCornerShape(50))
+            .background(if (active) colors.accent.copy(alpha = 0.22f) else colors.pill)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (star) {
+            Icon(AppIcons.StarFilled, null, tint = foreground, modifier = Modifier.size(14.dp))
+            Spacer(Modifier.width(5.dp))
+        }
+        Text(label, fontSize = cappedSp(13f), color = foreground, maxLines = 1)
+    }
+}
+
+/**
+ * Where a long-press drag of the item at [index] lands, from the accumulated [dx]/[dy] and the size of one cell.
+ * Pure so the grid math can be unit-tested without a device.
+ */
+internal fun reorderTarget(index: Int, dx: Float, dy: Float, cellWidth: Float, cellHeight: Float, columns: Int, size: Int): Int {
+    if (size <= 0) return 0
+    val colDelta = (dx / cellWidth.coerceAtLeast(1f)).roundToInt()
+    val rowDelta = (dy / cellHeight.coerceAtLeast(1f)).roundToInt()
+    return (index + rowDelta * columns.coerceAtLeast(1) + colDelta).coerceIn(0, size - 1)
 }
