@@ -263,7 +263,7 @@ private enum class PageFileAction { Share, Save }
 fun ComposerRoute(
     noteId: String,
     onBack: () -> Unit,
-    /** A home-screen widget button: "keypad", "pen", "camera", "image" or "voice" runs once when the editor is ready. */
+    /** A home-screen widget button: "keypad", "pen", "brush", "image" or "voice" runs once when the editor is ready. */
     startAction: String? = null,
     viewModel: ComposerViewModel = hiltViewModel<ComposerViewModel, ComposerViewModel.Factory>(
         key = noteId,
@@ -1488,7 +1488,11 @@ internal fun ComposerEditor(
         startActionDone = true
         when (startAction) {
             "pen" -> if (session.chrome.value.toolbar.mode != EditorMode.Pen) session.dispatch(ToolbarIntent.ToggleHandwriting)
-            "camera" -> openCamera()
+            "brush" -> {
+                session.toolController.updatePrefs { it.copy(penType = org.samesame.notes.core.model.PenType.Brush) }
+                if (session.chrome.value.toolbar.mode != EditorMode.Pen) session.dispatch(ToolbarIntent.ToggleHandwriting)
+                if (session.chrome.value.toolbar.tool != PenModeTool.Pen) session.dispatch(ToolbarIntent.TapTool(PenModeTool.Pen))
+            }
             "image" -> photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
             "voice" -> micPermission.begin()
         }

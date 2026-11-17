@@ -9,6 +9,8 @@
     android:updatePeriodMillis="0"
     android:resizeMode="horizontal"
     android:widgetCategory="home_screen"
+    android:widgetFeatures="reconfigurable"
+    android:configure="org.samesame.notes.feature.widgets.CreatorSettingsActivity"
     android:description="@string/widget_creator_description"
     android:initialLayout="@layout/glance_default_loading_layout"
     android:previewImage="@drawable/widget_preview_creator"

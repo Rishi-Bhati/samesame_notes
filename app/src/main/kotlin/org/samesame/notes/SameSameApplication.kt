@@ -27,6 +27,11 @@ class SameSameApplication : Application() {
      * logs main-thread disk and network access and slow calls under the `StrictMode` tag, for performance work. Off by
      * default so everyday debug use is not slowed down by the stack traces it collects.
      */
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        widgetUpdater.onConfigurationChanged()
+    }
+
     private fun enableStrictModeIfAsked() {
         if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE == 0) return
         if (!java.io.File(filesDir, "strictmode").exists()) return

@@ -7,7 +7,7 @@ import android.content.Intent
 enum class StartAction(val key: String) {
     Keypad("keypad"),
     Pen("pen"),
-    Camera("camera"),
+    Brush("brush"),
     Image("image"),
     Voice("voice"),
     ;

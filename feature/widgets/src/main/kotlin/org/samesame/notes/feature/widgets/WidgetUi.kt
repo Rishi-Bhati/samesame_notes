@@ -1,15 +1,16 @@
 package org.samesame.notes.feature.widgets
 
 import androidx.glance.color.ColorProvider
-import org.samesame.notes.core.designsystem.theme.SameSameDarkColors
-import org.samesame.notes.core.designsystem.theme.SameSameLightColors
 
-/** Widget colours: the app's light and dark tokens, picked by the system day/night setting ("match dark mode"). */
-internal object WidgetColors {
-    val surface = ColorProvider(day = SameSameLightColors.card, night = SameSameDarkColors.card)
-    val text = ColorProvider(day = SameSameLightColors.textPrimary, night = SameSameDarkColors.textPrimary)
-    val textSecondary = ColorProvider(day = SameSameLightColors.textSecondary, night = SameSameDarkColors.textSecondary)
-    val icon = ColorProvider(day = SameSameLightColors.icon, night = SameSameDarkColors.icon)
-    val accent = ColorProvider(day = SameSameLightColors.accent, night = SameSameDarkColors.accent)
-    val divider = ColorProvider(day = SameSameLightColors.divider, night = SameSameDarkColors.divider)
+/** [WidgetColorRoles] as Glance colour providers (day/night resolved by the system when the widget is drawn). */
+internal class WidgetPalette(roles: WidgetColorRoles) {
+    val surface = roles.surface.glance()
+    val text = roles.text.glance()
+    val textSecondary = roles.textSecondary.glance()
+    val icon = roles.icon.glance()
+    val accent = roles.accent.glance()
+
+    private fun RolePair.glance() = ColorProvider(day = day, night = night)
 }
+
+internal fun widgetPalette(style: WidgetStyle) = WidgetPalette(WidgetColorRules.roles(style))
