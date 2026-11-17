@@ -10,7 +10,13 @@ import org.samesame.notes.core.document.NoteDocumentStore
 import org.samesame.notes.core.model.document.NoteDocument
 import org.samesame.notes.core.model.document.NoteRecording
 import org.samesame.notes.core.model.document.PageSpec
+import org.samesame.notes.core.model.richtext.CharStyle
+import org.samesame.notes.core.model.richtext.ListKind
+import org.samesame.notes.core.model.richtext.ParagraphStyle
+import org.samesame.notes.core.model.richtext.RichText
+import org.samesame.notes.core.model.richtext.TextRun
 import org.samesame.notes.core.sdocx.SdocxDocumentBuilder
+import org.samesame.notes.core.sdocx.SdocxLinkChannel
 import org.samesame.notes.core.sdocx.SdocxReader
 import org.samesame.notes.core.sdocx.SdocxSideChannel
 import org.samesame.notes.core.sdocx.SdocxWriter
@@ -54,6 +60,40 @@ class SdocxPersistenceTest {
         val bundle = SdocxMapper.toImportBundle(archive, "imported")
         assertThat(bundle.document.recordings).hasSize(2)
         verifyPersistence(bundle, archive, bytes)
+    }
+
+    @Test fun `an unedited combined checkbox and number import exports byte for byte`() = runBlocking {
+        val combined = ParagraphStyle(checkbox = true, list = ListKind.Numbered)
+        val text = "first\nsecond"
+        val src = NoteDocument(
+            id = "source", title = "T", pages = listOf(PageSpec("p1")),
+            body = RichText(text, listOf(TextRun(text.length, CharStyle())), listOf(combined, combined.copy(checked = true))),
+        )
+        val base = SdocxDocumentBuilder.toArchive(src, 1L)
+        val withEntry = SdocxLinkChannel.withEntry(base, SdocxLinkChannel.encode(src) { null })
+        val bytes = SdocxWriter().writeToBytes(withEntry)
+        val archive = SdocxReader().read(bytes)
+
+        // The repository restores the number from the side channel after the sdocx importer reads the checkbox.
+        val rawBundle = SdocxMapper.toImportBundle(archive, "imported")
+        val bundle = SdocxMapper.ImportBundle(
+            SdocxLinkChannel.apply(rawBundle.document, archive.extraEntries[SdocxLinkChannel.ENTRY]!!) { null },
+            rawBundle.title, rawBundle.lock, rawBundle.viewState, rawBundle.media, rawBundle.extraEntries,
+        )
+        assertThat(bundle.document.body.paragraphs).containsExactly(combined, combined.copy(checked = true)).inOrder()
+
+        val store = NoteDocumentStore(tmp.newFolder("notes"), tmp.newFolder("working"))
+        val id = bundle.document.id
+        store.writeSdocxImport(bundle, archive, bytes)
+        store.flush(id, close = true)
+        val document = store.readDocument(id)
+        assertThat(document.body.paragraphs).containsExactly(combined, combined.copy(checked = true)).inOrder()
+
+        val extras = store.readExtras(id)
+        val original = SdocxSideChannel.decode(extras)!!
+        val out = ByteArrayOutputStream()
+        SdocxExport.exportImported(original, document, out, extras[SdocxSideChannel.RAW_ARCHIVE_PATH])
+        assertThat(out.toByteArray()).isEqualTo(bytes)
     }
 
     @Test fun `renamed deleted and added recordings of an imported note reach the exported voice list`() = runBlocking {
