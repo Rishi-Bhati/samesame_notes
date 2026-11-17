@@ -95,7 +95,18 @@ class ParagraphSpan(val style: ParagraphStyle, private val env: TextRenderEnv) :
     /** 1-based number for Numbered paragraphs, kept current by BodyText. */
     var number: Int = 0
 
-    override fun getLeadingMargin(first: Boolean): Int = leadingMargin(style).toInt()
+    override fun getLeadingMargin(first: Boolean): Int = leadingMargin(style, markerEm()).toInt()
+
+    /** Text size of the paragraph's first character (the marker follows it); the default when unknown. */
+    private fun markerEm(): Float {
+        if (style.list == ListKind.None) return fontSizePu(null)
+        val host = env.host ?: return fontSizePu(null)
+        val start = host.getSpanStart(this)
+        if (start < 0 || start >= host.length) return fontSizePu(null)
+        val size = host.getSpans(start, start + 1, CharStyleSpan::class.java)
+            .firstOrNull { host.getSpanStart(it) <= start }?.style?.fontSize
+        return fontSizePu(size)
+    }
 
     override fun getAlignment(): Layout.Alignment = alignmentOf(style.align)
 
@@ -112,8 +123,8 @@ class ParagraphSpan(val style: ParagraphStyle, private val env: TextRenderEnv) :
     }
 
     companion object {
-        fun leadingMargin(style: ParagraphStyle): Float =
-            style.indent * BodyTextMetrics.INDENT_STEP + if (style.list != ListKind.None) BodyTextMetrics.MARKER_WIDTH else 0f
+        fun leadingMargin(style: ParagraphStyle, em: Float = fontSizePu(null)): Float =
+            style.indent * BodyTextMetrics.INDENT_STEP + if (style.list != ListKind.None) BodyTextMetrics.markerWidth(em) else 0f
 
         fun alignmentOf(align: TextAlign): Layout.Alignment = when (align) {
             TextAlign.Left -> Layout.Alignment.ALIGN_NORMAL
@@ -139,7 +150,7 @@ object ListMarkerSpan {
 
     fun drawBullet(c: Canvas, p: Paint, left: Float, baseline: Float, em: Float) {
         val m = BodyTextMetrics
-        val cx = left + m.MARKER_INSET + em * m.CHECKBOX_SIZE_EM / 2f
+        val cx = left + m.markerInset(em) + em * m.CHECKBOX_SIZE_EM / 2f
         val cy = baseline - em * m.MARKER_CENTER_ABOVE_BASELINE_EM
         tmp.color = p.color
         tmp.style = Paint.Style.FILL
@@ -151,7 +162,7 @@ object ListMarkerSpan {
         tmp.textSize = em
         tmp.textAlign = Paint.Align.RIGHT
         // Right-aligned so the text column stays put as numbers grow.
-        c.drawText("$number.", left + BodyTextMetrics.MARKER_WIDTH - em * 0.35f, baseline, tmp)
+        c.drawText("$number.", left + BodyTextMetrics.markerWidth(em) - em * 0.35f, baseline, tmp)
     }
 }
 
@@ -165,7 +176,8 @@ object ChecklistSpan {
         val m = BodyTextMetrics
         val size = em * m.CHECKBOX_SIZE_EM
         val cy = baseline - em * m.MARKER_CENTER_ABOVE_BASELINE_EM
-        out.set(left + m.MARKER_INSET, cy - size / 2f, left + m.MARKER_INSET + size, cy + size / 2f)
+        val x = left + m.markerInset(em)
+        out.set(x, cy - size / 2f, x + size, cy + size / 2f)
         return out
     }
 

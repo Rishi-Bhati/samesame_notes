@@ -36,6 +36,14 @@ object BodyTextMetrics {
     const val MARKER_WIDTH = 80f
     const val MARKER_INSET = 6.5f
 
+    /**
+     * The marker column grows with the paragraph's text size, like the box and bullet do: at the default size it is exactly
+     * [MARKER_WIDTH] wide with the box [MARKER_INSET] in, at 2x the size twice that. (A fixed 80 px made boxes of 24 pt and
+     * larger run into the text.) [em] is the scaled text size, see `fontSizePu`.
+     */
+    fun markerWidth(em: Float): Float = Math.round(MARKER_WIDTH * em / DEFAULT_TEXT_SIZE_PU).toFloat()
+    fun markerInset(em: Float): Float = MARKER_INSET * em / DEFAULT_TEXT_SIZE_PU
+
     /** Checkbox: 46 px square at size 17 (#74) → 0.9 em of the scaled font; 4 px stroke → 0.08 em; centre 0.35 em above baseline. */
     /** A checked item: text, box and tick at 40 % of the text colour, strike-through at 63 % (measured on the reference). */
     const val CHECKED_ALPHA = 0.4f

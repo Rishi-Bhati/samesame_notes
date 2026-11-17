@@ -44,6 +44,8 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
 
     val editable: Editable = SpannableStringBuilder()
 
+    init { env.host = editable }
+
     private var paragraphs: MutableList<ParagraphStyle> = mutableListOf(ParagraphStyle())
 
     /** Numbers of numbered paragraphs (0 for others), derived (doc §1.3). */

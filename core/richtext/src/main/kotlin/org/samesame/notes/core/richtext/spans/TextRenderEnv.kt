@@ -43,6 +43,9 @@ class TextRenderEnv {
     /** Fill colour inside a checked checkbox's tick (the page colour). */
     var pageColor: Int = Color.WHITE
 
+    /** The text the spans belong to (set by `BodyText`), so a paragraph's marker column can follow its first character's size. */
+    var host: android.text.Spanned? = null
+
     var objectProvider: InlineObjectProvider = PlaceholderObjectProvider
 
     var typeface: Typeface = Typeface.DEFAULT
