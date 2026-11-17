@@ -143,13 +143,27 @@ internal fun NoteListPreview(heading: String, rows: List<String>, style: WidgetS
     }
 }
 
-/** Creator: the row of mode buttons. */
+/** Creator: the app name row and the inset panel with the app icon and the five mode buttons. */
 @Composable
 internal fun CreatorPreview(style: WidgetStyle, dark: Boolean) {
+    val context = LocalContext.current
+    val icon = remember { AppBranding.icon(context, 96)?.asImageBitmap() }
+    val name = remember { AppBranding.name(context) }
     PreviewSurface(style, dark) { roles ->
-        Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceEvenly) {
-            listOf(Oui.drawable.ic_oui_keyboard, Oui.drawable.ic_oui_pen_fountain, Oui.drawable.ic_oui_brush_outline, Oui.drawable.ic_oui_image_outline, R.drawable.ic_widget_mic).forEach {
-                Icon(painterResource(it), contentDescription = null, tint = roles.icon.pick(dark), modifier = Modifier.size(24.dp))
+        Column(Modifier.fillMaxSize()) {
+            Text(name, color = roles.text.pick(dark), fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.padding(start = 18.dp, top = 13.dp, bottom = 4.dp).height(18.dp))
+            Row(
+                Modifier.fillMaxSize().padding(start = 9.dp, end = 9.dp, top = 8.dp, bottom = 9.dp).clip(RoundedCornerShape(16.dp)).background(roles.inset.pick(dark)),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    icon?.let { androidx.compose.foundation.Image(it, contentDescription = null, modifier = Modifier.size(28.dp)) }
+                }
+                listOf(Oui.drawable.ic_oui_keyboard, Oui.drawable.ic_oui_pen_fountain, Oui.drawable.ic_oui_brush_outline, Oui.drawable.ic_oui_image_outline, R.drawable.ic_widget_mic).forEach {
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        Icon(painterResource(it), contentDescription = null, tint = roles.icon.pick(dark), modifier = Modifier.size(28.dp))
+                    }
+                }
             }
         }
     }

@@ -18,17 +18,31 @@ import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Box
+import androidx.glance.layout.Column
+import androidx.glance.layout.fillMaxWidth
+import androidx.glance.layout.height
+import androidx.glance.layout.padding
+import androidx.compose.ui.unit.sp
+import androidx.glance.text.FontWeight
+import androidx.glance.text.Text
+import androidx.glance.text.TextStyle
 import androidx.glance.layout.Row
 import androidx.glance.layout.fillMaxHeight
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.size
 import dev.oneuiproject.oneui.R as Oui
 
-/** A row of buttons that each start a new note in a mode: keyboard, pen, brush, image, voice. */
+/**
+ * The reference layout (phone portrait): a 35 dp title row (app name, 14 sp bold, 18 dp side margins, 13 dp above, 4 dp below), then an
+ * inset rounded panel (9 dp side and bottom margins, 8 dp top) with six equal cells holding 28 dp icons: the app icon (opens the app), then
+ * keyboard, pen, brush, image, voice (each starts a new note in that mode).
+ */
 class NoteCreatorWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val style = WidgetStyleStore(context).get(GlanceAppWidgetManager(context).getAppWidgetId(id))
-        provideContent { NoteCreatorContent(widgetPalette(style)) }
+        val icon = AppBranding.icon(context, 96)
+        val name = AppBranding.name(context)
+        provideContent { NoteCreatorContent(widgetPalette(style), name, icon) }
     }
 }
 
@@ -43,21 +57,39 @@ private val creatorButtons = listOf(
 )
 
 @Composable
-private fun NoteCreatorContent(p: WidgetPalette) {
+private fun NoteCreatorContent(p: WidgetPalette, appName: String, appIcon: android.graphics.Bitmap?) {
     val context = LocalContext.current
-    Row(
-        modifier = GlanceModifier.fillMaxSize().cornerRadius(24.dp).background(p.surface),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        creatorButtons.forEach { button ->
+    Column(modifier = GlanceModifier.fillMaxSize().cornerRadius(24.dp).background(p.surface)) {
+        Box(modifier = GlanceModifier.fillMaxWidth().height(35.dp), contentAlignment = Alignment.CenterStart) {
+            Text(
+                appName, maxLines = 1,
+                modifier = GlanceModifier.padding(start = 18.dp, end = 18.dp, top = 13.dp, bottom = 4.dp),
+                style = TextStyle(color = p.text, fontSize = 14.sp, fontWeight = FontWeight.Bold),
+            )
+        }
+        Row(
+            modifier = GlanceModifier.fillMaxSize().padding(start = 9.dp, end = 9.dp, top = 8.dp, bottom = 9.dp)
+                .cornerRadius(16.dp).background(p.inset),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Box(
-                modifier = GlanceModifier.defaultWeight().fillMaxHeight().clickable(actionStartActivity(WidgetIntents.createNote(context, button.action))),
+                modifier = GlanceModifier.defaultWeight().fillMaxHeight().clickable(actionStartActivity(WidgetIntents.openApp(context))),
                 contentAlignment = Alignment.Center,
             ) {
-                Image(
-                    ImageProvider(button.icon), contentDescription = context.getString(button.label),
-                    modifier = GlanceModifier.size(24.dp), colorFilter = ColorFilter.tint(p.icon),
-                )
+                if (appIcon != null) {
+                    Image(ImageProvider(appIcon), contentDescription = appName, modifier = GlanceModifier.size(28.dp))
+                }
+            }
+            creatorButtons.forEach { button ->
+                Box(
+                    modifier = GlanceModifier.defaultWeight().fillMaxHeight().clickable(actionStartActivity(WidgetIntents.createNote(context, button.action))),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Image(
+                        ImageProvider(button.icon), contentDescription = context.getString(button.label),
+                        modifier = GlanceModifier.size(28.dp), colorFilter = ColorFilter.tint(p.icon),
+                    )
+                }
             }
         }
     }
