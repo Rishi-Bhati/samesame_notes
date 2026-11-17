@@ -20,6 +20,7 @@ import org.samesame.notes.feature.files.ReceiveEvent
 import org.samesame.notes.feature.files.ReceiveRouting
 import org.samesame.notes.feature.files.ReceivedItem
 import org.samesame.notes.feature.files.ShareReceiveSheet
+import org.samesame.notes.feature.files.SharedText
 import org.samesame.notes.feature.files.ShareReceiveViewModel
 import javax.inject.Inject
 
@@ -40,12 +41,14 @@ class ShareReceiveActivity : FragmentActivity() {
         if (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0) { finish(); return }
         if (savedInstanceState == null) {
             val items = receivedItems(intent)
-            if (items.isEmpty()) {
+            val shared = if (items.isEmpty()) sharedText(intent) else null
+            if (shared != null) viewModel.startText(shared)
+            else if (items.isEmpty()) {
                 Toast.makeText(this, org.samesame.notes.feature.files.R.string.feature_files_receive_nothing, Toast.LENGTH_SHORT).show()
                 finish()
                 return
             }
-            viewModel.start(items, referrer?.takeIf { it.scheme == "android-app" }?.host)
+            else viewModel.start(items, referrer?.takeIf { it.scheme == "android-app" }?.host)
         }
         val launchTheme = ThemeModeCache.read(this)
         setContent {
@@ -81,6 +84,16 @@ class ShareReceiveActivity : FragmentActivity() {
                 }
             }
         }
+    }
+
+    /** EXTRA_TEXT of a SEND / SEND_MULTIPLE without a file (a selection, a web page link). EXTRA_HTML_TEXT is ignored. */
+    private fun sharedText(intent: Intent): SharedText? {
+        val texts: List<CharSequence?> = when (intent.action) {
+            Intent.ACTION_SEND -> listOf(intent.getCharSequenceExtra(Intent.EXTRA_TEXT))
+            Intent.ACTION_SEND_MULTIPLE -> intent.getCharSequenceArrayListExtra(Intent.EXTRA_TEXT).orEmpty()
+            else -> return null
+        }
+        return SharedText.of(intent.getCharSequenceExtra(Intent.EXTRA_SUBJECT), texts)
     }
 
     private fun receivedItems(intent: Intent): List<ReceivedItem> {
