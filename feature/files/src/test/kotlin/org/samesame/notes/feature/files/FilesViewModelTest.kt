@@ -36,9 +36,14 @@ class FilesViewModelTest {
     private class FakeRepo : FilesRepository {
         val folders = MutableStateFlow<List<FileFolder>>(emptyList())
         val files = MutableStateFlow<List<LibraryFile>>(emptyList())
+        val tags = MutableStateFlow<List<String>>(emptyList())
         val trashed = ArrayList<Pair<List<FileId>, List<FileFolderId>>>()
         val moved = ArrayList<Pair<List<FileId>, FileFolderId?>>()
         val movedFolders = ArrayList<Pair<FileFolderId, FileFolderId?>>()
+        val fileMoves = ArrayList<Pair<FileId, Int>>()
+        val folderMoves = ArrayList<Pair<FileFolderId, Int>>()
+        val descriptions = ArrayList<Pair<FileId, String>>()
+        val tagEdits = ArrayList<Pair<FileId, List<String>>>()
         var lastSort: FileSort? = null
 
         override fun observeFolders() = folders
@@ -51,6 +56,7 @@ class FilesViewModelTest {
         override suspend fun renameFolder(id: FileFolderId, name: String) = Unit
         override suspend fun setFolderColor(id: FileFolderId, color: Long?) = Unit
         override suspend fun moveFolder(id: FileFolderId, newParentId: FileFolderId?) { movedFolders += id to newParentId }
+        override suspend fun moveFolderWithin(id: FileFolderId, targetIndex: Int) { folderMoves += id to targetIndex }
         override suspend fun folderPath(id: FileFolderId) = emptyList<FileFolder>()
         override fun observeFiles(folderId: FileFolderId?, sort: FileSort): Flow<List<LibraryFile>> {
             lastSort = sort
@@ -61,6 +67,7 @@ class FilesViewModelTest {
         override suspend fun getFile(id: FileId) = files.value.firstOrNull { it.id == id }
         override suspend fun getFiles(ids: List<FileId>) = files.value.filter { it.id in ids }
         override fun search(query: String) = flowOf(files.value.filter { it.displayName.contains(query) })
+        override fun observeTags() = tags
         override fun observeSummary() = files.map { FilesSummary(it.size, it.sumOf { f -> f.sizeBytes }) }
         override suspend fun importFromUri(uri: Uri, folderId: FileFolderId?, displayName: String?, sourceApp: String?, onDuplicate: DuplicatePolicy, onProgress: (Long, Long?) -> Unit): ImportResult = error("unused")
         override suspend fun importStream(open: () -> java.io.InputStream, displayName: String, folderId: FileFolderId?, declaredMime: String?, declaredSize: Long?, sourceApp: String?, onDuplicate: DuplicatePolicy, onProgress: (Long, Long?) -> Unit): ImportResult = error("unused")
@@ -68,6 +75,9 @@ class FilesViewModelTest {
         override suspend fun rename(id: FileId, name: String): String { require(name.isNotBlank()); return name }
         override suspend fun moveFiles(ids: List<FileId>, folderId: FileFolderId?) { moved += ids to folderId }
         override suspend fun setFavorite(ids: List<FileId>, favorite: Boolean) = Unit
+        override suspend fun moveFileWithin(id: FileId, targetIndex: Int) { fileMoves += id to targetIndex }
+        override suspend fun setDescription(id: FileId, description: String) { descriptions += id to description }
+        override suspend fun setTags(id: FileId, tags: List<String>) { tagEdits += id to tags }
         override suspend fun updateMetadata(id: FileId, width: Int?, height: Int?, durationMs: Long?, pageCount: Int?) = Unit
         override fun observeTrash(): Flow<FilesTrash> = flowOf(FilesTrash(emptyList(), emptyList()))
         override suspend fun trash(fileIds: List<FileId>, folderIds: List<FileFolderId>) { trashed += fileIds to folderIds }
@@ -180,5 +190,57 @@ class FilesViewModelTest {
         val text = vm.linkText(listOf(file("00000000-0000-4000-8000-000000000001"), file("00000000-0000-4000-8000-000000000002")))
         assertThat(text.lines()).hasSize(2)
         assertThat(text.lines().all { it.startsWith("samesame://file/") }).isTrue()
+    }
+
+    @Test fun favouritesAndTagChipsFilterTheVisibleFiles() = runTest {
+        val s = TestScope2()
+        s.repo.files.value = listOf(
+            file("x").copy(isFavorite = true, tags = listOf("work")),
+            file("y").copy(tags = listOf("home")),
+            file("z").copy(isFavorite = true, tags = listOf("home")),
+        )
+        s.repo.tags.value = listOf("home", "work")
+        val vm = s.vm()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect {} }
+        assertThat(vm.uiState.value.files.map { it.id.value }).containsExactly("x", "y", "z")
+        assertThat(vm.uiState.value.allTags).containsExactly("home", "work").inOrder()
+
+        vm.setFavoritesOnly(true)
+        assertThat(vm.uiState.value.files.map { it.id.value }).containsExactly("x", "z")
+        vm.setTagFilter("home")
+        assertThat(vm.uiState.value.files.map { it.id.value }).containsExactly("z")
+        assertThat(vm.uiState.value.filterActive).isTrue()
+        // Picking the active tag again clears just that chip.
+        vm.setTagFilter("home")
+        assertThat(vm.uiState.value.files.map { it.id.value }).containsExactly("x", "z")
+        vm.clearFilters()
+        assertThat(vm.uiState.value.files.map { it.id.value }).containsExactly("x", "y", "z")
+        assertThat(vm.uiState.value.filterActive).isFalse()
+    }
+
+    @Test fun customSortIsOnlyReorderableWhileSelecting() = runTest {
+        val s = TestScope2()
+        s.repo.files.value = listOf(file("x"), file("y"))
+        val vm = s.vm()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect {} }
+        vm.setSortField(FileSortField.Custom)
+        assertThat(vm.uiState.value.reorderable).isFalse()
+        vm.startSelecting()
+        assertThat(vm.uiState.value.reorderable).isTrue()
+        vm.moveFile(FileId("x"), 1)
+        vm.moveFolder(FileFolderId("a"), 0)
+        assertThat(s.repo.fileMoves).containsExactly(FileId("x") to 1)
+        assertThat(s.repo.folderMoves).containsExactly(FileFolderId("a") to 0)
+    }
+
+    @Test fun infoEditsArePersistedThroughTheRepository() = runTest {
+        val s = TestScope2()
+        val vm = s.vm()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect {} }
+        vm.setDescription(FileId("x"), "a note")
+        vm.setTags(FileId("x"), listOf("work", "home"))
+        vm.toggleFavorite(file("x"))
+        assertThat(s.repo.descriptions).containsExactly(FileId("x") to "a note")
+        assertThat(s.repo.tagEdits).containsExactly(FileId("x") to listOf("work", "home"))
     }
 }

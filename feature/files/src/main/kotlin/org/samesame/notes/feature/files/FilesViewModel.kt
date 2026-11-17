@@ -112,6 +112,7 @@ class FilesViewModel @Inject constructor(
 
     private val folders: Flow<List<FileFolder>> = repo.observeFolders()
 
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val uiState: StateFlow<FilesUiState> = combine(
         combine(currentFolder, sort) { f, s -> f to s }.flatMapLatest { (f, s) -> repo.observeFiles(f, s) },
         folders,
@@ -226,7 +227,25 @@ class FilesViewModel @Inject constructor(
 
     private fun setSort(next: FileSort) { sort.value = next; prefs.sort = next }
 
-    fun setViewMode(mode: FilesViewMode) { viewMode.value = mode; prefs.viewMode = mode }
+    fun setViewMode(mode: FilesViewMode) { view.value = view.value.copy(mode = mode); prefs.viewMode = mode }
+
+    // ---- Filters ----
+
+    /** The "Favourites" filter chip. */
+    fun setFavoritesOnly(on: Boolean) { view.update { it.copy(filters = it.filters.copy(favoritesOnly = on)) } }
+
+    /** The tag filter chip; picking the active tag again clears the filter. */
+    fun setTagFilter(tag: String?) { view.update { it.copy(filters = it.filters.copy(tag = if (it.filters.tag == tag) null else tag)) } }
+
+    fun clearFilters() { view.update { it.copy(filters = Filters()) } }
+
+    // ---- Custom order ----
+
+    /** Drags a file to [targetIndex] among its folder's files (only offered in Custom sort + Edit mode). */
+    fun moveFile(id: FileId, targetIndex: Int) { viewModelScope.launch { repo.moveFileWithin(id, targetIndex) } }
+
+    /** Drags a folder to [targetIndex] among its siblings. */
+    fun moveFolder(id: FileFolderId, targetIndex: Int) { viewModelScope.launch { repo.moveFolderWithin(id, targetIndex) } }
 
     // ---- Folders ----
 
@@ -261,6 +280,17 @@ class FilesViewModel @Inject constructor(
         val make = files.any { !it.isFavorite }
         viewModelScope.launch { repo.setFavorite(files.map { it.id }, make); clearSelection() }
     }
+
+    /** Toggles one file's star from the Info sheet (keeps the current selection). */
+    fun toggleFavorite(file: LibraryFile) {
+        viewModelScope.launch { repo.setFavorite(listOf(file.id), !file.isFavorite) }
+    }
+
+    /** Saves the file's short description from the Info sheet. */
+    fun setDescription(id: FileId, description: String) { viewModelScope.launch { repo.setDescription(id, description) } }
+
+    /** Saves the file's tags from the Info sheet. */
+    fun setTags(id: FileId, tags: List<String>) { viewModelScope.launch { repo.setTags(id, tags) } }
 
     /** Moves the selected files and folders into [target] (null = root). A folder can't go into itself or its own subtree. */
     fun moveSelection(target: FileFolderId?) {

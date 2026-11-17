@@ -401,4 +401,5 @@ internal fun sortLabel(field: FileSortField): Int = when (field) {
     FileSortField.DateAdded -> R.string.feature_files_sort_date
     FileSortField.Size -> R.string.feature_files_sort_size
     FileSortField.Type -> R.string.feature_files_sort_type
+    FileSortField.Custom -> R.string.feature_files_sort_custom
 }
