@@ -10,7 +10,6 @@ import android.text.style.AlignmentSpan
 import android.text.style.LeadingMarginSpan
 import android.text.style.MetricAffectingSpan
 import android.text.style.ReplacementSpan
-import org.samesame.notes.core.model.Limits
 import org.samesame.notes.core.model.richtext.CharStyle
 import org.samesame.notes.core.model.richtext.ListKind
 import org.samesame.notes.core.model.richtext.ParagraphStyle
@@ -18,8 +17,7 @@ import org.samesame.notes.core.model.richtext.TextAlign
 import org.samesame.notes.core.richtext.BodyTextMetrics
 
 /** Text size in pu for a model font size (null = note default); scaled to the reference's glyph metrics. */
-fun fontSizePu(fontSize: Float?): Float =
-    (fontSize ?: Limits.DEFAULT_FONT_SIZE) * Limits.FONT_PU_PER_POINT * BodyTextMetrics.GLYPH_SCALE
+fun fontSizePu(fontSize: Float?): Float = BodyTextMetrics.fontSizePu(fontSize)
 
 /**
  * One run's [CharStyle]: the only character-style span in a body, so the Spannable maps 1:1 onto
@@ -97,15 +95,16 @@ class ParagraphSpan(val style: ParagraphStyle, private val env: TextRenderEnv) :
 
     override fun getLeadingMargin(first: Boolean): Int = leadingMargin(style, markerEm()).toInt()
 
-    /** Text size of the paragraph's first character (the marker follows it); the default when unknown. */
+    /** Text size of the paragraph's first character (the marker follows it), or of the text an empty one continues. */
     private fun markerEm(): Float {
         if (!style.hasMarker) return fontSizePu(null)
         val host = env.host ?: return fontSizePu(null)
         val start = host.getSpanStart(this)
-        if (start < 0 || start >= host.length) return fontSizePu(null)
-        val size = host.getSpans(start, start + 1, CharStyleSpan::class.java)
-            .firstOrNull { host.getSpanStart(it) <= start }?.style?.fontSize
-        return fontSizePu(size)
+        if (start < 0) return fontSizePu(null)
+        return BodyTextMetrics.markerEm(host.length, start) { offset ->
+            host.getSpans(offset, minOf(offset + 1, host.length), CharStyleSpan::class.java)
+                .firstOrNull { host.getSpanStart(it) <= offset && host.getSpanEnd(it) > offset }?.style?.fontSize
+        }
     }
 
     override fun getAlignment(): Layout.Alignment = alignmentOf(style.align)
@@ -133,15 +132,23 @@ class ParagraphSpan(val style: ParagraphStyle, private val env: TextRenderEnv) :
             TextAlign.Right -> Layout.Alignment.ALIGN_OPPOSITE
         }
 
-        /** Draws the marker of [style] whose box starts at [left]; used for spans and for the empty last paragraph. */
+        /**
+         * Draws the marker of [style] whose checkbox (or bullet/number) starts at [left]; used for spans and for the empty last paragraph.
+         * Combined items get a checkbox column then a number column; both markers end where the text column starts, so the gaps match
+         * a plain checkbox line and a plain numbered line respectively.
+         */
         fun drawMarker(c: Canvas, p: Paint, left: Float, baseline: Float, em: Float, style: ParagraphStyle, number: Int, env: TextRenderEnv) {
             // Checkbox first, then the bullet/number, then the text.
             if (style.checkbox) ChecklistSpan.draw(c, p, left, baseline, em, style.checked, env.pageColor)
             val combined = style.checkbox
+            val markerLeft = left + if (combined) BodyTextMetrics.markerWidth(em) else 0f
             when (style.list) {
                 ListKind.None -> Unit
-                ListKind.Bullet -> ListMarkerSpan.drawBullet(c, p, if (combined) left + BodyTextMetrics.markerWidth(em) else left, baseline, em)
-                ListKind.Numbered -> ListMarkerSpan.drawNumber(c, p, if (combined) left + BodyTextMetrics.numberColumnWidth(em) else left, baseline, em, number)
+                ListKind.Bullet -> ListMarkerSpan.drawBullet(c, p, markerLeft, baseline, em)
+                ListKind.Numbered -> ListMarkerSpan.drawNumber(
+                    c, p, markerLeft, baseline, em, number,
+                    if (combined) BodyTextMetrics.numberColumnWidth(em) else BodyTextMetrics.markerWidth(em),
+                )
             }
         }
     }
@@ -160,12 +167,13 @@ object ListMarkerSpan {
         c.drawCircle(cx, cy, em * m.BULLET_RADIUS_EM, tmp)
     }
 
-    fun drawNumber(c: Canvas, p: Paint, left: Float, baseline: Float, em: Float, number: Int) {
+    /** Draws [number] right-aligned at the end of its [columnWidth], leaving [BodyTextMetrics.numberTextGap] before the text. */
+    fun drawNumber(c: Canvas, p: Paint, left: Float, baseline: Float, em: Float, number: Int, columnWidth: Float) {
         tmp.set(p)
         tmp.textSize = em
         tmp.textAlign = Paint.Align.RIGHT
         // Right-aligned so the text column stays put as numbers grow.
-        c.drawText("$number.", left + BodyTextMetrics.markerWidth(em) - em * 0.35f, baseline, tmp)
+        c.drawText("$number.", BodyTextMetrics.numberRightEdge(left, em, columnWidth), baseline, tmp)
     }
 }
 

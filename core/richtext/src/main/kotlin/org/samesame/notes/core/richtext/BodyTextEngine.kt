@@ -432,7 +432,7 @@ class BodyTextEngine(
     }
 
     private fun emptyLineX(style: ParagraphStyle): Float {
-        val margin = ParagraphSpan.leadingMargin(style, fontSizePu(body.typingStyle?.fontSize))
+        val margin = ParagraphSpan.leadingMargin(style, markerEm(body.length))
         return when (style.align) {
             TextAlign.Left -> margin
             TextAlign.Center -> margin + (layout.width - margin) / 2f
@@ -440,9 +440,11 @@ class BodyTextEngine(
         }
     }
 
-    private fun markerEm(paragraphStart: Int): Float {
-        val size = if (paragraphStart < body.length) RichTextBridge.charStyleAt(body.editable, paragraphStart).fontSize else null
-        return fontSizePu(size ?: body.typingStyle?.fontSize)
+    /** Em of a paragraph's marker: its first character's size, or for an empty one the size of the text it continues. */
+    private fun markerEm(paragraphStart: Int): Float = BodyTextMetrics.markerEm(body.length, paragraphStart) { offset ->
+        var i = offset
+        while (i >= 0 && body.editable[i] == '\n') i--
+        if (i >= 0) RichTextBridge.charStyleAt(body.editable, i).fontSize else null
     }
 
     /** Word around [offset] (for long-press / double-tap); empty range when not on a word. */
@@ -567,7 +569,7 @@ class BodyTextEngine(
                 onPageSurface(pageIndex) {
                     ParagraphSpan.drawMarker(
                         canvas, paint, empty.indent * BodyTextMetrics.INDENT_STEP, layout.getLineBaseline(line).toFloat(),
-                        fontSizePu(body.typingStyle?.fontSize), empty, body.numbers.lastOrNull() ?: 0, body.env,
+                        markerEm(body.length), empty, body.numbers.lastOrNull() ?: 0, body.env,
                     )
                 }
             }
