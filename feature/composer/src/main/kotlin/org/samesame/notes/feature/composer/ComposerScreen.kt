@@ -108,6 +108,7 @@ import org.samesame.notes.core.designsystem.component.AppDialog
 import org.samesame.notes.core.designsystem.component.ScrollBarGeometry
 import org.samesame.notes.core.model.AppSettings
 import org.samesame.notes.core.richtext.TextLink
+import org.samesame.notes.core.richtext.edit.math.MathDetector
 import org.samesame.notes.feature.composer.toolbar.EditorMode
 import org.samesame.notes.feature.composer.toolbar.Panel
 import org.samesame.notes.feature.composer.toolbar.PenModeTool
