@@ -289,6 +289,7 @@ class RichTextEditorState(
 
     /** After undo/redo or any change the IME didn't make (doc §4.4). */
     fun restartInput() {
+        org.samesame.notes.core.richtext.input.ImeTrace.log("imm.restartInput()")
         inputView?.let { imm.restartInput(it) }
     }
 
@@ -299,6 +300,9 @@ class RichTextEditorState(
         val now = intArrayOf(sel.start, sel.end, comp?.first ?: -1, comp?.let { it.last + 1 } ?: -1)
         if (now.contentEquals(reportedSelection)) return
         reportedSelection = now
+        org.samesame.notes.core.richtext.input.ImeTrace.log(
+            "imm.updateSelection(sel=${now[0]},${now[1]} comp=${now[2]},${now[3]}) len=${body.length} ghost=${mathGhostAtCaret()?.text}",
+        )
         imm.updateSelection(v, now[0], now[1], now[2], now[3])
     }
 

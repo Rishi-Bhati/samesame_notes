@@ -46,19 +46,30 @@ class RichTextInputConnection(
     private val host: InputHost,
 ) : BaseInputConnection(view, true) {
 
+    init { ImeTrace.init(view.context) }
+
+    private fun st(): String = "caret=${body.selection.start},${body.selection.end} comp=${body.composition} len=${body.length}"
+
+    private fun q(t: CharSequence?): String = "\"" + t.toString().replace("\n", "\\n") + "\""
+
     override fun getEditable(): Editable = body.editable
 
-    private inline fun <T> edit(block: () -> T): T {
-        body.beginBatch()
+    private inline fun <T> edit(name: String = "", args: String = "", block: () -> T): T {
+        val before = if (ImeTrace.enabled && name.isNotEmpty()) st() else ""
+        var result: T? = null
         try {
-            return block()
+            body.beginBatch()
+            result = block()
+            return result
         } finally {
             body.endBatch()
             host.onImeChanged()
+            if (ImeTrace.enabled && name.isNotEmpty()) ImeTrace.log("$name($args) -> $result | before: $before | after: ${st()}")
         }
     }
 
     override fun beginBatchEdit(): Boolean {
+        ImeTrace.log("beginBatchEdit() ${st()}")
         body.beginBatch()
         return true
     }
@@ -66,10 +77,11 @@ class RichTextInputConnection(
     override fun endBatchEdit(): Boolean {
         body.endBatch()
         host.onImeChanged()
+        ImeTrace.log("endBatchEdit() ${st()}")
         return true
     }
 
-    override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean = edit {
+    override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean = edit("commitText", "${q(text)},$newCursorPosition") {
         val t = text?.toString().orEmpty().replace(OBJECT_CHAR.toString(), "")
         if (t == "\n" && body.composition == null) {
             body.insertNewline()
@@ -84,21 +96,21 @@ class RichTextInputConnection(
         }
     }
 
-    override fun setComposingText(text: CharSequence?, newCursorPosition: Int): Boolean = edit {
+    override fun setComposingText(text: CharSequence?, newCursorPosition: Int): Boolean = edit("setComposingText", "${q(text)},$newCursorPosition") {
         val t = text ?: ""
         body.imeComposing = true
         // Keep the IME's spans (composing underline); they are removed when composition finishes.
         super.setComposingText(if (t.contains(OBJECT_CHAR)) t.toString().replace(OBJECT_CHAR.toString(), "") else t, newCursorPosition)
     }
 
-    override fun setComposingRegion(start: Int, end: Int): Boolean = edit {
+    override fun setComposingRegion(start: Int, end: Int): Boolean = edit("setComposingRegion", "$start,$end") {
         body.imeComposing = true
         super.setComposingRegion(start, end)
     }
 
-    override fun finishComposingText(): Boolean = edit { super.finishComposingText() }
+    override fun finishComposingText(): Boolean = edit("finishComposingText") { super.finishComposingText() }
 
-    override fun setSelection(start: Int, end: Int): Boolean = edit {
+    override fun setSelection(start: Int, end: Int): Boolean = edit("setSelection", "$start,$end") {
         val ghost = host.mathGhostAtCaret()
         if (ghost != null) {
             val caret = body.selection
@@ -110,7 +122,7 @@ class RichTextInputConnection(
         super.setSelection(start, end)
     }
 
-    override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean = edit {
+    override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean = edit("deleteSurroundingText", "$beforeLength,$afterLength") {
         val sel = body.selection
         if (beforeLength == 1 && afterLength == 0 && sel.collapsed && body.composition == null) {
             body.deleteBackward()
@@ -121,9 +133,9 @@ class RichTextInputConnection(
     }
 
     override fun deleteSurroundingTextInCodePoints(beforeLength: Int, afterLength: Int): Boolean =
-        edit { super.deleteSurroundingTextInCodePoints(beforeLength, afterLength) }
+        edit("deleteSurroundingTextInCodePoints", "$beforeLength,$afterLength") { super.deleteSurroundingTextInCodePoints(beforeLength, afterLength) }
 
-    override fun sendKeyEvent(event: KeyEvent): Boolean = edit {
+    override fun sendKeyEvent(event: KeyEvent): Boolean = edit("sendKeyEvent", "action=${event.action} key=${KeyEvent.keyCodeToString(event.keyCode)} meta=${event.metaState}") {
         if (event.action != KeyEvent.ACTION_DOWN) return@edit true
         val sel = body.selection
         when (event.keyCode) {
@@ -160,7 +172,7 @@ class RichTextInputConnection(
         true
     }
 
-    override fun performContextMenuAction(id: Int): Boolean = edit {
+    override fun performContextMenuAction(id: Int): Boolean = edit("performContextMenuAction", "$id") {
         when (id) {
             android.R.id.selectAll -> body.selectAll()
             android.R.id.cut -> host.cut()
@@ -171,14 +183,14 @@ class RichTextInputConnection(
         true
     }
 
-    override fun performEditorAction(actionCode: Int): Boolean = edit {
+    override fun performEditorAction(actionCode: Int): Boolean = edit("performEditorAction", "$actionCode") {
         body.insertNewline()
         true
     }
 
     override fun getTextBeforeCursor(n: Int, flags: Int): CharSequence? {
         if (n <= 0) return ""
-        return super.getTextBeforeCursor(n, flags)
+        return ImeTrace.call("getTextBeforeCursor", "$n,$flags") { super.getTextBeforeCursor(n, flags) }
     }
 
     override fun getTextAfterCursor(n: Int, flags: Int): CharSequence? {
@@ -186,18 +198,31 @@ class RichTextInputConnection(
         val ghost = host.mathGhostAtCaret()
         if (ghost != null) {
             Log.d("SsMath", "ime getTextAfterCursor n=$n caret=${body.selection.start},${body.selection.end}")
-            return ghost.text.take(n)
+            return ImeTrace.call("getTextAfterCursor[ghost]", "$n,$flags ${st()}") { ghost.text.take(n) }
         }
-        return super.getTextAfterCursor(n, flags)
+        return ImeTrace.call("getTextAfterCursor", "$n,$flags ${st()}") { super.getTextAfterCursor(n, flags) }
     }
 
-    override fun getSelectedText(flags: Int): CharSequence? {
-        val ghost = host.mathGhostAtCaret()
-        if (ghost != null && !body.selection.collapsed) return super.getSelectedText(flags)
-        return super.getSelectedText(flags)
-    }
+    override fun getSelectedText(flags: Int): CharSequence? =
+        ImeTrace.call("getSelectedText", "$flags") { super.getSelectedText(flags) }
 
-    override fun getExtractedText(request: ExtractedTextRequest?, flags: Int): ExtractedText? {
+    @androidx.annotation.RequiresApi(31)
+    override fun getSurroundingText(beforeLength: Int, afterLength: Int, flags: Int): android.view.inputmethod.SurroundingText? =
+        ImeTrace.call("getSurroundingText", "$beforeLength,$afterLength,$flags ${st()}") { super.getSurroundingText(beforeLength, afterLength, flags) }
+
+    override fun requestCursorUpdates(cursorUpdateMode: Int): Boolean =
+        ImeTrace.call("requestCursorUpdates", "$cursorUpdateMode") { super.requestCursorUpdates(cursorUpdateMode) }
+
+    @androidx.annotation.RequiresApi(34)
+    override fun requestCursorUpdates(cursorUpdateMode: Int, cursorUpdateFilter: Int): Boolean =
+        ImeTrace.call("requestCursorUpdates", "$cursorUpdateMode,$cursorUpdateFilter") { super.requestCursorUpdates(cursorUpdateMode, cursorUpdateFilter) }
+
+    override fun getExtractedText(request: ExtractedTextRequest?, flags: Int): ExtractedText? =
+        ImeTrace.call("getExtractedText", "req=${request?.let { "token=${it.token} flags=${it.flags} hint=${it.hintMaxChars}x${it.hintMaxLines}" }} flags=$flags ${st()}") {
+            getExtractedTextImpl(request, flags)
+        }
+
+    private fun getExtractedTextImpl(request: ExtractedTextRequest?, flags: Int): ExtractedText? {
         val base = super.getExtractedText(request, flags)
         val ghost = host.mathGhostAtCaret() ?: return base
         Log.d("SsMath", "ime getExtractedText caret=${body.selection.start},${body.selection.end} anchor=${ghost.anchor}")
