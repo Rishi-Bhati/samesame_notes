@@ -519,7 +519,10 @@ internal class DefaultNoteRepository @Inject constructor(
         }
     }
 
-    override suspend fun importText(text: String, title: String, folderId: FolderId?): NoteId {
+    override suspend fun importText(text: String, title: String, folderId: FolderId?): NoteId =
+        importRichText(org.samesame.notes.core.model.richtext.RichText.of(text), title, folderId)
+
+    override suspend fun importRichText(body: org.samesame.notes.core.model.richtext.RichText, title: String, folderId: FolderId?): NoteId {
         val id = UUID.randomUUID().toString()
         val settings = appSettings.settings.first()
         val style = settings.newNote
@@ -530,7 +533,7 @@ internal class DefaultNoteRepository @Inject constructor(
                 backgroundColor = style.backgroundColor, adjustForDarkMode = settings.adjustColourInDarkMode,
             )
             created = true
-            val document = base.copy(body = org.samesame.notes.core.model.richtext.RichText.of(text))
+            val document = base.copy(body = body)
             documents.writeDocument(document)
             documents.flush(id)
             val now = clock.now()

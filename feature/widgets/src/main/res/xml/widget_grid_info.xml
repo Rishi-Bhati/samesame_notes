@@ -9,7 +9,7 @@
     android:updatePeriodMillis="0"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
-    android:widgetFeatures="reconfigurable"
+    android:widgetFeatures="reconfigurable|hide_from_picker"
     android:configure="org.samesame.notes.feature.widgets.NoteListConfigureActivity"
     android:description="@string/widget_grid_description"
     android:initialLayout="@layout/glance_default_loading_layout"

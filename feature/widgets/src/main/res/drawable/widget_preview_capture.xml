@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Widget-picker preview image (before Android 12) of the quick-capture widget: own drawing. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="300dp" android:height="64dp" android:viewportWidth="300" android:viewportHeight="64">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M24,0H276A24,24 0 0 1 300,24V40A24,24 0 0 1 276,64H24A24,24 0 0 1 0,40V24A24,24 0 0 1 24,0Z" />
+    <path android:fillColor="#FFF1F1F3" android:pathData="M32,8H156A24,24 0 0 1 180,32V32A24,24 0 0 1 156,56H32A24,24 0 0 1 8,32V32A24,24 0 0 1 32,8Z" />
+    <path android:fillColor="#FFE5532F" android:pathData="M16,32A18,18 0 1 1 52,32A18,18 0 1 1 16,32Z" />
+    <path android:fillColor="#FFB5B5B5" android:pathData="M66,28H148A4,4 0 0 1 152,32V32A4,4 0 0 1 148,36H66A4,4 0 0 1 62,32V32A4,4 0 0 1 66,28Z" />
+    <path android:fillColor="#FFF1F1F3" android:pathData="M186,32A24,24 0 1 1 234,32A24,24 0 1 1 186,32Z" />
+    <path android:fillColor="#FFF1F1F3" android:pathData="M242,32A24,24 0 1 1 290,32A24,24 0 1 1 242,32Z" />
+    <path android:fillColor="#FF3A3A3A" android:pathData="M204,32A6,6 0 1 1 216,32A6,6 0 1 1 204,32Z" />
+    <path android:fillColor="#FF3A3A3A" android:pathData="M260,32A6,6 0 1 1 272,32A6,6 0 1 1 260,32Z" />
+</vector>

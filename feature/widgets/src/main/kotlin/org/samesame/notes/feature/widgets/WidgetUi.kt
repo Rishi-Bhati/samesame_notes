@@ -222,3 +222,19 @@ internal fun Thumb(image: ImageProvider?, locked: Boolean, p: WidgetPalette, mod
         )
     }
 }
+
+/** While a widget's data loads: its own (empty) surface, drawn at once, so the launcher's spinner is gone immediately. */
+@Composable
+internal fun LoadingFrame(p: WidgetPalette) {
+    WidgetFrame(p) { Box(GlanceModifier.fillMaxSize()) {} }
+}
+
+/** The data could not be loaded (or took too long): say so, tap opens the app (which redraws every widget). */
+@Composable
+internal fun FailedFrame(p: WidgetPalette) {
+    val context = androidx.glance.LocalContext.current
+    val compact = androidx.glance.LocalSize.current.height < 100.dp
+    WidgetFrame(p, onClick = androidx.glance.appwidget.action.actionStartActivity(WidgetIntents.openApp(context))) {
+        StateMessage(Oui.drawable.ic_oui_notes, context.getString(R.string.widget_load_failed), context.getString(R.string.widget_load_failed_hint), p, compact)
+    }
+}

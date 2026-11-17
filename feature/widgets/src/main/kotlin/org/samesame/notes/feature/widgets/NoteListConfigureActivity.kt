@@ -21,6 +21,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
@@ -39,17 +46,15 @@ import org.samesame.notes.core.model.NoteId
 import org.samesame.notes.core.model.SortOrder
 import dev.oneuiproject.oneui.R as Oui
 
-/** Which of the two source-based widgets a configure screen is for. */
-enum class ListKind { List, Pages }
-
-/** Configure screen of the note-list and pages widgets: recent notes, favourites or one folder, then the look. */
+/** Configure screen of the notes widget: recent notes, favourites or one folder, then the display (list / pages) and the look. */
 class NoteListConfigureActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val widgetId = requestedWidgetId()
         setConfigureResult(widgetId, ok = false)
+        WidgetLog.i("notes configure #$widgetId opened")
         if (widgetId == AppWidgetManager.INVALID_APPWIDGET_ID) { finish(); return }
-        val kind = kindOf(this, widgetId, intent)
+        val fallbackDisplay = NoteListWidget.defaultDisplayOf(this, widgetId)
         val ep = WidgetEntryPoint.get(this)
         val config = WidgetListConfig(this)
         val styles = WidgetStyleStore(this)
@@ -66,6 +71,8 @@ class NoteListConfigureActivity : ComponentActivity() {
             var sourceKey by rememberSaveable { mutableStateOf(config.sourceOf(widgetId).key()) }
             var background by rememberSaveable { mutableStateOf(styles.get(widgetId).background.ordinal) }
             var opacity by rememberSaveable { mutableStateOf(styles.get(widgetId).opacity) }
+            var displayKey by rememberSaveable { mutableStateOf(config.displayOf(widgetId, fallbackDisplay).key) }
+            val display = NotesDisplay.fromKey(displayKey) ?: NotesDisplay.Auto
             val style = WidgetStyle(WidgetBackground.entries[background], opacity)
             val source = ListSource.fromKey(sourceKey)
             val liveFolders = folders.filter { !it.isInTrash }
@@ -83,18 +90,17 @@ class NoteListConfigureActivity : ComponentActivity() {
                 val notesFlow = remember(sourceKey) { ep.notes().observeNotes(source.filter(), SortOrder()) }
                 val notes by notesFlow.collectAsStateWithLifecycle(initialValue = emptyList())
                 ConfigScaffold(
-                    title = stringResource(if (kind == ListKind.Pages) R.string.widget_settings_grid else R.string.widget_settings_list),
+                    title = stringResource(R.string.widget_settings_list),
                     onClose = { finish() },
                     onSave = {
-                        scope.launch {
                             config.set(widgetId, source)
+                            config.setDisplay(widgetId, display)
                             styles.set(widgetId, style)
-                            val widget: GlanceAppWidget = if (kind == ListKind.Pages) NoteGridWidget() else NoteListWidget()
-                            runCatching { widget.update(context, GlanceAppWidgetManager(context).getGlanceIdBy(widgetId)) }
-                            ep.updater().ensureStarted()
+                            // The result first: the launcher replaces its placeholder as soon as it has it.
                             setConfigureResult(widgetId, ok = true)
+                            WidgetLog.i("notes #$widgetId configured: ${source.key()}, ${display.key}")
+                            ep.updater().redraw(widgetId) { NoteListWidget() }
                             finish()
-                        }
                     },
                 ) {
                     WidgetSettingsBody(
@@ -106,10 +112,13 @@ class NoteListConfigureActivity : ComponentActivity() {
                                 title = heading, subtitle = stringResource(R.string.widget_change),
                                 icon = sourceIcon(source), iconTint = SameSameTheme.colors.accent, onClick = { picking = true },
                             )
+                            CardDivider()
+                            DisplayChooser(display) { displayKey = it.key }
                         },
                     ) { roles, night, s ->
-                        val rows = previewRows(notes, style.isDark(night, wallpaperDarkText = !night), kind)
-                        if (kind == ListKind.Pages) NoteGridReplica(roles, night, s, heading, sourceIcon(source), rows)
+                        val shown = NotesDisplay.resolve(display, s)
+                        val rows = previewRows(notes, style.isDark(night, wallpaperDarkText = !night), shown)
+                        if (shown == NotesDisplay.Pages) NoteGridReplica(roles, night, s, heading, sourceIcon(source), rows)
                         else NoteListReplica(roles, night, s, heading, sourceIcon(source), rows)
                     }
                 }
@@ -118,17 +127,32 @@ class NoteListConfigureActivity : ComponentActivity() {
     }
 
     companion object {
-        private const val EXTRA_KIND = "org.samesame.notes.widgets.extra.LIST_KIND"
+        fun intent(context: Context, widgetId: Int): Intent = configureIntent(context, NoteListConfigureActivity::class.java, widgetId)
+    }
+}
 
-        fun intent(context: Context, widgetId: Int, kind: ListKind): Intent =
-            configureIntent(context, NoteListConfigureActivity::class.java, widgetId).putExtra(EXTRA_KIND, kind.name)
-
-        /** From the widget's own tap the kind is in the intent; from the launcher, it is the provider the widget belongs to. */
-        private fun kindOf(context: Context, widgetId: Int, intent: Intent): ListKind {
-            intent.getStringExtra(EXTRA_KIND)?.let { k -> ListKind.entries.firstOrNull { it.name == k }?.let { return it } }
-            val provider = runCatching { AppWidgetManager.getInstance(context).getAppWidgetInfo(widgetId)?.provider?.className }.getOrNull()
-            return if (provider == NoteGridWidgetReceiver::class.java.name) ListKind.Pages else ListKind.List
-        }
+/** Automatic / List / Pages as three equal segments. */
+@Composable
+private fun DisplayChooser(current: NotesDisplay, onPick: (NotesDisplay) -> Unit) {
+    val c = SameSameTheme.colors
+    androidx.compose.foundation.layout.Row(
+        Modifier.padding(12.dp).fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(22.dp)).background(c.pill).padding(3.dp),
+    ) {
+        listOf(NotesDisplay.Auto to R.string.widget_display_auto, NotesDisplay.List to R.string.widget_display_list, NotesDisplay.Pages to R.string.widget_display_pages)
+            .forEach { (value, label) ->
+                val selected = value == current
+                androidx.compose.foundation.layout.Box(
+                    Modifier.weight(1f).heightIn(min = 44.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(19.dp))
+                        .background(if (selected) c.card else androidx.compose.ui.graphics.Color.Transparent)
+                        .selectable(selected = selected, role = androidx.compose.ui.semantics.Role.RadioButton) { onPick(value) },
+                    contentAlignment = androidx.compose.ui.Alignment.Center,
+                ) {
+                    androidx.compose.material3.Text(
+                        stringResource(label), color = if (selected) c.textPrimary else c.textSecondary, fontSize = 14.sp,
+                        fontWeight = if (selected) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal,
+                    )
+                }
+            }
     }
 }
 
@@ -173,14 +197,15 @@ private fun SourcePicker(current: ListSource, folders: List<Folder>, onPick: (Li
 
 /** Up to six rows of the chosen source with their thumbnails (rendered for the stage's day or night). */
 @Composable
-private fun previewRows(notes: List<Note>, dark: Boolean, kind: ListKind): List<ReplicaRow> {
+private fun previewRows(notes: List<Note>, dark: Boolean, display: NotesDisplay): List<ReplicaRow> {
+    val pages = display == NotesDisplay.Pages
     val context = LocalContext.current
-    val rows = remember(notes) { WidgetContent.rows(notes, if (kind == ListKind.Pages) 6 else 5) }
+    val rows = remember(notes) { WidgetContent.rows(notes, if (pages) 6 else 5) }
     val ep = remember { WidgetEntryPoint.get(context) }
     val density = LocalDensity.current.density
     val thumbs by produceState<Map<NoteId, ImageBitmap>>(emptyMap(), rows, dark) {
-        val w = ((if (kind == ListKind.Pages) 120f else NoteListLayout.THUMB.value) * density).toInt()
-        val aspect = if (kind == ListKind.Pages) NoteGridLayout.ASPECT else 1f
+        val w = ((if (pages) 120f else NoteListLayout.THUMB.value) * density).toInt()
+        val aspect = if (pages) NoteGridLayout.ASPECT else 1f
         val out = HashMap<NoteId, ImageBitmap>()
         for (row in rows) {
             if (row.locked) continue

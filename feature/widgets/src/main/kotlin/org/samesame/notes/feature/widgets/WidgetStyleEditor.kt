@@ -413,3 +413,56 @@ private fun ColumnScope.ReplicaEmpty(roles: WidgetColorRoles, night: Boolean) {
         Text(stringResource(R.string.widget_list_empty), color = roles.textSecondary.pick(night), fontSize = 13.sp)
     }
 }
+
+private val replicaCaptureIcons = listOf(
+    Oui.drawable.ic_oui_checkbox_checked_outline, Oui.drawable.ic_oui_voice, Oui.drawable.ic_oui_pen_fountain, Oui.drawable.ic_oui_image_outline,
+)
+private val replicaCaptureLabels = listOf(
+    R.string.widget_capture_label_checklist, R.string.widget_capture_label_voice, R.string.widget_creator_label_pen, R.string.widget_creator_label_image,
+)
+
+@Composable
+internal fun QuickCaptureReplica(roles: WidgetColorRoles, night: Boolean, size: DpSize) {
+    @Composable
+    fun bar(modifier: Modifier) {
+        Row(modifier.clip(RoundedCornerShape(28.dp)).background(roles.tile.pick(night)).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(36.dp).clip(CircleShape).background(roles.accent.pick(night)), contentAlignment = Alignment.Center) {
+                Icon(painterResource(Oui.drawable.ic_oui_edit_outline), contentDescription = null, tint = roles.onAccent.pick(night), modifier = Modifier.size(20.dp))
+            }
+            Spacer(Modifier.width(10.dp))
+            Text(stringResource(R.string.widget_capture_bar), color = roles.textSecondary.pick(night), fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+        }
+    }
+    if (QuickCaptureLayout.tiles(size)) {
+        ReplicaFrame(roles, night) {
+            Column(Modifier.fillMaxSize()) {
+                bar(Modifier.fillMaxWidth().height(56.dp))
+                Spacer(Modifier.height(WidgetDims.Gap))
+                Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(WidgetDims.Gap)) {
+                    replicaCaptureIcons.forEachIndexed { i, icon ->
+                        Column(
+                            Modifier.weight(1f).fillMaxHeight().clip(InnerShape).background(roles.tile.pick(night)),
+                            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+                        ) {
+                            Icon(painterResource(icon), contentDescription = null, tint = roles.icon.pick(night), modifier = Modifier.size(24.dp))
+                            Spacer(Modifier.height(4.dp))
+                            Text(stringResource(replicaCaptureLabels[i]), color = roles.textSecondary.pick(night), fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        ReplicaFrame(roles, night, 8.dp) {
+            Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                bar(Modifier.weight(1f).fillMaxHeight())
+                replicaCaptureIcons.take(QuickCaptureLayout.sideButtons(size.width)).forEach { icon ->
+                    Spacer(Modifier.width(QuickCaptureLayout.BUTTON_GAP))
+                    Box(Modifier.size(QuickCaptureLayout.BUTTON).clip(CircleShape).background(roles.tile.pick(night)), contentAlignment = Alignment.Center) {
+                        Icon(painterResource(icon), contentDescription = null, tint = roles.icon.pick(night), modifier = Modifier.size(24.dp))
+                    }
+                }
+            }
+        }
+    }
+}

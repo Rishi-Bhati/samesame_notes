@@ -49,6 +49,7 @@ class NotePickerActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val widgetId = requestedWidgetId()
         setConfigureResult(widgetId, ok = false)
+        WidgetLog.i("note configure #$widgetId opened")
         if (widgetId == AppWidgetManager.INVALID_APPWIDGET_ID) { finish(); return }
         val ep = WidgetEntryPoint.get(this)
         val styles = WidgetStyleStore(this)
@@ -112,14 +113,13 @@ class NotePickerActivity : ComponentActivity() {
                     onClose = { finish() },
                     onSave = {
                         val id = chosen?.let(::NoteId) ?: return@ConfigScaffold
-                        scope.launch {
-                            ep.pins().pin(widgetId, id)
-                            styles.set(widgetId, style)
-                            runCatching { SingleNoteWidget().update(context, GlanceAppWidgetManager(context).getGlanceIdBy(widgetId)) }
-                            ep.updater().ensureStarted()
-                            setConfigureResult(widgetId, ok = true)
-                            finish()
-                        }
+                        ep.pins().pin(widgetId, id)
+                        styles.set(widgetId, style)
+                        // The result first: the launcher replaces its placeholder as soon as it has it.
+                        setConfigureResult(widgetId, ok = true)
+                        WidgetLog.i("note #$widgetId configured")
+                        ep.updater().redraw(widgetId) { SingleNoteWidget() }
+                        finish()
                     },
                 ) {
                     WidgetSettingsBody(

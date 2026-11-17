@@ -3,6 +3,9 @@ package org.samesame.notes.feature.widgets
 import android.content.Context
 import android.graphics.Bitmap
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -40,16 +43,21 @@ import dev.oneuiproject.oneui.R as Oui
  * Starts a new note in one tap. Three layouts by size: two round buttons (text, pen) when small, a row of five when one cell
  * high, and on taller widgets a header with the app, a wide "write a note" bar and four labelled tiles.
  */
-class NoteCreatorWidget : GlanceAppWidget() {
+class NoteCreatorWidget : LoggingGlanceWidget() {
     // Exact: the layout and the button size follow the real size, not a bucket.
     override val sizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val style = WidgetStyleStore(context).get(GlanceAppWidgetManager(context).getAppWidgetId(id))
-        val wallpaper = wallpaperPrefersDarkText(context)
+        val widgetId = GlanceAppWidgetManager(context).getAppWidgetId(id)
+        WidgetLog.i("creator #$widgetId provideGlance")
         val icon = AppBranding.icon(context, 64)
         val name = AppBranding.name(context)
-        provideContent { NoteCreatorContent(widgetPalette(style, wallpaper), name, icon) }
+        provideContent {
+            val version by WidgetSignals.version.collectAsState()
+            val style = remember(version) { WidgetStyleStore(context).get(widgetId) }
+            val wallpaper = remember(version) { wallpaperPrefersDarkText(context) }
+            NoteCreatorContent(widgetPalette(style, wallpaper), name, icon)
+        }
     }
 
     override suspend fun providePreview(context: Context, widgetCategory: Int) {

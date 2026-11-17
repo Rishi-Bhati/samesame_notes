@@ -20,6 +20,10 @@ interface WidgetEntryPoint {
     fun settings(): AppSettingsRepository
     fun updater(): WidgetUpdater
 
+    /** Outlives activities: work that must finish (saving a captured note) runs here. */
+    @org.samesame.notes.core.data.di.ApplicationScope
+    fun appScope(): kotlinx.coroutines.CoroutineScope
+
     companion object {
         fun get(context: Context): WidgetEntryPoint =
             EntryPointAccessors.fromApplication(context.applicationContext, WidgetEntryPoint::class.java)

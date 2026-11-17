@@ -5,10 +5,12 @@
     <string name="widget_creator_description">Start a note in one tap: type, write, draw, add a picture or record your voice.</string>
     <string name="widget_single_name">Note</string>
     <string name="widget_single_description">Keep one note\'s page on your home screen.</string>
-    <string name="widget_list_name">Note list</string>
-    <string name="widget_list_description">Recent notes, favourites or one folder, with a line of each note.</string>
+    <string name="widget_list_name">Notes</string>
+    <string name="widget_list_description">Recent notes, favourites or one folder, as a list or as pages.</string>
+    <string name="widget_capture_name">Quick capture</string>
+    <string name="widget_capture_description">Jot something down in seconds: type, dictate or make a checklist right on your home screen.</string>
     <string name="widget_grid_name">Pages</string>
-    <string name="widget_grid_description">The first pages of your recent notes, favourites or one folder, side by side.</string>
+    <string name="widget_grid_description">Recent notes as pages (now part of the Notes widget).</string>
 
     <!-- Creator buttons (descriptions are read by screen readers, labels sit under the tiles) -->
     <string name="widget_creator_keypad">New note with keyboard</string>
@@ -40,6 +42,8 @@
     <string name="widget_favorites_empty_hint">Star a note to see it here</string>
     <string name="widget_folder_gone">Folder not available</string>
     <string name="widget_folder_gone_hint">Tap to choose what to show</string>
+    <string name="widget_load_failed">Couldn\'t load</string>
+    <string name="widget_load_failed_hint">Tap to open the app and try again</string>
 
     <!-- Sample content of the widget-picker previews -->
     <string name="widget_sample_title">Weekend plans</string>
@@ -58,8 +62,11 @@
     <string name="widget_pick_folders">Folders</string>
     <string name="widget_settings_creator">New note widget</string>
     <string name="widget_settings_single">Note widget</string>
-    <string name="widget_settings_list">Note list widget</string>
-    <string name="widget_settings_grid">Pages widget</string>
+    <string name="widget_settings_list">Notes widget</string>
+    <string name="widget_settings_capture">Quick capture widget</string>
+    <string name="widget_display_auto">Automatic</string>
+    <string name="widget_display_list">List</string>
+    <string name="widget_display_pages">Pages</string>
     <string name="widget_section_content">Shows</string>
     <string name="widget_section_background">Background</string>
     <string name="widget_section_opacity">Opacity</string>
@@ -74,4 +81,27 @@
     <string name="widget_save">Save</string>
     <string name="widget_cancel">Cancel</string>
     <string name="widget_close">Close</string>
+
+    <!-- Quick capture widget and sheet -->
+    <string name="widget_capture_bar">Take a note</string>
+    <string name="widget_capture_new_checklist">New checklist</string>
+    <string name="widget_capture_dictate_note">Dictate a note</string>
+    <string name="widget_capture_label_checklist">List</string>
+    <string name="widget_capture_label_voice">Speak</string>
+    <string name="widget_capture_title">Quick note</string>
+    <string name="widget_capture_title_hint">Title</string>
+    <string name="widget_capture_body_hint">Take a note…</string>
+    <string name="widget_capture_item_hint">Item %1$d</string>
+    <string name="widget_capture_remove_item">Remove item %1$d</string>
+    <string name="widget_capture_add_item">Add item</string>
+    <string name="widget_capture_checklist">Checklist</string>
+    <string name="widget_capture_on">On</string>
+    <string name="widget_capture_off">Off</string>
+    <string name="widget_capture_dictate">Dictate</string>
+    <string name="widget_capture_record">Record audio in a new note</string>
+    <string name="widget_capture_open">Open in app</string>
+    <string name="widget_capture_speak">Speak your note</string>
+    <string name="widget_capture_no_dictation">Speech input isn\'t available on this device.</string>
+    <string name="widget_capture_saved">Note saved</string>
+    <string name="widget_capture_failed">Couldn\'t save the note. Your text is still here.</string>
 </resources>
