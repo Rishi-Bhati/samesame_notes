@@ -34,6 +34,8 @@ class WidgetColorRoles(
     val textSecondary: RolePair,
     val icon: RolePair,
     val accent: RolePair,
+    /** The inner rounded panel of the creator widget (the buttons sit on it). */
+    val inset: RolePair,
 )
 
 object WidgetColorRules {
@@ -56,14 +58,15 @@ object WidgetColorRules {
                 surface = RolePair(matchLightSurface.copy(alpha = alpha), matchDarkSurface.copy(alpha = alpha)),
                 text = RolePair(lightText, darkText), textSecondary = RolePair(lightSecondary, darkSecondary),
                 icon = RolePair(lightIcon, darkIcon), accent = RolePair(lightAccent, darkAccent),
+                inset = RolePair(Color(0xFFF2F2F2), Color(0xFF2A2A2A)),
             )
             WidgetBackground.White -> WidgetColorRoles(
                 surface = solid(Color.White.copy(alpha = alpha)), text = solid(lightText), textSecondary = solid(lightSecondary),
-                icon = solid(lightIcon), accent = solid(lightAccent),
+                icon = solid(lightIcon), accent = solid(lightAccent), inset = solid(Color(0xFFF2F2F2)),
             )
             WidgetBackground.Black -> WidgetColorRoles(
                 surface = solid(Color.Black.copy(alpha = alpha)), text = solid(darkText), textSecondary = solid(darkSecondary),
-                icon = solid(darkIcon), accent = solid(darkAccent),
+                icon = solid(darkIcon), accent = solid(darkAccent), inset = solid(Color(0xFF2A2A2A)),
             )
         }
     }

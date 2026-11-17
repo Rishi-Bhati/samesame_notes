@@ -9,6 +9,7 @@ internal class WidgetPalette(roles: WidgetColorRoles) {
     val textSecondary = roles.textSecondary.glance()
     val icon = roles.icon.glance()
     val accent = roles.accent.glance()
+    val inset = roles.inset.glance()
 
     private fun RolePair.glance() = ColorProvider(day = day, night = night)
 }
