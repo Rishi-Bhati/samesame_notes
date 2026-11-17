@@ -48,11 +48,27 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="*/*" />
             </intent-filter>
+            <!-- Open with: only files the app can open as a note (PDF and note files). Sharing still takes every type. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="content" />
-                <data android:mimeType="*/*" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="application/sdoc" />
+            </intent-filter>
+            <!-- Note files whose provider reports a generic type: matched by file name. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:host="*" />
+                <data android:mimeType="application/zip" />
+                <data android:mimeType="application/x-zip-compressed" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:pathPattern=".*\\.ssnote" />
+                <data android:pathPattern=".*\\.sdocx" />
+                <data android:pathPattern=".*\\.SSNOTE" />
+                <data android:pathPattern=".*\\.SDOCX" />
             </intent-filter>
             <!-- Note files opened by a provider that reports no usable type. -->
             <intent-filter>
