@@ -21,13 +21,13 @@ internal object FontSizeHoldGesture {
 
     /** What lifting the finger does once the press became a glide. */
     enum class Release {
-        /** Lifted away from the toolbar with a row highlighted: apply it and close the popup. */
+        /** Lifted with a row highlighted: apply it and close the popup. */
         Apply,
 
-        /** Lifted without the finger ever leaving the button (a hold without moving): leave the popup open. */
+        /** Lifted without the finger ever moving off the press point (a hold without moving): leave the popup open. */
         KeepOpen,
 
-        /** Glided away and lifted back over the toolbar (a change of mind), or nothing to apply: close, unchanged. */
+        /** Lifted far off the popup sideways (a change of mind), or nothing to apply: close, unchanged. */
         Cancel,
     }
 
@@ -43,13 +43,23 @@ internal object FontSizeHoldGesture {
     }
 
     /**
-     * Lifting during a glide: [highlighted] is the glide's flat row (-1 for none), [leftButton] whether the finger
-     * left the font-size button at any time in this glide, and [overToolbar] whether it is over the toolbar strip now.
+     * Lifting during a glide: [highlighted] is the glide's row (-1 for none), [moved] whether the finger moved off the
+     * press point at any time in this glide, and [outside] whether it is far off the popup sideways now.
      */
-    fun release(highlighted: Int, leftButton: Boolean, overToolbar: Boolean): Release = when {
-        !leftButton -> Release.KeepOpen
-        overToolbar -> Release.Cancel
+    fun release(highlighted: Int, moved: Boolean, outside: Boolean): Release = when {
+        !moved -> Release.KeepOpen
+        outside -> Release.Cancel
         highlighted >= 0 -> Release.Apply
         else -> Release.Cancel
     }
+
+    /**
+     * Whether a finger at root [x] counts as off the popup sideways: more than [slackPx] beyond the popup's [left] or
+     * [right] edge. Vertical travel never cancels: the edge bands (and the toolbar under the bottom band) are part of
+     * the control.
+     */
+    fun outside(x: Float, left: Float, right: Float, slackPx: Float): Boolean = x < left - slackPx || x > right + slackPx
+
+    /** How far a finger may stray beyond the popup's sides before the glide counts as cancelled. */
+    const val SIDE_SLACK_DP = 24f
 }
