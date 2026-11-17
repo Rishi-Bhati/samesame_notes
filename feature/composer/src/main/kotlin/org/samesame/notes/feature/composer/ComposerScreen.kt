@@ -1175,31 +1175,36 @@ internal fun ComposerEditor(
     }
     // Image and Camera (`#53`) share this path: the picture is inserted on the current page, centred in the viewport.
     // [afterInsert] runs once the bytes are read (the camera deletes its capture then).
-    fun insertImageFrom(uri: Uri, afterInsert: () -> Unit = {}) {
+    /** Puts [bytes] on the current page as a normal picture; [libraryFileId] is set for "Show in note" pictures from Files. */
+    suspend fun insertImageBytes(bytes: ByteArray, ext: String, libraryFileId: String? = null, nth: Int = 0): Boolean {
         val pageIndex = currentPage
-        val pageId = doc.pages.getOrNull(pageIndex)?.id
-        if (pageId == null) { afterInsert(); return }
+        val pageId = doc.pages.getOrNull(pageIndex)?.id ?: return false
+        val (w, h) = withContext(Dispatchers.IO) {
+            val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o)
+            o.outWidth to o.outHeight
+        }
+        val aspect = if (w > 0 && h > 0) w.toFloat() / h.toFloat() else 1f
+        val widthPu = Limits.PAGE_WIDTH_PU * 0.7f
+        // Several pictures at once are staggered so none hides another.
+        val center = viewport.visibleDoc.center - latestLayout.pageOrigin(pageIndex) + Offset(nth * 48f, nth * 48f)
+        return session.insertImage(pageId, bytes, ext, widthPu, widthPu / aspect, center, libraryFileId)
+    }
+    fun insertImageFrom(uri: Uri, afterInsert: () -> Unit = {}) {
         scope.launch {
             try {
                 val bytes = withContext(Dispatchers.IO) { context.contentResolver.openInputStream(uri)?.use { it.readBytes() } }
                 if (bytes != null) {
-                    val (w, h) = withContext(Dispatchers.IO) {
-                        val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o)
-                        o.outWidth to o.outHeight
-                    }
-                    val aspect = if (w > 0 && h > 0) w.toFloat() / h.toFloat() else 1f
-                    val widthPu = Limits.PAGE_WIDTH_PU * 0.7f
-                    val center = viewport.visibleDoc.center - latestLayout.pageOrigin(pageIndex)
                     val ext = context.contentResolver.getType(uri)?.substringAfterLast('/')
                         ?.let { if (it == "jpeg") "jpg" else it } ?: "png"
-                    session.insertImage(pageId, bytes, ext, widthPu, widthPu / aspect, center)
+                    insertImageBytes(bytes, ext)
                 }
             } finally {
                 afterInsert()
             }
         }
     }
+    fileLinkController?.placePicture = { bytes, ext, fileId, nth -> insertImageBytes(bytes, ext, fileId, nth) }
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) insertImageFrom(uri)
     }
