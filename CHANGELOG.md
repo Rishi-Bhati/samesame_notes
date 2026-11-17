@@ -5,18 +5,18 @@ All notable user-facing changes to SameSame notes are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses
 pre-release alpha versions.
 
-## 0.2.2-alpha (unreleased)
+## 0.2.2-alpha (2026-11-17)
 
 ### Widgets
 
-- Note creator, single note, note list.
+- Note creator, single note, note list, and quick capture widgets.
 - Background white/black/match dark mode and opacity.
 - Lock rules: a locked note never shows content on a widget and a note on a widget cannot be locked.
 
 ### Calculate as you type
 
 - Type an expression and '=' to see the result faded inline.
-- Accept by swiping right on the keyboard spacebar, tapping it or Tab.
+- Accept by swiping right on the keyboard spacebar, double space, finger swipe over the ghost, tapping it or Tab.
 - Units and conversions with examples '1 km + 102 m =' and '5 km in m ='.
 - Percentages.
 - Sum/total/avg of the lines above.
@@ -34,6 +34,7 @@ pre-release alpha versions.
 
 - Checkbox and number or bullet together on one line.
 - New text-size glide: the size under your finger is the one you get, with a live preview in the note.
+- Top bar title: tap at or after the title places caret at the end without opening the expanded header.
 
 ### Fixes
 
