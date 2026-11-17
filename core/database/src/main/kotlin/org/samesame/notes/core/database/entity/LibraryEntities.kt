@@ -62,6 +62,25 @@ data class LibraryFileEntity(
     @ColumnInfo(name = "sort_index") val sortIndex: Long,
     @ColumnInfo(name = "is_favorite", defaultValue = "0") val isFavorite: Boolean = false,
     @ColumnInfo(name = "trashed_at") val trashedAt: Long? = null,
+    /** The user's short description (Room v4). */
+    @ColumnInfo(defaultValue = "") val description: String = "",
+)
+
+/**
+ * One tag of a library file (Room v4). [tag] is the normalised form (`FileTags.normalize`), so matching is exact and
+ * case-insensitive by construction. Tags go away with their file.
+ */
+@Entity(
+    tableName = "file_tags",
+    primaryKeys = ["file_id", "tag"],
+    indices = [Index("tag")],
+    foreignKeys = [
+        ForeignKey(entity = LibraryFileEntity::class, parentColumns = ["id"], childColumns = ["file_id"], onDelete = ForeignKey.CASCADE),
+    ],
+)
+data class FileTagEntity(
+    @ColumnInfo(name = "file_id") val fileId: String,
+    val tag: String,
 )
 
 /** Name search over [LibraryFileEntity] (external content; Room keeps it in sync with triggers). */
@@ -130,4 +149,8 @@ fun LibraryFileEntity.asExternalModel() = LibraryFile(
     sortIndex = sortIndex,
     isFavorite = isFavorite,
     trashedAt = trashedAt,
+    description = description,
 )
+
+/** The model with a file's tags (Room v4), in the order the caller passes. */
+fun LibraryFileEntity.asExternalModel(tags: List<String>) = asExternalModel().copy(tags = tags)

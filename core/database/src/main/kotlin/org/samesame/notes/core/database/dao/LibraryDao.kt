@@ -7,6 +7,7 @@ import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 import org.samesame.notes.core.database.entity.FileFolderEntity
 import org.samesame.notes.core.database.entity.FileRefEntity
+import org.samesame.notes.core.database.entity.FileTagEntity
 import org.samesame.notes.core.database.entity.FileUsageRow
 import org.samesame.notes.core.database.entity.FolderFileCount
 import org.samesame.notes.core.database.entity.LibraryFileEntity
@@ -41,6 +42,9 @@ interface LibraryDao {
     @Query("UPDATE file_folders SET parent_id = :parentId, sort_index = :sortIndex, modified_at = :now WHERE id = :id")
     suspend fun setFolderParent(id: String, parentId: String?, sortIndex: Long, now: Long)
 
+    @Query("UPDATE file_folders SET sort_index = :sortIndex WHERE id = :id")
+    suspend fun setFolderSortIndex(id: String, sortIndex: Long)
+
     @Query("UPDATE file_folders SET trashed_at = :trashedAt WHERE id IN (:ids)")
     suspend fun setFoldersTrashed(ids: List<String>, trashedAt: Long?)
 
@@ -60,6 +64,9 @@ interface LibraryDao {
 
     @Query("SELECT * FROM library_files WHERE folder_id IS :folderId AND trashed_at IS NULL")
     fun observeLiveFilesIn(folderId: String?): Flow<List<LibraryFileEntity>>
+
+    @Query("SELECT * FROM library_files WHERE folder_id IS :folderId AND trashed_at IS NULL")
+    suspend fun liveFilesIn(folderId: String?): List<LibraryFileEntity>
 
     @Query("SELECT * FROM library_files WHERE trashed_at IS NULL")
     fun observeLiveFiles(): Flow<List<LibraryFileEntity>>
@@ -96,6 +103,12 @@ interface LibraryDao {
 
     @Query("UPDATE library_files SET is_favorite = :favorite WHERE id IN (:ids)")
     suspend fun setFavorite(ids: List<String>, favorite: Boolean)
+
+    @Query("UPDATE library_files SET sort_index = :sortIndex WHERE id = :id")
+    suspend fun setFileSortIndex(id: String, sortIndex: Long)
+
+    @Query("UPDATE library_files SET description = :description WHERE id = :id")
+    suspend fun setDescription(id: String, description: String)
 
     @Query(
         """
@@ -163,6 +176,59 @@ interface LibraryDao {
         """,
     )
     fun search(ftsQuery: String): Flow<List<LibraryFileEntity>>
+
+    /** Files (outside the Recycle bin) with a tag starting with [prefix]; [prefix] is already lower-cased. */
+    @Query(
+        """
+        SELECT library_files.* FROM library_files
+        JOIN file_tags ON file_tags.file_id = library_files.id
+        WHERE file_tags.tag LIKE :prefix || '%' AND library_files.trashed_at IS NULL
+        """,
+    )
+    fun searchByTag(prefix: String): Flow<List<LibraryFileEntity>>
+
+    // ---- tags (schema v4) ----
+
+    @Query("SELECT * FROM file_tags")
+    fun observeAllTags(): Flow<List<FileTagEntity>>
+
+    /** Every tag of a file outside the Recycle bin, for the filter chips. */
+    @Query(
+        """
+        SELECT DISTINCT file_tags.tag FROM file_tags
+        JOIN library_files ON library_files.id = file_tags.file_id
+        WHERE library_files.trashed_at IS NULL
+        ORDER BY file_tags.tag
+        """,
+    )
+    fun observeLiveTags(): Flow<List<String>>
+
+    @Query("SELECT * FROM file_tags WHERE file_id IN (:ids)")
+    suspend fun tagsFor(ids: List<String>): List<FileTagEntity>
+
+    @Query("DELETE FROM file_tags WHERE file_id = :fileId")
+    suspend fun deleteTags(fileId: String)
+
+    @Insert(onConflict = androidx.room.OnConflictStrategy.IGNORE)
+    suspend fun insertTags(tags: List<FileTagEntity>)
+
+    /** Replaces a file's tags with [tags] (all for [fileId], already normalised). */
+    @Transaction
+    suspend fun replaceTags(fileId: String, tags: List<String>) {
+        deleteTags(fileId)
+        if (tags.isNotEmpty()) insertTags(tags.map { FileTagEntity(fileId, it) })
+    }
+
+    /** Applies a custom-order move in one transaction: all changed ranks or none. */
+    @Transaction
+    suspend fun applyFileSortIndexes(changes: Map<String, Long>) {
+        changes.forEach { (id, sortIndex) -> setFileSortIndex(id, sortIndex) }
+    }
+
+    @Transaction
+    suspend fun applyFolderSortIndexes(changes: Map<String, Long>) {
+        changes.forEach { (id, sortIndex) -> setFolderSortIndex(id, sortIndex) }
+    }
 
     @Query(
         """

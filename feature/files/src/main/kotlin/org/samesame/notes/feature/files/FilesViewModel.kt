@@ -52,9 +52,18 @@ data class FilesUiState(
     val summary: FilesSummary = FilesSummary(),
     /** A file the screen was asked to show ("Open in Files"): it is selected, and the list scrolls to it once. */
     val reveal: FileId? = null,
+    /** The "Favourites" filter chip is on. */
+    val favoritesOnly: Boolean = false,
+    /** The active tag filter chip, or null. */
+    val tagFilter: String? = null,
+    /** Every tag outside the Recycle bin (the tag filter chips), including [tagFilter]. */
+    val allTags: List<String> = emptyList(),
 ) {
     val selecting: Boolean get() = selection.active
     val isEmpty: Boolean get() = subFolders.isEmpty() && files.isEmpty()
+    val filterActive: Boolean get() = favoritesOnly || tagFilter != null
+    /** Custom order is only draggable in Edit mode (the files screen's select mode). */
+    val reorderable: Boolean get() = sort.field == FileSortField.Custom && selecting
     val selectedFiles: List<LibraryFile> get() = files.filter { it.id in selection.files }
     val selectedFolders: List<FileFolder> get() = subFolders.filter { it.id in selection.folders }
     val allSelected: Boolean get() = !isEmpty && selection.files.size == files.size && selection.folders.size == subFolders.size
@@ -83,35 +92,54 @@ class FilesViewModel @Inject constructor(
     private val prefs: FilesPreferences,
 ) : ViewModel() {
 
-    private data class Local(val folderId: FileFolderId?, val sort: FileSort, val viewMode: FilesViewMode, val selection: FilesSelection, val reveal: FileId?)
+    private data class Filters(val favoritesOnly: Boolean = false, val tag: String? = null)
+
+    private data class ViewSettings(val mode: FilesViewMode, val filters: Filters = Filters())
+
+    private data class Local(
+        val folderId: FileFolderId?,
+        val sort: FileSort,
+        val view: ViewSettings,
+        val selection: FilesSelection,
+        val reveal: FileId?,
+    )
 
     private val currentFolder = MutableStateFlow<FileFolderId?>(null)
     private val sort = MutableStateFlow(prefs.sort)
-    private val viewMode = MutableStateFlow(prefs.viewMode)
+    private val view = MutableStateFlow(ViewSettings(prefs.viewMode))
     private val selection = MutableStateFlow(FilesSelection())
     private val reveal = MutableStateFlow<FileId?>(null)
 
     private val folders: Flow<List<FileFolder>> = repo.observeFolders()
 
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val uiState: StateFlow<FilesUiState> = combine(
         combine(currentFolder, sort) { f, s -> f to s }.flatMapLatest { (f, s) -> repo.observeFiles(f, s) },
         folders,
         repo.observeSummary(),
-        combine(currentFolder, sort, viewMode, selection, reveal, ::Local),
-    ) { files, all, summary, local ->
+        combine(currentFolder, sort, view, selection, reveal, ::Local),
+        repo.observeTags(),
+    ) { files, all, summary, local, tags ->
         val open = local.folderId?.takeIf { id -> all.any { it.id == id } }
+        val filters = local.view.filters
+        val visible = files.filter { file ->
+            (!filters.favoritesOnly || file.isFavorite) && (filters.tag?.let { it in file.tags } ?: true)
+        }
         FilesUiState(
             loaded = true,
             folderId = open,
             path = open?.let { id -> chain(id, all) }.orEmpty(),
             subFolders = all.filter { it.parentId == open },
-            files = if (open == local.folderId) files else emptyList(),
+            files = if (open == local.folderId) visible else emptyList(),
             allFolders = all,
             sort = local.sort,
-            viewMode = local.viewMode,
-            selection = local.selection.retain(files, all),
+            viewMode = local.view.mode,
+            selection = local.selection.retain(visible, all),
             summary = summary,
             reveal = local.reveal,
+            favoritesOnly = filters.favoritesOnly,
+            tagFilter = filters.tag,
+            allTags = (tags + listOfNotNull(filters.tag)).distinct().sorted(),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FilesUiState())
 
@@ -199,7 +227,25 @@ class FilesViewModel @Inject constructor(
 
     private fun setSort(next: FileSort) { sort.value = next; prefs.sort = next }
 
-    fun setViewMode(mode: FilesViewMode) { viewMode.value = mode; prefs.viewMode = mode }
+    fun setViewMode(mode: FilesViewMode) { view.value = view.value.copy(mode = mode); prefs.viewMode = mode }
+
+    // ---- Filters ----
+
+    /** The "Favourites" filter chip. */
+    fun setFavoritesOnly(on: Boolean) { view.update { it.copy(filters = it.filters.copy(favoritesOnly = on)) } }
+
+    /** The tag filter chip; picking the active tag again clears the filter. */
+    fun setTagFilter(tag: String?) { view.update { it.copy(filters = it.filters.copy(tag = if (it.filters.tag == tag) null else tag)) } }
+
+    fun clearFilters() { view.update { it.copy(filters = Filters()) } }
+
+    // ---- Custom order ----
+
+    /** Drags a file to [targetIndex] among its folder's files (only offered in Custom sort + Edit mode). */
+    fun moveFile(id: FileId, targetIndex: Int) { viewModelScope.launch { repo.moveFileWithin(id, targetIndex) } }
+
+    /** Drags a folder to [targetIndex] among its siblings. */
+    fun moveFolder(id: FileFolderId, targetIndex: Int) { viewModelScope.launch { repo.moveFolderWithin(id, targetIndex) } }
 
     // ---- Folders ----
 
@@ -234,6 +280,17 @@ class FilesViewModel @Inject constructor(
         val make = files.any { !it.isFavorite }
         viewModelScope.launch { repo.setFavorite(files.map { it.id }, make); clearSelection() }
     }
+
+    /** Toggles one file's star from the Info sheet (keeps the current selection). */
+    fun toggleFavorite(file: LibraryFile) {
+        viewModelScope.launch { repo.setFavorite(listOf(file.id), !file.isFavorite) }
+    }
+
+    /** Saves the file's short description from the Info sheet. */
+    fun setDescription(id: FileId, description: String) { viewModelScope.launch { repo.setDescription(id, description) } }
+
+    /** Saves the file's tags from the Info sheet. */
+    fun setTags(id: FileId, tags: List<String>) { viewModelScope.launch { repo.setTags(id, tags) } }
 
     /** Moves the selected files and folders into [target] (null = root). A folder can't go into itself or its own subtree. */
     fun moveSelection(target: FileFolderId?) {

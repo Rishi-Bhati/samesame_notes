@@ -31,6 +31,7 @@ internal class FakeFilesRepo : FilesRepository {
     override suspend fun renameFolder(id: FileFolderId, name: String) = Unit
     override suspend fun setFolderColor(id: FileFolderId, color: Long?) = Unit
     override suspend fun moveFolder(id: FileFolderId, newParentId: FileFolderId?) = Unit
+    override suspend fun moveFolderWithin(id: FileFolderId, targetIndex: Int) = Unit
     override suspend fun folderPath(id: FileFolderId) = emptyList<FileFolder>()
     override fun observeFiles(folderId: FileFolderId?, sort: FileSort): Flow<List<LibraryFile>> =
         files.map { list -> live(list).filter { it.folderId == folderId } }
@@ -41,6 +42,7 @@ internal class FakeFilesRepo : FilesRepository {
     override suspend fun getFiles(ids: List<FileId>) = files.value.filter { it.id in ids }
     override fun search(query: String): Flow<List<LibraryFile>> =
         files.map { list -> live(list).filter { it.displayName.contains(query, ignoreCase = true) } }
+    override fun observeTags(): Flow<List<String>> = flowOf(emptyList())
     override fun observeSummary() = files.map { all ->
         val trashed = all.filter { it.isInTrash }
         FilesSummary(live(all).size, live(all).sumOf { it.sizeBytes }, trashed.size, trashed.sumOf { it.sizeBytes })
@@ -56,6 +58,9 @@ internal class FakeFilesRepo : FilesRepository {
     }
     override suspend fun moveFiles(ids: List<FileId>, folderId: FileFolderId?) = Unit
     override suspend fun setFavorite(ids: List<FileId>, favorite: Boolean) = Unit
+    override suspend fun moveFileWithin(id: FileId, targetIndex: Int) = Unit
+    override suspend fun setDescription(id: FileId, description: String) = Unit
+    override suspend fun setTags(id: FileId, tags: List<String>) = Unit
     override suspend fun updateMetadata(id: FileId, width: Int?, height: Int?, durationMs: Long?, pageCount: Int?) { metadata += Triple(id, pageCount, durationMs) }
     override fun observeTrash(): Flow<FilesTrash> = files.map { l -> FilesTrash(emptyList(), l.filter { it.isInTrash }) }
     override suspend fun trash(fileIds: List<FileId>, folderIds: List<FileFolderId>) {

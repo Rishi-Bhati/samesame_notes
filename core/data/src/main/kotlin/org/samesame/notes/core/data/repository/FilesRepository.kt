@@ -2,6 +2,7 @@ package org.samesame.notes.core.data.repository
 
 import android.net.Uri
 import kotlinx.coroutines.flow.Flow
+import org.samesame.notes.core.model.Limits
 import org.samesame.notes.core.model.files.DuplicatePolicy
 import org.samesame.notes.core.model.files.FileCategory
 import org.samesame.notes.core.model.files.FileFolder
@@ -38,6 +39,9 @@ interface FilesRepository {
     /** Moves a folder (with its subtree) under [newParentId] (null = Files root). Rejects cycles and too-deep trees. */
     suspend fun moveFolder(id: FileFolderId, newParentId: FileFolderId?)
 
+    /** Custom order: moves [id] to [targetIndex] among its live siblings (same parent), keeping gap ranks. */
+    suspend fun moveFolderWithin(id: FileFolderId, targetIndex: Int)
+
     /** The folder chain from the top level down to [id] (inclusive); empty for an unknown id. */
     suspend fun folderPath(id: FileFolderId): List<FileFolder>
 
@@ -56,8 +60,11 @@ interface FilesRepository {
     /** The files that exist among [ids] (trashed included), in no particular order. */
     suspend fun getFiles(ids: List<FileId>): List<LibraryFile>
 
-    /** Name search (prefix match per word) over files outside the Recycle bin. Blank query = empty list. */
+    /** Name search (prefix match per word) over files outside the Recycle bin. Tags match too. Blank query = empty list. */
     fun search(query: String): Flow<List<LibraryFile>>
+
+    /** Every tag of a file outside the Recycle bin, sorted, for the Files filter chips. */
+    fun observeTags(): Flow<List<String>>
 
     /** Counts and sizes for the subtitle, the drawer badge and the Storage page. */
     fun observeSummary(): Flow<FilesSummary>
@@ -108,6 +115,15 @@ interface FilesRepository {
     suspend fun rename(id: FileId, name: String): String
     suspend fun moveFiles(ids: List<FileId>, folderId: FileFolderId?)
     suspend fun setFavorite(ids: List<FileId>, favorite: Boolean)
+
+    /** Custom order: moves [id] to [targetIndex] among the files of its folder, keeping gap ranks. */
+    suspend fun moveFileWithin(id: FileId, targetIndex: Int)
+
+    /** The file's short description, normalised to [org.samesame.notes.core.model.Limits.MAX_FILE_DESCRIPTION_LENGTH]. */
+    suspend fun setDescription(id: FileId, description: String)
+
+    /** Replaces the file's tags with the normalised, de-duplicated list (at most [Limits.MAX_FILE_TAGS]). */
+    suspend fun setTags(id: FileId, tags: List<String>)
 
     /** Records lazily read metadata (viewers, thumbnails). Null leaves a value unchanged. */
     suspend fun updateMetadata(id: FileId, width: Int? = null, height: Int? = null, durationMs: Long? = null, pageCount: Int? = null)

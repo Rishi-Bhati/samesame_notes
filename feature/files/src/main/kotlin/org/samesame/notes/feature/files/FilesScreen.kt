@@ -10,12 +10,14 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -38,11 +40,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
+import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import org.samesame.notes.core.designsystem.component.AppDropdownMenu
 import org.samesame.notes.core.designsystem.component.AppFab
@@ -57,6 +67,8 @@ import org.samesame.notes.core.designsystem.icon.AppIcons
 import org.samesame.notes.core.designsystem.motion.SameSameMotion
 import org.samesame.notes.core.designsystem.theme.SameSameTheme
 import org.samesame.notes.core.model.NoteId
+import org.samesame.notes.core.model.files.FileFolderId
+import org.samesame.notes.core.model.files.FileId
 import org.samesame.notes.core.model.files.FileSortField
 import org.samesame.notes.core.model.files.LibraryFile
 import org.samesame.notes.feature.files.viewer.openLibraryFile
@@ -286,6 +298,9 @@ internal fun FilesScreen(
                 onDismiss = { dialog = Dialog.None; viewModel.clearSelection() },
                 onCopyLink = { copyLink(listOf(f)) },
                 onOpenNote = { dialog = Dialog.None; viewModel.clearSelection(); onOpenNote(it) },
+                onSaveDescription = { viewModel.setDescription(f.id, it) },
+                onSaveTags = { viewModel.setTags(f.id, it) },
+                onToggleFavorite = { viewModel.toggleFavorite(f) },
             )
         }
         Dialog.None -> Unit
@@ -303,24 +318,37 @@ private fun FilesGrid(
 ) {
     val gridState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
     val list = state.viewMode == FilesViewMode.List
+    val reorderable = state.reorderable
+    // Long-press drag state (Custom sort + Edit mode); the dragged tile lifts and follows the finger.
+    var dragFile by remember { mutableStateOf<FileId?>(null) }
+    var dragFileOffset by remember { mutableStateOf(Offset.Zero) }
+    var fileCell by remember { mutableStateOf(IntSize.Zero) }
+    var dragFolder by remember { mutableStateOf<FileFolderId?>(null) }
+    var dragFolderOffset by remember { mutableStateOf(Offset.Zero) }
+    var folderCell by remember { mutableStateOf(IntSize.Zero) }
+    val showChips = state.allTags.isNotEmpty() || state.favoritesOnly
     LaunchedEffect(gridState) {
         androidx.compose.runtime.snapshotFlow { gridState.canScrollForward || gridState.canScrollBackward }.collect(onScrollable)
     }
-    // "Open in Files": bring the revealed file into view once (the folder row and the sort row come before the files).
+    // "Open in Files": bring the revealed file into view once (the chip, folder and sort rows come before the files).
     LaunchedEffect(state.reveal, state.files) {
         val id = state.reveal ?: return@LaunchedEffect
         val index = state.files.indexOfFirst { it.id == id }
         if (index >= 0) {
-            gridState.scrollToItem(index + (if (state.subFolders.isNotEmpty()) 1 else 0) + 1)
+            val headerRows = (if (showChips) 1 else 0) + (if (state.subFolders.isNotEmpty()) 1 else 0) + 1
+            gridState.scrollToItem(index + headerRows)
             viewModel.revealShown()
         }
     }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val gap = 14.dp
         val side = 16.dp
+        val gapPx = with(density) { gap.toPx() }
         val columns = if (list) 1 else (maxWidth / 160.dp).toInt().coerceAtLeast(2)
         val folderWidth = (maxWidth - side * 2 - gap * 3) / 4
+        val folderColumns = ((maxWidth - side * 2 + gap) / (folderWidth + gap)).toInt().coerceAtLeast(1)
         FastScrollBar(
             scrollFraction = {
                 val info = gridState.layoutInfo
@@ -345,6 +373,19 @@ private fun FilesGrid(
                 horizontalArrangement = Arrangement.spacedBy(gap),
                 verticalArrangement = Arrangement.spacedBy(if (list) 8.dp else 16.dp),
             ) {
+                if (showChips) {
+                    item(span = { GridItemSpan(maxLineSpan) }, key = "filters") {
+                        FilesFilterChips(
+                            favoritesOnly = state.favoritesOnly,
+                            tagFilter = state.tagFilter,
+                            allTags = state.allTags,
+                            onFavorites = { viewModel.setFavoritesOnly(!state.favoritesOnly) },
+                            onTag = viewModel::setTagFilter,
+                            onClear = viewModel::clearFilters,
+                            Modifier.padding(bottom = 4.dp),
+                        )
+                    }
+                }
                 if (state.subFolders.isNotEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }, key = "folders") {
                         androidx.compose.foundation.layout.FlowRow(
@@ -352,12 +393,43 @@ private fun FilesGrid(
                             horizontalArrangement = Arrangement.spacedBy(gap),
                             verticalArrangement = Arrangement.spacedBy(gap),
                         ) {
-                            state.subFolders.forEach { folder ->
+                            state.subFolders.forEachIndexed { index, folder ->
                                 val isSelected = folder.id in state.selection.folders
+                                val dragModifier = if (reorderable) Modifier
+                                    .zIndex(if (dragFolder == folder.id) 1f else 0f)
+                                    .offset {
+                                        if (dragFolder == folder.id) IntOffset(dragFolderOffset.x.roundToInt(), dragFolderOffset.y.roundToInt())
+                                        else IntOffset.Zero
+                                    }
+                                    .pointerInput(folder.id, reorderable, index, state.subFolders.size) {
+                                        if (!reorderable) return@pointerInput
+                                        detectDragGesturesAfterLongPress(
+                                            onDragStart = { dragFolder = folder.id; dragFolderOffset = Offset.Zero },
+                                            onDrag = { _, amount -> dragFolderOffset += amount },
+                                            onDragEnd = {
+                                                if (dragFolder == folder.id) {
+                                                    val target = reorderTarget(
+                                                        index, dragFolderOffset.x, dragFolderOffset.y,
+                                                        folderCell.width + gapPx, folderCell.height + gapPx,
+                                                        folderColumns, state.subFolders.size,
+                                                    )
+                                                    viewModel.moveFolder(folder.id, target)
+                                                }
+                                                dragFolder = null; dragFolderOffset = Offset.Zero
+                                            },
+                                            onDragCancel = { dragFolder = null; dragFolderOffset = Offset.Zero },
+                                        )
+                                    }
+                                    .onSizeChanged { folderCell = it }
+                                else Modifier
                                 FileFolderCard(
                                     folder, folderWidth, state.selecting, isSelected,
                                     onClick = { if (state.selecting) viewModel.toggle(folder) else viewModel.openFolder(folder.id) },
-                                    onLongClick = { if (state.selecting) viewModel.toggle(folder) else viewModel.startSelecting(folder = folder) },
+                                    onLongClick = {
+                                        if (reorderable) Unit
+                                        else if (state.selecting) viewModel.toggle(folder) else viewModel.startSelecting(folder = folder)
+                                    },
+                                    modifier = dragModifier,
                                 )
                             }
                         }
@@ -372,6 +444,7 @@ private fun FilesGrid(
                                 ascending = state.sort.ascending,
                                 onLabelClick = { onSortMenu(true) },
                                 onToggleDirection = viewModel::toggleSortDirection,
+                                showDirection = field != FileSortField.Custom,
                             )
                             Box(Modifier.align(Alignment.TopEnd)) {
                                 AppDropdownMenu(expanded = sortMenu, onDismissRequest = { onSortMenu(false) }, offset = DpOffset((-8.4).dp, 9.9.dp)) {
@@ -383,13 +456,44 @@ private fun FilesGrid(
                         }
                     }
                 }
-                items(state.files, key = { it.id.value }) { file ->
+                items(state.files.size, key = { state.files[it].id.value }) { index ->
+                    val file = state.files[index]
                     val isSelected = file.id in state.selection.files
                     val click = { if (state.selecting) viewModel.toggle(file) else onOpenFile(file) }
-                    val long = { if (state.selecting) viewModel.toggle(file) else viewModel.startSelecting(file = file) }
+                    val long = {
+                        if (reorderable) Unit
+                        else if (state.selecting) viewModel.toggle(file) else viewModel.startSelecting(file = file)
+                    }
                     val uriOf = { viewModel.contentUri(file) }
-                    if (list) FileListItem(file, uriOf, state.selecting, isSelected, click, long)
-                    else FileGridItem(file, uriOf, state.selecting, isSelected, click, long)
+                    val dragModifier = if (reorderable) Modifier
+                        .zIndex(if (dragFile == file.id) 1f else 0f)
+                        .offset {
+                            if (dragFile == file.id) IntOffset(dragFileOffset.x.roundToInt(), dragFileOffset.y.roundToInt())
+                            else IntOffset.Zero
+                        }
+                        .pointerInput(file.id, reorderable, index, state.files.size) {
+                            if (!reorderable) return@pointerInput
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = { dragFile = file.id; dragFileOffset = Offset.Zero },
+                                onDrag = { _, amount -> dragFileOffset += amount },
+                                onDragEnd = {
+                                    if (dragFile == file.id) {
+                                        val target = reorderTarget(
+                                            index, dragFileOffset.x, dragFileOffset.y,
+                                            fileCell.width + gapPx, fileCell.height + gapPx,
+                                            columns, state.files.size,
+                                        )
+                                        viewModel.moveFile(file.id, target)
+                                    }
+                                    dragFile = null; dragFileOffset = Offset.Zero
+                                },
+                                onDragCancel = { dragFile = null; dragFileOffset = Offset.Zero },
+                            )
+                        }
+                        .onSizeChanged { fileCell = it }
+                    else Modifier
+                    if (list) FileListItem(file, uriOf, state.selecting, isSelected, click, long, modifier = dragModifier)
+                    else FileGridItem(file, uriOf, state.selecting, isSelected, click, long, modifier = dragModifier)
                 }
             }
         }
@@ -401,4 +505,5 @@ internal fun sortLabel(field: FileSortField): Int = when (field) {
     FileSortField.DateAdded -> R.string.feature_files_sort_date
     FileSortField.Size -> R.string.feature_files_sort_size
     FileSortField.Type -> R.string.feature_files_sort_type
+    FileSortField.Custom -> R.string.feature_files_sort_custom
 }

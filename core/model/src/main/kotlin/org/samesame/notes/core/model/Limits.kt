@@ -83,4 +83,10 @@ object Limits {
     const val MAX_SHOW_IN_NOTE_BYTES = 64L * 1024 * 1024
     /** Files pasted or inserted at once (the reference's paste/share cap). */
     const val MAX_FILES_PER_PASTE = 100
+    /** Code points of a file's short description (Files Info sheet). */
+    const val MAX_FILE_DESCRIPTION_LENGTH = 500
+    /** Code points of one file tag. */
+    const val MAX_FILE_TAG_LENGTH = 30
+    /** Tags one file may carry. */
+    const val MAX_FILE_TAGS = 20
 }

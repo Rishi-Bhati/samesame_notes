@@ -51,6 +51,10 @@ data class LibraryFile(
     val isFavorite: Boolean = false,
     /** Epoch millis the file was moved to the Files Recycle bin, or null. */
     val trashedAt: Long? = null,
+    /** The user's short description, or "" (Files Info sheet, Room v4). */
+    val description: String = "",
+    /** Normalised tags (lower case, see [FileTags]), at most [Limits.MAX_FILE_TAGS] (Room v4). */
+    val tags: List<String> = emptyList(),
 ) {
     val isInTrash: Boolean get() = trashedAt != null
 
@@ -89,7 +93,15 @@ data class FileFolder(
     val isInTrash: Boolean get() = trashedAt != null
 }
 
-enum class FileSortField { Name, DateAdded, Size, Type }
+enum class FileSortField {
+    Name,
+    DateAdded,
+    Size,
+    Type,
+
+    /** The user's drag order (`sortIndex`; see [OrderRanks]). The direction arrow does not apply. */
+    Custom,
+}
 
 /** Order of the file list. Folders always come first; the UI shows them separately. */
 data class FileSort(val field: FileSortField = FileSortField.DateAdded, val ascending: Boolean = false)

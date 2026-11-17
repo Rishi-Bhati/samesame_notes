@@ -14,6 +14,7 @@ import org.samesame.notes.core.database.dao.TagDao
 import org.samesame.notes.core.database.entity.FolderClosureEntity
 import org.samesame.notes.core.database.entity.FileFolderEntity
 import org.samesame.notes.core.database.entity.FileRefEntity
+import org.samesame.notes.core.database.entity.FileTagEntity
 import org.samesame.notes.core.database.entity.FolderEntity
 import org.samesame.notes.core.database.entity.LibraryFileEntity
 import org.samesame.notes.core.database.entity.LibraryFileFtsEntity
@@ -35,9 +36,10 @@ import org.samesame.notes.core.database.entity.TagEntity
         FileFolderEntity::class,
         LibraryFileEntity::class,
         LibraryFileFtsEntity::class,
+        FileTagEntity::class,
         FileRefEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 abstract class SameSameDatabase : RoomDatabase() {
@@ -99,6 +101,24 @@ abstract class SameSameDatabase : RoomDatabase() {
                 "`count` INTEGER NOT NULL, PRIMARY KEY(`note_id`, `file_id`, `kind`), FOREIGN KEY(`note_id`) " +
                 "REFERENCES `notes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
             "CREATE INDEX IF NOT EXISTS `index_file_refs_file_id` ON `file_refs` (`file_id`)",
+        )
+
+        /**
+         * v4 adds a file's short description and its tags (rel022-filesorder). Purely additive: one column with an empty
+         * default and one new table, so no existing note, folder or file row is rewritten or lost.
+         */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(connection: SQLiteConnection) {
+                MIGRATION_3_4_STATEMENTS.forEach(connection::execSQL)
+            }
+        }
+
+        internal val MIGRATION_3_4_STATEMENTS = listOf(
+            "ALTER TABLE `library_files` ADD COLUMN `description` TEXT NOT NULL DEFAULT ''",
+            "CREATE TABLE IF NOT EXISTS `file_tags` (`file_id` TEXT NOT NULL, `tag` TEXT NOT NULL, " +
+                "PRIMARY KEY(`file_id`, `tag`), FOREIGN KEY(`file_id`) REFERENCES `library_files`(`id`) " +
+                "ON UPDATE NO ACTION ON DELETE CASCADE )",
+            "CREATE INDEX IF NOT EXISTS `index_file_tags_tag` ON `file_tags` (`tag`)",
         )
     }
 }

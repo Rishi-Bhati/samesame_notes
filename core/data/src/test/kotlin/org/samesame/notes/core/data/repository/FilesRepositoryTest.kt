@@ -28,6 +28,7 @@ import org.samesame.notes.core.model.files.FileSort
 import org.samesame.notes.core.model.files.FileSortField
 import org.samesame.notes.core.model.files.ImportResult
 import org.samesame.notes.core.model.files.LibraryFile
+import org.samesame.notes.core.model.files.OrderRanks
 import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.io.InputStream
@@ -234,6 +235,85 @@ class FilesRepositoryTest {
         assertThat(names(FileSort(FileSortField.DateAdded, false))).containsExactly("c.md", "a.txt", "b.txt").inOrder()
         assertThat(names(FileSort(FileSortField.Size, true))).containsExactly("a.txt", "c.md", "b.txt").inOrder()
         assertThat(names(FileSort(FileSortField.Type, true))).containsExactly("c.md", "a.txt", "b.txt").inOrder()
+    }
+
+    @Test fun `custom order moves a file with one gap rank and keeps it`() = runBlocking<Unit> {
+        val a = import(ByteArray(1) { 1 }, "a.txt").file()
+        val b = import(ByteArray(2) { 2 }, "b.txt").file()
+        val c = import(ByteArray(3) { 3 }, "c.txt").file()
+        val custom = FileSort(FileSortField.Custom, ascending = false)
+        suspend fun names(sort: FileSort = custom) = repo.observeFiles(null, sort).first().map { it.displayName }
+        assertThat(names()).containsExactly("a.txt", "b.txt", "c.txt").inOrder()
+
+        repo.moveFileWithin(c.id, 0)
+        assertThat(names()).containsExactly("c.txt", "a.txt", "b.txt").inOrder()
+        assertThat(repo.getFile(c.id)!!.sortIndex).isEqualTo(OrderRanks.STEP / 2)
+
+        repo.moveFileWithin(c.id, 2)
+        assertThat(names()).containsExactly("a.txt", "b.txt", "c.txt").inOrder()
+        assertThat(repo.getFile(a.id)!!.sortIndex).isEqualTo(OrderRanks.STEP)
+        assertThat(repo.getFile(c.id)!!.sortIndex).isEqualTo(3 * OrderRanks.STEP)
+        // The direction arrow does not apply to the custom order.
+        assertThat(names(FileSort(FileSortField.Custom, ascending = true)))
+            .containsExactly("a.txt", "b.txt", "c.txt").inOrder()
+        // A new import goes to the end.
+        import(ByteArray(4) { 4 }, "d.txt")
+        assertThat(names()).containsExactly("a.txt", "b.txt", "c.txt", "d.txt").inOrder()
+    }
+
+    @Test fun `custom order renumbers the section when the ranks are adjacent`() = runBlocking<Unit> {
+        val a = import(ByteArray(1) { 1 }, "a.txt").file()
+        val b = import(ByteArray(2) { 2 }, "b.txt").file()
+        val c = import(ByteArray(3) { 3 }, "c.txt").file()
+        db.libraryDao().setFileSortIndex(a.id.value, 1024)
+        db.libraryDao().setFileSortIndex(b.id.value, 1025)
+        db.libraryDao().setFileSortIndex(c.id.value, 1026)
+
+        repo.moveFileWithin(a.id, 1)
+        assertThat(repo.observeFiles(null, FileSort(FileSortField.Custom)).first().map { it.displayName })
+            .containsExactly("b.txt", "a.txt", "c.txt").inOrder()
+        assertThat(listOf(a, b, c).map { repo.getFile(it.id)!!.sortIndex })
+            .containsExactly(2048L, 1024L, 3072L).inOrder()
+    }
+
+    @Test fun `custom order of folders within their parent and moving a file to another folder goes to its end`() = runBlocking<Unit> {
+        val a = repo.createFolder("A", null)
+        val b = repo.createFolder("B", null)
+        val c = repo.createFolder("C", null)
+        assertThat(repo.observeFolders().first().map { it.name }).containsExactly("A", "B", "C").inOrder()
+        repo.moveFolderWithin(c, 0)
+        assertThat(repo.observeFolders().first().map { it.name }).containsExactly("C", "A", "B").inOrder()
+        repo.moveFolderWithin(c, 2)
+        assertThat(repo.observeFolders().first().map { it.name }).containsExactly("A", "B", "C").inOrder()
+        assertThat(repo.observeFolders().first().single { it.id == a }.parentId).isNull()
+
+        val x = import(ByteArray(1) { 1 }, "x.txt").file()
+        val y = import(ByteArray(2) { 2 }, "y.txt").file()
+        val inFolder = import(ByteArray(3) { 3 }, "in.txt", a).file()
+        repo.moveFiles(listOf(x.id), a)
+        assertThat(repo.observeFiles(a, FileSort(FileSortField.Custom)).first().map { it.displayName })
+            .containsExactly("in.txt", "x.txt").inOrder()
+        assertThat(repo.getFile(y.id)!!.folderId).isNull()
+    }
+
+    @Test fun `description and tags are normalised, shown with the file and searchable`() = runBlocking<Unit> {
+        val f = import("x".toByteArray(), "Receipt.pdf").file()
+        repo.setDescription(f.id, "  Tax papers for 2025  ")
+        repo.setTags(f.id, listOf("Tax", "tax", "#2025", "  "))
+        val stored = repo.getFile(f.id)!!
+        assertThat(stored.description).isEqualTo("Tax papers for 2025")
+        assertThat(stored.tags).containsExactly("2025", "tax").inOrder()
+        assertThat(repo.observeFiles(null, FileSort()).first().single().tags).containsExactly("2025", "tax")
+        assertThat(repo.observeTags().first()).containsExactly("2025", "tax")
+        assertThat(repo.search("tax").first().map { it.id }).containsExactly(f.id)
+        assertThat(repo.search("recei").first().map { it.id }).containsExactly(f.id)
+
+        repo.trash(listOf(f.id))
+        assertThat(repo.observeTags().first()).isEmpty()
+        assertThat(repo.search("tax").first()).isEmpty()
+        repo.restore(listOf(f.id))
+        repo.setTags(f.id, emptyList())
+        assertThat(repo.observeTags().first()).isEmpty()
     }
 
     @Test fun `backlinks count notes and disappear with the note`() = runBlocking<Unit> {
