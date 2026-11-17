@@ -531,7 +531,10 @@ internal fun ComposerEditor(
         val pageSpec = session.holder.current.pages.firstOrNull { it.id == pageId }
         // A text box on a picture page (imported PDF) keeps the stored text colours, like the canvas draws that page.
         val pageDark = pageSpec != null && adjustsForDark(pageSpec, darkAdjust)
-        editor = TextBoxEditor(pageId, id, fresh, box.text, f.rect, editorContext, pageDark).also { it.state.sensitive = locked }
+        editor = TextBoxEditor(pageId, id, fresh, box.text, f.rect, editorContext, pageDark).also {
+            it.state.sensitive = locked
+            it.state.calculateAsYouType = settings.calculateAsYouType
+        }
         textState.hideKeyboard()
         if (session.chrome.value.toolbar.mode == EditorMode.Pen) session.dispatch(ToolbarIntent.ToggleHandwriting)
         session.dispatch(ToolbarIntent.ClosePanel)
@@ -556,6 +559,7 @@ internal fun ComposerEditor(
         return handlers.selection.grabs(viewport.viewToDoc(view) - latestLayout.pageOrigin(index))
     }
     SideEffect { handlers.selection.allowLasso = { session.chrome.value.toolbar.mode == EditorMode.Pen } }
+    SideEffect { editor?.state?.calculateAsYouType = settings.calculateAsYouType }
     LaunchedEffect(editor) {
         val e = editor ?: return@LaunchedEffect
         androidx.compose.runtime.withFrameNanos { }
@@ -580,6 +584,7 @@ internal fun ComposerEditor(
     }
     SideEffect {
         textState.showLinks = settings.showLinks
+        textState.calculateAsYouType = settings.calculateAsYouType
         textState.onPasteFileLinks = fileLinkController?.let { c -> { targets -> c.paste(targets) } }
         fileLinkController?.let { c ->
             c.pasteMode = settings.filePasteMode
@@ -1553,6 +1558,7 @@ internal fun ComposerEditor(
     val bodyToolbar = remember(hostView) { ExtendedTextToolbar(hostView) }
     val shareLabel = stringResource(R.string.feature_composer_text_share)
     val webSearchLabel = stringResource(R.string.feature_composer_text_web_search)
+    val calculateLabel = stringResource(R.string.feature_composer_calculate)
     val removeAnchorLabel = stringResource(R.string.feature_composer_remove_anchor)
     val deleteLabel = stringResource(R.string.feature_composer_delete)
     val nothingToStraighten = stringResource(R.string.feature_composer_nothing_to_straighten)
@@ -1633,7 +1639,19 @@ internal fun ComposerEditor(
                         ExtendedTextToolbar.Extra(removeAnchorLabel) { removeAnchorFromTextSelection() },
                         ExtendedTextToolbar.Extra(deleteLabel) { deleteTextSelection() },
                     )
-                AnchorToText.SelectionMenu.None -> emptyList()
+                AnchorToText.SelectionMenu.None -> {
+                    val rows = ArrayList<ExtendedTextToolbar.Extra>()
+                    if (editable) {
+                        val replacement = MathDetector.calculateSelection(slice.plainText())
+                        if (replacement != null) {
+                            rows += ExtendedTextToolbar.Extra(calculateLabel) {
+                                val selNow = body.selection
+                                if (!selNow.collapsed) body.replace(selNow.min, selNow.max, replacement)
+                            }
+                        }
+                    }
+                    rows
+                }
             }
         }
     }
