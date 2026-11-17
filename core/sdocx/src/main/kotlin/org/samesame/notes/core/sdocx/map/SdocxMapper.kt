@@ -438,7 +438,7 @@ object SdocxMapper {
                     val bulletKind = p.i32()
                     val extra = p.i32()
                     when (bulletKind) {
-                        2 -> { style: ParagraphStyle -> style.copy(list = ListKind.Checklist, checked = extra == 1) }
+                        2 -> { style: ParagraphStyle -> style.copy(checkbox = true, checked = extra == 1) }
                         4, 5, 6, 7 -> { style: ParagraphStyle -> style.copy(list = ListKind.Numbered) }
                         1, 3, 8 -> { style: ParagraphStyle -> style.copy(list = ListKind.Bullet) }
                         else -> null

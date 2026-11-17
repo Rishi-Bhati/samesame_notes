@@ -29,8 +29,8 @@ class ClipboardTextTest {
             bullet,
             numbered,
             numbered,
-            ParagraphStyle(list = ListKind.Checklist, checked = true),
-            ParagraphStyle(list = ListKind.Checklist),
+            ParagraphStyle(checkbox = true, checked = true),
+            ParagraphStyle(checkbox = true),
         )
         assertThat(clip(text, paragraphs)).isEqualTo("• a\n1. b\n2. c\n[x] d\n[ ] e")
     }
@@ -53,5 +53,15 @@ class ClipboardTextTest {
     @Test fun inlineObjectsAreDropped() {
         val text = "x${OBJECT_CHAR}y"
         assertThat(clip(text, listOf(bullet))).isEqualTo("• xy")
+    }
+
+    @Test fun combinedCheckboxAndListGetBothMarkersInDrawOrder() {
+        val text = "a\nb\nc"
+        val paragraphs = listOf(
+            ParagraphStyle(checkbox = true, list = ListKind.Numbered),
+            ParagraphStyle(checkbox = true, list = ListKind.Numbered, checked = true),
+            ParagraphStyle(checkbox = true, list = ListKind.Bullet, indent = 1),
+        )
+        assertThat(clip(text, paragraphs)).isEqualTo("[ ] 1. a\n[x] 2. b\n  [ ] • c")
     }
 }

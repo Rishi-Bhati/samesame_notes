@@ -960,14 +960,13 @@ private fun gridMetrics(
         headerItems,
     )
     val estimate = scrollEstimate.estimateFor(info.totalItemsCount, columns, headerItems, measuredRowAdvance(rows, headerItems))
-    return lazyScrollMetrics(
+    return scrollEstimate.metricsFor(
         itemCount = info.totalItemsCount,
         columns = columns,
         headerItems = headerItems,
         rows = rows,
         viewportExtent = (info.viewportEndOffset - info.viewportStartOffset).toFloat(),
         estimatedRowAdvance = estimate,
-        knownAdvances = scrollEstimate.advancesWith(rows),
     )
 }
 

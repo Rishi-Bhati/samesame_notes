@@ -42,6 +42,8 @@ object BodyTextMetrics {
      * larger run into the text.) [em] is the scaled text size, see `fontSizePu`.
      */
     fun markerWidth(em: Float): Float = Math.round(MARKER_WIDTH * em / DEFAULT_TEXT_SIZE_PU).toFloat()
+    /** Extra column of a paragraph that has a checkbox AND a bullet/number: the number or bullet sits right of the box. */
+    fun numberColumnWidth(em: Float): Float = Math.round(0.95f * em).toFloat()
     fun markerInset(em: Float): Float = MARKER_INSET * em / DEFAULT_TEXT_SIZE_PU
 
     /** Checkbox: 46 px square at size 17 (#74) → 0.9 em of the scaled font; 4 px stroke → 0.08 em; centre 0.35 em above baseline. */

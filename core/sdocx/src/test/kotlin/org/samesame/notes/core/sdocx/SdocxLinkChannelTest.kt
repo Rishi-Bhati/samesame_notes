@@ -6,6 +6,8 @@ import org.samesame.notes.core.model.document.ImageObject
 import org.samesame.notes.core.model.document.NoteDocument
 import org.samesame.notes.core.model.document.PageSpec
 import org.samesame.notes.core.model.richtext.CharStyle
+import org.samesame.notes.core.model.richtext.ListKind
+import org.samesame.notes.core.model.richtext.ParagraphStyle
 import org.samesame.notes.core.model.richtext.RichText
 import org.samesame.notes.core.model.richtext.TextRun
 import org.samesame.notes.core.sdocx.map.SdocxMapper
@@ -75,5 +77,65 @@ class SdocxLinkChannelTest {
         // another picture's bytes get no id
         val other = SdocxLinkChannel.apply(imported, entry) { "other" }
         assertThat((other.inlineObjects.single() as ImageObject).libraryFileId).isNull()
+    }
+
+    private fun combinedDoc(text: String = "first\nsecond"): NoteDocument {
+        val combined = ParagraphStyle(checkbox = true, list = ListKind.Numbered)
+        return NoteDocument(
+            id = "n", title = "T", pages = listOf(PageSpec("p1")),
+            body = RichText(text, listOf(TextRun(text.length, CharStyle())), listOf(combined, combined.copy(checked = true))),
+        )
+    }
+
+    @Test fun `a combined checkbox and number rides in the side channel and is restored on import`() {
+        val d = combinedDoc()
+        val entry = SdocxLinkChannel.encode(d) { null }!!
+        assertThat(entry.decodeToString()).contains("\"lists\"")
+        assertThat(entry.decodeToString()).contains("\"Numbered\"")
+
+        val withEntry = SdocxLinkChannel.withEntry(SdocxDocumentBuilder.toArchive(d, 1_000_000L), entry)
+        val archive = SdocxReader().read(SdocxWriter().writeToBytes(withEntry))
+        // The sdocx format holds one list type: the importer sees the checkbox, without the number.
+        val imported = SdocxMapper.toNoteDocument(archive, "n")
+        assertThat(imported.body.paragraphs.map { it.checkbox }).containsExactly(true, true).inOrder()
+        assertThat(imported.body.paragraphs.map { it.list }).containsExactly(ListKind.None, ListKind.None).inOrder()
+
+        val restored = SdocxLinkChannel.apply(imported, archive.extraEntries[SdocxLinkChannel.ENTRY]) { null }
+        assertThat(restored.body.paragraphs).containsExactly(
+            ParagraphStyle(checkbox = true, list = ListKind.Numbered),
+            ParagraphStyle(checkbox = true, list = ListKind.Numbered, checked = true),
+        ).inOrder()
+    }
+
+    @Test fun `editing a combined paragraph drops its restored number but keeps the checkbox`() {
+        val entry = SdocxLinkChannel.encode(combinedDoc()) { null }!!
+        // What the sdocx importer sees: the checkbox only, with no number in either paragraph.
+        val importedText = "first\nSECOND CHANGED"
+        val edited = NoteDocument(
+            id = "n", pages = listOf(PageSpec("p1")),
+            body = RichText(
+                importedText, listOf(TextRun(importedText.length, CharStyle())),
+                listOf(ParagraphStyle(checkbox = true), ParagraphStyle(checkbox = true, checked = true)),
+            ),
+        )
+        val out = SdocxLinkChannel.apply(edited, entry) { null }
+        assertThat(out.body.paragraphs[0].list).isEqualTo(ListKind.Numbered) // untouched paragraph still matches
+        assertThat(out.body.paragraphs[1].list).isEqualTo(ListKind.None) // edited text no longer hashes
+        assertThat(out.body.paragraphs[1].checkbox).isTrue()
+        assertThat(out.body.paragraphs[1].checked).isTrue()
+    }
+
+    @Test fun `the combined-list side channel is stable across write and read so unedited exports stay byte identical`() {
+        val d = combinedDoc()
+        val first = SdocxWriter().writeToBytes(
+            SdocxLinkChannel.withEntry(SdocxDocumentBuilder.toArchive(d, 1_000_000L), SdocxLinkChannel.encode(d) { null }),
+        )
+        val archive = SdocxReader().read(first)
+        val reEncoded = SdocxLinkChannel.encode(
+            SdocxLinkChannel.apply(SdocxMapper.toNoteDocument(archive, "n"), archive.extraEntries[SdocxLinkChannel.ENTRY]) { null },
+        ) { null }
+        // withEntry returns the same instance on equal bytes, which is what makes exportImported reuse the original file.
+        assertThat(SdocxLinkChannel.withEntry(archive, reEncoded)).isSameInstanceAs(archive)
+        assertThat(SdocxWriter().writeToBytes(archive)).isEqualTo(first)
     }
 }

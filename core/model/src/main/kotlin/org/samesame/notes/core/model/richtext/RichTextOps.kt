@@ -143,7 +143,7 @@ object RichTextOps {
 
     /**
      * If every touched paragraph already has [kind], turns the list off (None); otherwise sets [kind]
-     * on all of them. `checked` is cleared whenever the kind changes.
+     * on all of them. A checkbox (and its checked state) is left alone: it is its own part of the marker.
      */
     fun toggleList(rt: RichText, start: Int, end: Int, kind: ListKind): RichText {
         val src = normalise(rt)
@@ -151,7 +151,21 @@ object RichTextOps {
         val allSame = (first..last).all { src.paragraphs[it].list == kind }
         val target = if (allSame) ListKind.None else kind
         return setParagraphStyle(src, start, end) {
-            if (it.list == target && !it.checked) it else it.copy(list = target, checked = false)
+            if (it.list == target) it else it.copy(list = target)
+        }
+    }
+
+    /** Turns the checkbox off when every touched paragraph has one, otherwise on for all of them (unchecked); the list part stays. */
+    fun toggleCheckbox(rt: RichText, start: Int, end: Int): RichText {
+        val src = normalise(rt)
+        val (first, last) = paragraphSpan(src, start, end)
+        val allOn = (first..last).all { src.paragraphs[it].checkbox }
+        return setParagraphStyle(src, start, end) {
+            when {
+                allOn -> it.copy(checkbox = false, checked = false)
+                it.checkbox -> it
+                else -> it.copy(checkbox = true, checked = false)
+            }
         }
     }
 

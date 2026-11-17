@@ -35,6 +35,20 @@ class TextFormatsTest {
         assertThat(md).contains("- [x] done")
     }
 
+    @Test fun markdownCheckboxWithNumberOrBullet() {
+        val rt = rich(
+            Para(org.samesame.notes.core.model.richtext.ParagraphStyle(list = org.samesame.notes.core.model.richtext.ListKind.Numbered, checkbox = true), "milk" to PLAIN),
+            Para(org.samesame.notes.core.model.richtext.ParagraphStyle(list = org.samesame.notes.core.model.richtext.ListKind.Numbered, checkbox = true, checked = true), "eggs" to PLAIN),
+            Para(org.samesame.notes.core.model.richtext.ParagraphStyle(list = org.samesame.notes.core.model.richtext.ListKind.Bullet, checkbox = true), "tea" to PLAIN),
+        )
+        val md = MarkdownExport.render(sampleDoc(rt, title = ""), FakeAssets(), false).markdown
+        assertThat(md).isEqualTo("1. [ ] milk\n2. [x] eggs\n- [ ] tea\n")
+        val html = HtmlExport.render(sampleDoc(rt, title = ""), FakeAssets())
+        assertThat(html).contains("<ol start=\"1\">")
+        assertThat(html).contains("<li>☐ milk</li>")
+        assertThat(html).contains("<li>☑ eggs</li>")
+    }
+
     @Test fun markdownImagesWrittenOnlyForZip() {
         val assets = FakeAssets(media = mapOf("media/abc.png" to TINY_PNG), ink = setOf(0))
         val zipMode = MarkdownExport.render(docWithImage(), assets, writeMedia = true)

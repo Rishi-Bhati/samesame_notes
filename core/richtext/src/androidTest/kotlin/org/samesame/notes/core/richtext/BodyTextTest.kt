@@ -22,7 +22,7 @@ class BodyTextTest {
 
     private val bold = CharStyle(bold = true)
     private val bullet = ParagraphStyle(list = ListKind.Bullet)
-    private val todo = ParagraphStyle(list = ListKind.Checklist)
+    private val todo = ParagraphStyle(checkbox = true)
 
     private fun sample(): RichText = RichTextOps.normalise(
         RichText(
@@ -183,8 +183,60 @@ class BodyTextTest {
 
         val c = BodyText()
         c.commitText("[x] ")
-        assertThat(c.paragraphStyles.single()).isEqualTo(ParagraphStyle(list = ListKind.Checklist, checked = true))
+        assertThat(c.paragraphStyles.single()).isEqualTo(ParagraphStyle(checkbox = true, checked = true))
         assertThat(c.toRichText().text).isEqualTo("")
+    }
+
+    // B1: the checkbox and the bullet/number are independent parts of the marker (owner decision round 3).
+
+    @Test fun typedNumberOnACheckboxLineKeepsTheCheckboxAndContinuesBoth() {
+        val b = BodyText()
+        b.commitText("[] ")
+        assertThat(b.paragraphStyles.single()).isEqualTo(ParagraphStyle(checkbox = true))
+        b.commitText("1. ")
+        assertThat(b.paragraphStyles.single()).isEqualTo(ParagraphStyle(list = ListKind.Numbered, checkbox = true))
+        assertThat(b.toRichText().text).isEmpty()
+        b.commitText("Buy milk")
+        b.insertNewline()
+        assertThat(b.paragraphStyles).containsExactly(
+            ParagraphStyle(list = ListKind.Numbered, checkbox = true),
+            ParagraphStyle(list = ListKind.Numbered, checkbox = true),
+        ).inOrder()
+        assertThat(b.numbers.toList()).containsExactly(1, 2).inOrder()
+    }
+
+    @Test fun typedCheckboxOnANumberedLineKeepsTheNumber() {
+        val b = BodyText()
+        b.commitText("1. ")
+        b.commitText("Buy milk")
+        b.setSelection(0)
+        b.commitText("[] ")
+        assertThat(b.paragraphStyles.single()).isEqualTo(ParagraphStyle(list = ListKind.Numbered, checkbox = true))
+        assertThat(b.toRichText().text).isEqualTo("Buy milk")
+    }
+
+    @Test fun toolbarButtonsToggleOnlyTheirOwnPart() {
+        val b = BodyText(RichText.of("Buy milk").copy(paragraphs = listOf(ParagraphStyle(list = ListKind.Numbered))))
+        b.toggleCheckbox()
+        assertThat(b.paragraphStyles.single()).isEqualTo(ParagraphStyle(list = ListKind.Numbered, checkbox = true))
+        b.toggleList(ListKind.Bullet)
+        assertThat(b.paragraphStyles.single()).isEqualTo(ParagraphStyle(list = ListKind.Bullet, checkbox = true))
+        b.toggleCheckbox()
+        assertThat(b.paragraphStyles.single()).isEqualTo(ParagraphStyle(list = ListKind.Bullet))
+        b.toggleList(ListKind.Bullet)
+        assertThat(b.paragraphStyles.single()).isEqualTo(ParagraphStyle())
+    }
+
+    @Test fun backspaceAtACombinedMarkerRemovesNumberThenCheckbox() {
+        val b = BodyText(RichText.of("Buy milk").copy(
+            paragraphs = listOf(ParagraphStyle(list = ListKind.Numbered, checkbox = true)),
+        ))
+        b.setSelection(0)
+        b.deleteBackward()
+        assertThat(b.paragraphStyles.single()).isEqualTo(ParagraphStyle(checkbox = true))
+        b.deleteBackward()
+        assertThat(b.paragraphStyles.single()).isEqualTo(ParagraphStyle())
+        assertThat(b.toRichText().text).isEqualTo("Buy milk")
     }
 
     @Test fun inlineBoldItalicStrikeApplyAndLeavePlainText() {
@@ -252,7 +304,7 @@ class BodyTextTest {
                     ParagraphStyle(list = ListKind.Bullet),
                     ParagraphStyle(list = ListKind.Numbered),
                     ParagraphStyle(list = ListKind.Numbered),
-                    ParagraphStyle(list = ListKind.Checklist, checked = true),
+                    ParagraphStyle(checkbox = true, checked = true),
                 ),
             ),
         )
@@ -280,7 +332,7 @@ class BodyTextTest {
             RichText.of("a\no").copy(
                 paragraphs = listOf(
                     ParagraphStyle(list = ListKind.Bullet, indent = 1),
-                    ParagraphStyle(list = ListKind.Checklist),
+                    ParagraphStyle(checkbox = true),
                 ),
             ),
         )

@@ -133,7 +133,7 @@ fun RichTextDebugScreen(dark: Boolean) {
             B("A+") { body.applyCharStyle { it.copy(fontSize = (it.fontSize ?: 17f) + 3f) } }
             B("Red") { body.applyCharStyle { it.copy(color = if (it.color == null) 0xFFE53935 else null) } }
             B("Hl") { body.applyCharStyle { it.copy(highlight = if (it.highlight == null) 0x80FFEB3B else null) } }
-            B("☐") { body.toggleList(ListKind.Checklist) }
+            B("☐") { body.toggleCheckbox() }
             B("•") { body.toggleList(ListKind.Bullet) }
             B("1.") { body.toggleList(ListKind.Numbered) }
             B("→") { body.indent() }

@@ -15,7 +15,8 @@ class ParagraphRulesTest {
 
     private val bullet = ParagraphStyle(list = ListKind.Bullet)
     private val numbered = ParagraphStyle(list = ListKind.Numbered)
-    private val checked = ParagraphStyle(list = ListKind.Checklist, checked = true)
+    private val checked = ParagraphStyle(checkbox = true, checked = true)
+    private val combined = ParagraphStyle(list = ListKind.Numbered, checkbox = true)
 
     @Test fun matchesRichTextOpsOnRandomEdits() {
         val rnd = Random(7)
@@ -74,5 +75,39 @@ class ParagraphRulesTest {
         assertThat(ParagraphRules.onEnter(p, paragraphIsEmpty = true)).isEqualTo(ParagraphRules.EnterAction.Outdent)
         assertThat(ParagraphRules.onEnter(p.copy(indent = 0), true)).isEqualTo(ParagraphRules.EnterAction.EndList)
         assertThat(ParagraphRules.onEnter(p, false)).isEqualTo(ParagraphRules.EnterAction.InsertNewline)
+    }
+
+    // B1: a checkbox can share a paragraph with a number/bullet; the two parts are removed independently.
+
+    @Test fun combinedItemContinuesBothPartsOnEnter() {
+        val out = ParagraphRules.applyReplace(listOf(combined.copy(checked = true)), 0, 0, 1)
+        assertThat(out).containsExactly(combined.copy(checked = true), combined.copy(checked = false)).inOrder()
+    }
+
+    @Test fun enterOnAnEmptyCombinedItemEndsTheWholeList() {
+        assertThat(ParagraphRules.onEnter(combined, paragraphIsEmpty = true)).isEqualTo(ParagraphRules.EnterAction.EndList)
+        assertThat(ParagraphRules.onEnter(combined, paragraphIsEmpty = false)).isEqualTo(ParagraphRules.EnterAction.InsertNewline)
+        assertThat(ParagraphRules.onEnter(combined.copy(indent = 1), paragraphIsEmpty = true))
+            .isEqualTo(ParagraphRules.EnterAction.Outdent)
+    }
+
+    @Test fun backspaceAtStartRemovesTheListPartBeforeTheCheckbox() {
+        assertThat(ParagraphRules.backspaceRemovesMarker(combined)).isTrue()
+        val withoutNumber = ParagraphRules.withoutOuterMarkerPart(combined)
+        assertThat(withoutNumber).isEqualTo(ParagraphStyle(checkbox = true))
+        assertThat(ParagraphRules.withoutOuterMarkerPart(withoutNumber)).isEqualTo(ParagraphStyle())
+        assertThat(ParagraphRules.withoutOuterMarkerPart(combined.copy(list = ListKind.Bullet)))
+            .isEqualTo(ParagraphStyle(checkbox = true))
+    }
+
+    @Test fun withoutMarkerTurnsEveryPartOff() {
+        assertThat(ParagraphRules.withoutMarker(combined.copy(checked = true, indent = 1)))
+            .isEqualTo(ParagraphStyle(indent = 1))
+        assertThat(ParagraphRules.withoutMarker(checked)).isEqualTo(ParagraphStyle())
+    }
+
+    @Test fun numberingContinuesAcrossCombinedItems() {
+        val list = listOf(combined, combined, ParagraphStyle(list = ListKind.Numbered), combined, checked, combined)
+        assertThat(ParagraphRules.numbering(list).toList()).containsExactly(1, 2, 3, 4, 0, 1).inOrder()
     }
 }

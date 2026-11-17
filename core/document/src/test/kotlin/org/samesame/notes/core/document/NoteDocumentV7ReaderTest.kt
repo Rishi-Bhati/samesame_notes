@@ -74,7 +74,7 @@ class NoteDocumentV7ReaderTest {
             paragraphs = listOf(
                 ParagraphStyle(),
                 ParagraphStyle(indent = 1, list = ListKind.Bullet),
-                ParagraphStyle(list = ListKind.Checklist, checked = true),
+                ParagraphStyle(checkbox = true, checked = true),
                 ParagraphStyle(align = TextAlign.Center),
             ),
         ),

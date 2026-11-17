@@ -91,7 +91,7 @@ class InputConnectionTest {
     }
 
     @Test fun enterKeyEndsEmptyChecklistItem() {
-        val todo = ParagraphStyle(list = ListKind.Checklist)
+        val todo = ParagraphStyle(checkbox = true)
         setUp(RichText.of("a").copy(paragraphs = listOf(todo)))
         main {
             body.setSelection(1)

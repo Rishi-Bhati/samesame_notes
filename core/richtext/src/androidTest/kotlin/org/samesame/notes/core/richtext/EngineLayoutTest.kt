@@ -75,7 +75,7 @@ class EngineLayoutTest {
     }
 
     @Test fun emptyStyledLastParagraphCaretSitsAfterMarker() {
-        val todo = ParagraphStyle(list = ListKind.Checklist)
+        val todo = ParagraphStyle(checkbox = true)
         val body = BodyText(RichText.of("a\n").copy(paragraphs = listOf(todo, todo)))
         val e = BodyTextEngine(body, pages)
         val c = e.caret(body.length)

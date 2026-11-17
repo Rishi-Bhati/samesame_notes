@@ -58,8 +58,8 @@ fun sampleBody(): RichText = rich(
     Para(ParagraphStyle(list = ListKind.Bullet), "apples" to PLAIN),
     Para(ParagraphStyle(list = ListKind.Numbered), "first" to PLAIN),
     Para(ParagraphStyle(list = ListKind.Numbered), "second" to CharStyle(strikethrough = true, underline = true)),
-    Para(ParagraphStyle(list = ListKind.Checklist), "todo" to PLAIN),
-    Para(ParagraphStyle(list = ListKind.Checklist, checked = true), "done" to CharStyle(color = 0xFFFF0000, highlight = 0xFFFFFF00, fontSize = 24f)),
+    Para(ParagraphStyle(checkbox = true), "todo" to PLAIN),
+    Para(ParagraphStyle(checkbox = true, checked = true), "done" to CharStyle(color = 0xFFFF0000, highlight = 0xFFFFFF00, fontSize = 24f)),
     Para(ParagraphStyle(align = TextAlign.Center, indent = 1), "centered <tag> & 'q'" to PLAIN),
 )
 

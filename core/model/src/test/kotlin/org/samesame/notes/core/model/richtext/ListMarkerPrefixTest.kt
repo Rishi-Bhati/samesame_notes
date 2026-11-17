@@ -18,12 +18,17 @@ class ListMarkerPrefixTest {
     }
 
     @Test fun `checklist markers follow the checked state`() {
-        assertThat(listMarkerPrefix(ParagraphStyle(list = ListKind.Checklist), null)).isEqualTo("[ ] ")
-        assertThat(listMarkerPrefix(ParagraphStyle(list = ListKind.Checklist, checked = true), null)).isEqualTo("[x] ")
+        assertThat(listMarkerPrefix(ParagraphStyle(checkbox = true), null)).isEqualTo("[ ] ")
+        assertThat(listMarkerPrefix(ParagraphStyle(checkbox = true, checked = true), null)).isEqualTo("[x] ")
     }
 
     @Test fun `indentation is two spaces per level and negative levels are clamped`() {
         assertThat(listMarkerPrefix(ParagraphStyle(list = ListKind.Bullet, indent = 2), null)).isEqualTo("    • ")
         assertThat(listMarkerPrefix(ParagraphStyle(list = ListKind.Bullet, indent = -3), null)).isEqualTo("• ")
+    }
+
+    @Test fun `checkbox comes before the number or bullet`() {
+        assertThat(listMarkerPrefix(ParagraphStyle(list = ListKind.Numbered, checkbox = true), 3)).isEqualTo("[ ] 3. ")
+        assertThat(listMarkerPrefix(ParagraphStyle(list = ListKind.Bullet, checkbox = true, checked = true, indent = 1), null)).isEqualTo("  [x] • ")
     }
 }

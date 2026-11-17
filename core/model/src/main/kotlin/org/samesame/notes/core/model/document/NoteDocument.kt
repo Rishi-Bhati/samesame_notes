@@ -19,9 +19,11 @@ import org.samesame.notes.core.model.richtext.RichText
  * store, so reading and scrolling never rewrite a note (a v6 document's field is still read for the migration, see
  * NoteDocumentMigrations.v2ToV3 / v3ToV4 / v4ToV5 / v5ToV6 / v6ToV7); v8 added explicit link runs
  * ([org.samesame.notes.core.model.richtext.CharStyle.link]) and [ImageObject.libraryFileId] (Files: links and "Show in
- * note"), both defaulted to null, so a v7 document reads as the same v8 value (NoteDocumentMigrations.v7ToV8).
+ * note"), both defaulted to null, so a v7 document reads as the same v8 value (NoteDocumentMigrations.v7ToV8); v9 made the
+ * checkbox a flag of its own ([org.samesame.notes.core.model.richtext.ParagraphStyle.checkbox]) so it can show together with a
+ * bullet or number; a v8 checklist reads as `list = None, checkbox = true` (NoteDocumentMigrations.v8ToV9).
  */
-const val NOTE_DOCUMENT_FORMAT_VERSION = 8
+const val NOTE_DOCUMENT_FORMAT_VERSION = 9
 
 /** Shared JSON configuration for document structures (defaults are written, unknown keys ignored). */
 val NoteJson: Json = Json {

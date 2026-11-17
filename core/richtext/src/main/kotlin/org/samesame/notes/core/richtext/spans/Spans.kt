@@ -99,7 +99,7 @@ class ParagraphSpan(val style: ParagraphStyle, private val env: TextRenderEnv) :
 
     /** Text size of the paragraph's first character (the marker follows it); the default when unknown. */
     private fun markerEm(): Float {
-        if (style.list == ListKind.None) return fontSizePu(null)
+        if (!style.hasMarker) return fontSizePu(null)
         val host = env.host ?: return fontSizePu(null)
         val start = host.getSpanStart(this)
         if (start < 0 || start >= host.length) return fontSizePu(null)
@@ -114,7 +114,7 @@ class ParagraphSpan(val style: ParagraphStyle, private val env: TextRenderEnv) :
         c: Canvas, p: Paint, x: Int, dir: Int, top: Int, baseline: Int, bottom: Int,
         text: CharSequence, start: Int, end: Int, first: Boolean, layout: Layout,
     ) {
-        if (!first || style.list == ListKind.None) return
+        if (!first || !style.hasMarker) return
         // Marker size follows the first character of the paragraph.
         val size = (text as? Spanned)?.getSpans(start, minOf(start + 1, end), CharStyleSpan::class.java)
             ?.firstOrNull { text.getSpanStart(it) <= start }?.style?.fontSize
@@ -124,7 +124,8 @@ class ParagraphSpan(val style: ParagraphStyle, private val env: TextRenderEnv) :
 
     companion object {
         fun leadingMargin(style: ParagraphStyle, em: Float = fontSizePu(null)): Float =
-            style.indent * BodyTextMetrics.INDENT_STEP + if (style.list != ListKind.None) BodyTextMetrics.markerWidth(em) else 0f
+            style.indent * BodyTextMetrics.INDENT_STEP + (if (style.hasMarker) BodyTextMetrics.markerWidth(em) else 0f) +
+                if (style.checkbox && style.list != ListKind.None) BodyTextMetrics.numberColumnWidth(em) else 0f
 
         fun alignmentOf(align: TextAlign): Layout.Alignment = when (align) {
             TextAlign.Left -> Layout.Alignment.ALIGN_NORMAL
@@ -134,11 +135,13 @@ class ParagraphSpan(val style: ParagraphStyle, private val env: TextRenderEnv) :
 
         /** Draws the marker of [style] whose box starts at [left]; used for spans and for the empty last paragraph. */
         fun drawMarker(c: Canvas, p: Paint, left: Float, baseline: Float, em: Float, style: ParagraphStyle, number: Int, env: TextRenderEnv) {
+            // Checkbox first, then the bullet/number, then the text.
+            if (style.checkbox) ChecklistSpan.draw(c, p, left, baseline, em, style.checked, env.pageColor)
+            val combined = style.checkbox
             when (style.list) {
                 ListKind.None -> Unit
-                ListKind.Bullet -> ListMarkerSpan.drawBullet(c, p, left, baseline, em)
-                ListKind.Numbered -> ListMarkerSpan.drawNumber(c, p, left, baseline, em, number)
-                ListKind.Checklist -> ChecklistSpan.draw(c, p, left, baseline, em, style.checked, env.pageColor)
+                ListKind.Bullet -> ListMarkerSpan.drawBullet(c, p, if (combined) left + BodyTextMetrics.markerWidth(em) else left, baseline, em)
+                ListKind.Numbered -> ListMarkerSpan.drawNumber(c, p, if (combined) left + BodyTextMetrics.numberColumnWidth(em) else left, baseline, em, number)
             }
         }
     }

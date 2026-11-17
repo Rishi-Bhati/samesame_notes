@@ -114,9 +114,19 @@ internal class ScrollEstimateHolder {
     private var estimate = ScrollEstimate()
     private val known = HashMap<Int, Float>()
 
+    /** Bumped whenever [known] changes, so the cached row prefix sum is rebuilt only when a row's height changes. */
+    private var knownVersion = 0
+    private var prefixKey: PrefixKey? = null
+    private var prefixCache: RowPrefixSum? = null
+
+    private data class PrefixKey(val rows: Int, val headers: Int, val estimate: Float, val headerEstimate: Float, val version: Int)
+
     fun estimateFor(itemCount: Int, columns: Int, headerItems: Int, measuredRowAdvance: Float): Float {
         val next = stableScrollEstimate(estimate, itemCount, columns, headerItems, measuredRowAdvance)
-        if (next != estimate) known.clear()
+        if (next != estimate) {
+            known.clear()
+            knownVersion++
+        }
         estimate = next
         return estimate.rowAdvance
     }
@@ -127,10 +137,86 @@ internal class ScrollEstimateHolder {
      * gap): it is recorded only when nothing better is known, and replaced once it is no longer the last.
      */
     fun advancesWith(rows: List<GridRow>): Map<Int, Float> {
-        for (i in 0 until rows.size - 1) known[rows[i].index] = rows[i].advance
-        rows.lastOrNull()?.let { if (it.index !in known) known[it.index] = it.advance }
+        for (i in 0 until rows.size - 1) {
+            if (known.put(rows[i].index, rows[i].advance) != rows[i].advance) knownVersion++
+        }
+        rows.lastOrNull()?.let { row ->
+            if (row.index !in known) {
+                known[row.index] = row.advance
+                knownVersion++
+            }
+        }
         return known
     }
+
+    /**
+     * Prefix sums of the row advances for the current scroll state. The key covers every input of [RowPrefixSum.of],
+     * so once every visible row has been measured the O(rows) pass runs once, not on every scroll frame.
+     */
+    internal fun prefixFor(total: Int, headers: Int, advances: Map<Int, Float>, estimate: Float, headerEstimate: Float): RowPrefixSum {
+        val key = PrefixKey(total, headers, estimate, headerEstimate, knownVersion)
+        prefixCache?.let { if (prefixKey == key) return it }
+        return RowPrefixSum.of(total) { advanceOf(it, headers, advances, estimate, headerEstimate) }
+            .also { prefixCache = it; prefixKey = key }
+    }
+
+    /** Metrics for the home/search scroll bar, using the holder's cached prefix sum. Same result as [lazyScrollMetrics]. */
+    fun metricsFor(
+        itemCount: Int,
+        columns: Int,
+        headerItems: Int,
+        rows: List<GridRow>,
+        viewportExtent: Float,
+        estimatedRowAdvance: Float,
+    ): LazyScrollMetrics {
+        val advances = advancesWith(rows)
+        val cols = columns.coerceAtLeast(1)
+        val headers = headerItems.coerceIn(0, itemCount)
+        val total = totalRows(itemCount, cols, headers)
+        val estimate = effectiveEstimate(estimatedRowAdvance, rows, headers)
+        val headerEstimate = headerAdvance(headers, advances)
+        return lazyScrollMetrics(
+            itemCount = itemCount,
+            columns = columns,
+            headerItems = headerItems,
+            rows = rows,
+            viewportExtent = viewportExtent,
+            estimatedRowAdvance = estimatedRowAdvance,
+            knownAdvances = advances,
+            prefix = prefixFor(total, headers, advances, estimate, headerEstimate),
+        )
+    }
+}
+
+/**
+ * Prefix sums of the advances of rows `0 until n`: `starts[r]` is the top of row [r] in the estimated content and
+ * [content] the total extent. Built once per layout/measurement change instead of on every scroll frame.
+ */
+internal class RowPrefixSum private constructor(val starts: FloatArray, val content: Float) {
+    companion object {
+        fun of(rows: Int, advanceOf: (Int) -> Float): RowPrefixSum {
+            val starts = FloatArray(rows + 1)
+            var sum = 0f
+            for (r in 0 until rows) {
+                starts[r] = sum
+                sum += advanceOf(r)
+            }
+            starts[rows] = sum
+            return RowPrefixSum(starts, sum)
+        }
+    }
+}
+
+/** The row estimate actually used by the metrics: a measured one when the caller has none yet. */
+private fun effectiveEstimate(estimatedRowAdvance: Float, rows: List<GridRow>, headers: Int): Float =
+    (if (estimatedRowAdvance > 0f) estimatedRowAdvance else measuredRowAdvance(rows, headers)).coerceAtLeast(1f)
+
+/** Mean advance of the measured header rows (0 when none is known). */
+private fun headerAdvance(headers: Int, advances: Map<Int, Float>): Float {
+    var sum = 0f
+    var seen = 0
+    for (r in 0 until headers) advances[r]?.let { sum += it; seen++ }
+    return if (seen == 0) 0f else sum / seen
 }
 
 /**
@@ -138,6 +224,7 @@ internal class ScrollEstimateHolder {
  * @param estimatedRowAdvance the stable advance from [stableScrollEstimate]; when positive it is used for the
  * note rows never seen, so the thumb does not wobble while scrolling.
  * @param knownAdvances advances of rows seen earlier (the laid-out rows take precedence).
+ * @param prefix precomputed row prefix sums ([ScrollEstimateHolder.metricsFor]); built here when absent.
  */
 internal fun lazyScrollMetrics(
     itemCount: Int,
@@ -147,6 +234,7 @@ internal fun lazyScrollMetrics(
     viewportExtent: Float,
     estimatedRowAdvance: Float = 0f,
     knownAdvances: Map<Int, Float> = emptyMap(),
+    prefix: RowPrefixSum? = null,
 ): LazyScrollMetrics {
     if (itemCount <= 0 || viewportExtent <= 0f || rows.isEmpty()) return LazyScrollMetrics()
     val cols = columns.coerceAtLeast(1)
@@ -157,19 +245,12 @@ internal fun lazyScrollMetrics(
     val advance = first.advance.coerceAtLeast(1f)
     // LazyGrid item offsets are relative to the viewport, so a scrolled row has a negative top: -top is the scroll.
     val offset = (-first.top).toFloat().coerceIn(0f, advance)
-    val estimate = (if (estimatedRowAdvance > 0f) estimatedRowAdvance else measuredRowAdvance(rows, headers)).coerceAtLeast(1f)
+    val estimate = effectiveEstimate(estimatedRowAdvance, rows, headers)
     val advances = withLaidOutRows(knownAdvances, rows)
-    var headerSum = 0f
-    var headerSeen = 0
-    for (r in 0 until headers) advances[r]?.let { headerSum += it; headerSeen++ }
-    val headerEstimate = if (headerSeen == 0) 0f else headerSum / headerSeen
-    // One pass over the rows (this runs every scroll frame): start of the first visible row and the whole extent.
-    var content = 0f
-    var above = 0f
-    for (r in 0 until total) {
-        if (r == first.index) above = content
-        content += advanceOf(r, headers, advances, estimate, headerEstimate)
-    }
+    val headerEstimate = headerAdvance(headers, advances)
+    val sums = prefix ?: RowPrefixSum.of(total) { advanceOf(it, headers, advances, estimate, headerEstimate) }
+    val above = sums.starts[first.index.coerceIn(0, total)]
+    val content = sums.content
     val position = above + offset
     val maxScroll = (content - viewportExtent).coerceAtLeast(0f)
     val scroll = if (maxScroll <= 0f) 0f else (position / maxScroll).coerceIn(0f, 1f)
@@ -192,7 +273,7 @@ internal fun lazyScrollMetrics(
     )
 }
 
-private fun advanceOf(row: Int, headers: Int, advances: Map<Int, Float>, estimate: Float, headerEstimate: Float): Float =
+internal fun advanceOf(row: Int, headers: Int, advances: Map<Int, Float>, estimate: Float, headerEstimate: Float): Float =
     advances[row] ?: if (row < headers) headerEstimate else estimate
 
 private fun startOfRow(row: Int, headers: Int, advances: Map<Int, Float>, estimate: Float, headerEstimate: Float): Float {

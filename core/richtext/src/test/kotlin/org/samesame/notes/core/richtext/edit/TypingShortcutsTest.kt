@@ -18,9 +18,27 @@ class TypingShortcutsTest {
     }
 
     @Test fun checklistMarkersAreConsumed() {
-        assertThat(TypingShortcuts.blockMarker("[] ")).isEqualTo(BlockMarker("[] ", ListKind.Checklist, false))
-        assertThat(TypingShortcuts.blockMarker("[ ] ")).isEqualTo(BlockMarker("[ ] ", ListKind.Checklist, false))
-        assertThat(TypingShortcuts.blockMarker("[x] ")).isEqualTo(BlockMarker("[x] ", ListKind.Checklist, true))
+        assertThat(TypingShortcuts.blockMarker("[] ")).isEqualTo(BlockMarker("[] ", ListKind.None, false, true))
+        assertThat(TypingShortcuts.blockMarker("[ ] ")).isEqualTo(BlockMarker("[ ] ", ListKind.None, false, true))
+        assertThat(TypingShortcuts.blockMarker("[x] ")).isEqualTo(BlockMarker("[x] ", ListKind.None, true, true))
+        assertThat(TypingShortcuts.blockMarker("[X] ")).isEqualTo(BlockMarker("[X] ", ListKind.None, true, true))
+    }
+
+    /** B1: a marker only sets its own part, so typing "1. " on a checkbox line keeps the checkbox and adds numbering. */
+    @Test fun markersAddressOnlyTheirOwnPartOfTheMarker() {
+        for (m in listOf("[] ", "[ ] ", "[x] ", "[X] ")) {
+            with(TypingShortcuts.blockMarker(m)!!) {
+                assertThat(checkbox).isTrue()
+                assertThat(list).isEqualTo(ListKind.None)
+            }
+        }
+        for (m in listOf("- ", "* ", "\u2022 ", "1. ", "12) ")) {
+            with(TypingShortcuts.blockMarker(m)!!) {
+                assertThat(checkbox).isFalse()
+                assertThat(checked).isFalse()
+                assertThat(list).isNotEqualTo(ListKind.None)
+            }
+        }
     }
 
     @Test fun incompleteOrWrongMarkersAreIgnored() {

@@ -11,6 +11,7 @@ import kotlinx.serialization.json.put
 import org.samesame.notes.core.model.document.ImageObject
 import org.samesame.notes.core.model.document.NoteDocument
 import org.samesame.notes.core.model.richtext.CharStyle
+import org.samesame.notes.core.model.richtext.ListKind
 import org.samesame.notes.core.model.richtext.RichText
 import org.samesame.notes.core.model.richtext.TextRun
 import java.security.MessageDigest
@@ -43,7 +44,8 @@ object SdocxLinkChannel {
             val sha = imageSha(img.media) ?: return@mapNotNull null
             sha to id
         }.distinct()
-        if (links.isEmpty() && images.isEmpty()) return null
+        val lists = combinedLists(doc.body)
+        if (links.isEmpty() && images.isEmpty() && lists.isEmpty()) return null
         return buildJsonObject {
             put("version", VERSION)
             put("links", buildJsonArray {
@@ -53,6 +55,10 @@ object SdocxLinkChannel {
             })
             put("images", buildJsonArray {
                 for ((sha, id) in images) add(buildJsonObject { put("sha", sha); put("libraryFileId", id) })
+            })
+            // Only written when there is something to say, so an entry made before this key existed stays byte-identical.
+            if (lists.isNotEmpty()) put("lists", buildJsonArray {
+                for ((index, kind, textSha) in lists) add(buildJsonObject { put("p", index); put("kind", kind); put("textSha", textSha) })
             })
         }.toString().toByteArray(Charsets.UTF_8)
     }
@@ -79,6 +85,8 @@ object SdocxLinkChannel {
                 }
                 if (changed) body = body.copy(runs = regroup(styles))
             }
+            val listMarks = (obj["lists"] as? JsonArray).orEmpty()
+            if (listMarks.isNotEmpty()) body = restoreLists(body, listMarks)
             val ids = (obj["images"] as? JsonArray).orEmpty().mapNotNull { el ->
                 val o = el as? JsonObject ?: return@mapNotNull null
                 val sha = o["sha"]?.jsonPrimitive?.content ?: return@mapNotNull null
@@ -95,6 +103,37 @@ object SdocxLinkChannel {
         } catch (e: Exception) {
             doc
         }
+    }
+
+    /**
+     * Paragraphs with a checkbox AND a bullet/number: `.sdocx` stores the checkbox only, so (paragraph index, "Bullet"|"Numbered",
+     * sha of the paragraph text) is kept here and put back where the paragraph still has a checkbox and the same text.
+     */
+    private fun combinedLists(rt: RichText): List<Triple<Int, String, String>> {
+        val out = ArrayList<Triple<Int, String, String>>()
+        val lines = rt.text.split('\n')
+        for ((i, p) in rt.paragraphs.withIndex()) {
+            if (p.checkbox && p.list != ListKind.None) out += Triple(i, p.list.name, sha(lines.getOrElse(i) { "" }))
+        }
+        return out
+    }
+
+    private fun restoreLists(rt: RichText, marks: List<kotlinx.serialization.json.JsonElement>): RichText {
+        val lines = rt.text.split('\n')
+        val paragraphs = rt.paragraphs.toMutableList()
+        var changed = false
+        for (m in marks) {
+            val o = m as? JsonObject ?: continue
+            val i = o["p"]?.jsonPrimitive?.int ?: continue
+            val kind = ListKind.entries.firstOrNull { it.name == o["kind"]?.jsonPrimitive?.content } ?: continue
+            val textSha = o["textSha"]?.jsonPrimitive?.content ?: continue
+            val p = paragraphs.getOrNull(i) ?: continue
+            if (kind == ListKind.None || !p.checkbox || p.list != ListKind.None) continue
+            if (sha(lines.getOrElse(i) { "" }) != textSha) continue
+            paragraphs[i] = p.copy(list = kind)
+            changed = true
+        }
+        return if (changed) rt.copy(paragraphs = paragraphs) else rt
     }
 
     /** Stored link runs `[start, end)` with their URI (adjacent runs with the same URI joined). */

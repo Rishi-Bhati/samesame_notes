@@ -24,15 +24,15 @@ object MarkdownExport {
         var previousList = false
         var first = true
         for (p in doc.body.toParagraphs()) {
-            val isList = p.style.list != ListKind.None
+            val isList = p.style.hasMarker
             if (!first) out.append(if (isList && previousList) "\n" else "\n\n")
             first = false
             val prefix = when (p.style.list) {
-                ListKind.None -> ""
+                // GFM task items: "- [ ] text", and "1. [ ] text" for a numbered task (renders as an ordered task list).
+                ListKind.None -> if (p.style.checkbox) "- " else ""
                 ListKind.Bullet -> "- "
                 ListKind.Numbered -> "${p.number ?: 1}. "
-                ListKind.Checklist -> if (p.style.checked) "- [x] " else "- [ ] "
-            }
+            } + if (p.style.checkbox) (if (p.style.checked) "[x] " else "[ ] ") else ""
             out.append("    ".repeat(p.style.indent)).append(prefix)
             val body = renderSpans(p.spans) { span ->
                 when (val obj = objects[span.style.objectId]) {
