@@ -41,7 +41,8 @@ import dev.oneuiproject.oneui.R as Oui
  * high, and on taller widgets a header with the app, a wide "write a note" bar and four labelled tiles.
  */
 class NoteCreatorWidget : GlanceAppWidget() {
-    override val sizeMode = SizeMode.Responsive(setOf(CreatorLayout.Small.size, CreatorLayout.Strip.size, CreatorLayout.Tall.size, CreatorLayout.Full.size))
+    // Exact: the layout and the button size follow the real size, not a bucket.
+    override val sizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val style = WidgetStyleStore(context).get(GlanceAppWidgetManager(context).getAppWidgetId(id))

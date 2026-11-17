@@ -21,13 +21,16 @@ internal object WidgetBitmaps {
     const val PAGE_MAX_WIDTH_PX = 720
 
     /**
-     * RemoteViews refuse bitmaps beyond a fraction of the screen's memory, and an update that is too large for the binder
-     * drops the whole widget: one page stays well under it...
+     * The system refuses widget bitmaps beyond 1.5 screens of pixels in total (the whole update is dropped then): one page
+     * stays well under it...
      */
     const val MAX_BITMAP_BYTES = 1_500_000
 
-    /** ...and all thumbnails of one list or pages widget together stay under this. */
-    const val THUMB_BUDGET_BYTES = 640_000
+    /**
+     * ...and all thumbnails of one list or pages widget together stay under this (each is larger than the binder's in-place
+     * limit, so it travels as shared memory, not in the transaction).
+     */
+    const val THUMB_BUDGET_BYTES = 1_200_000
 
     /** The note's first page, or null (locked, missing, render failed). The repository never renders a locked note. */
     suspend fun page(notes: NoteRepository, id: NoteId, dark: Boolean, widthPx: Int = THUMB_RENDER_WIDTH_PX): Bitmap? {

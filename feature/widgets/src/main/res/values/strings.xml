@@ -55,7 +55,6 @@
     <string name="widget_pick_source_title">Choose what to show</string>
     <string name="widget_pick_locked">A locked note can\'t be shown on a widget.</string>
     <string name="widget_pick_already">That note is already on a widget.</string>
-    <string name="widget_cant_lock">A note shown on a widget can\'t be locked.</string>
     <string name="widget_pick_folders">Folders</string>
     <string name="widget_settings_creator">New note widget</string>
     <string name="widget_settings_single">Note widget</string>
