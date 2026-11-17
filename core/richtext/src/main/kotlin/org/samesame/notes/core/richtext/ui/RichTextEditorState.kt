@@ -3,6 +3,7 @@ package org.samesame.notes.core.richtext.ui
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.util.Log
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
@@ -29,8 +30,12 @@ import org.samesame.notes.core.richtext.PreparedTextLayout
 import org.samesame.notes.core.richtext.RichTextColors
 import org.samesame.notes.core.richtext.TextDecorations
 import org.samesame.notes.core.richtext.edit.TextEditEvent
+import org.samesame.notes.core.richtext.TemplateLineAlignment
+import org.samesame.notes.core.richtext.edit.math.MathDetector
+import org.samesame.notes.core.richtext.edit.math.MathSuggestion
 import org.samesame.notes.core.richtext.input.InputHost
 import org.samesame.notes.core.richtext.input.RichTextInputConnection
+import org.samesame.notes.core.richtext.layout.ColumnSlice
 import org.samesame.notes.core.richtext.layout.TextPageGeometry
 import org.samesame.notes.core.richtext.layout.ViewTransform
 import kotlin.math.sqrt
@@ -129,6 +134,7 @@ class RichTextEditorState(
         revision++
         caretBlinkOn = true
         reportSelectionToIme()
+        recomputeMathGhost()
     }
     private val editListener: (TextEditEvent) -> Unit = { e ->
         if (e is TextEditEvent.TextEdit && handle == null) {
@@ -153,6 +159,20 @@ class RichTextEditorState(
 
     /** "Show links in notes": underline links and open them on tap. */
     var showLinks by mutableStateOf(true)
+
+    /** "Calculate as you type": show an inline result after a typed `=` that can be accepted. */
+    var calculateAsYouType: Boolean
+        get() = calculateAsYouTypeState
+        set(value) {
+            if (calculateAsYouTypeState == value) return
+            calculateAsYouTypeState = value
+            recomputeMathGhost()
+        }
+    private var calculateAsYouTypeState by mutableStateOf(true)
+
+    /** Current inline math suggestion, or null. Not part of the text. */
+    var mathGhost: MathSuggestion? by mutableStateOf(null)
+        private set
 
     /**
      * Called when a link is tapped: a detected link (with [showLinks] on) in edit mode, or any link in the view state and
@@ -186,6 +206,8 @@ class RichTextEditorState(
         selectionVisible = true,
         // #27: the hint goes away as soon as the body has focus.
         hint = if (isFocused) null else hint,
+        mathGhostText = mathGhost?.text,
+        mathGhostAnchor = mathGhost?.anchor ?: -1,
     )
 
     /**
@@ -238,6 +260,10 @@ class RichTextEditorState(
         override fun paste() = this@RichTextEditorState.paste()
         override fun pasteText(text: String): Boolean = interceptFileLinks(text)
         override fun onImeChanged() = Unit
+
+        override fun mathGhostAtCaret(): MathSuggestion? = this@RichTextEditorState.mathGhostAtCaret()
+
+        override fun acceptMathGhostFromIme(reason: String): Boolean = this@RichTextEditorState.acceptMathGhost("ime:$reason")
     }
 
     private val imm: InputMethodManager
@@ -326,6 +352,10 @@ class RichTextEditorState(
             return
         }
         val d = toDoc(p)
+        if (tapAcceptsMathGhost(d.x, d.y)) {
+            requestInput()
+            return
+        }
         engine.checkboxAt(d.x, d.y)?.let {
             body.toggleChecked(it)
             return
@@ -555,6 +585,72 @@ class RichTextEditorState(
     fun canPaste(): Boolean = clipboard.hasPrimaryClip()
 
     internal fun hasSelection(): Boolean = !body.selection.collapsed
+
+    // ---------------------------------------------------------------- math ghost
+
+    private fun recomputeMathGhost() {
+        val next = if (!calculateAsYouType || !enabled) null else {
+            val sel = body.selection
+            if (!sel.collapsed) null else MathDetector.suggest(body.editable, sel.min)
+        }
+        if (next == mathGhost) return
+        mathGhost = next
+        if (next != null) {
+            Log.d("SsMath", "ghost anchor=${next.anchor} caret=${body.selection.min} text=${next.text}")
+        }
+    }
+
+    /** The current ghost when the collapsed caret is exactly at its anchor, else null. */
+    internal fun mathGhostAtCaret(): MathSuggestion? {
+        val ghost = mathGhost ?: return null
+        val sel = body.selection
+        return if (sel.collapsed && sel.min == ghost.anchor) ghost else null
+    }
+
+    /**
+     * Inserts the ghost result as real text at its anchor (one undo step) and places the caret after it.
+     * Returns true when a ghost was accepted.
+     */
+    fun acceptMathGhost(reason: String = "ui"): Boolean {
+        val ghost = mathGhostAtCaret() ?: return false
+        Log.d("SsMath", "accept reason=$reason anchor=${ghost.anchor} insert=${ghost.text}")
+        body.replace(ghost.anchor, ghost.anchor, ghost.text)
+        mathGhost = null
+        handlesVisible = false
+        toolbarVisible = false
+        caretBlinkOn = true
+        return true
+    }
+
+    private fun tapAcceptsMathGhost(docX: Float, docY: Float): Boolean {
+        val ghost = mathGhostAtCaret() ?: return false
+        val bounds = engine.mathGhostBounds(ghost.anchor, ghost.text) ?: return false
+        val anchor = ghost.anchor.coerceIn(0, body.length)
+        val line = engine.layout.getLineForOffset(anchor)
+        val slice = engine.pagination().sliceForLine(line)
+        val content = engine.geometry.contentRect(slice.pageIndex)
+        val dy = content.top - slice.columnTop + templateLineShift(slice.pageIndex, slice)
+        val left = content.left + bounds.left
+        val right = content.left + bounds.right
+        val top = bounds.top + dy
+        val bottom = bounds.bottom + dy
+        if (docX < left || docX > right || docY < top || docY > bottom) return false
+        return acceptMathGhost("tap")
+    }
+
+    /** Template baseline shift used by [BodyTextEngine] when drawing a page; mirrors its internal rule alignment. */
+    private fun templateLineShift(pageIndex: Int, slice: ColumnSlice): Float {
+        val pitch = engine.geometry.linePitch(pageIndex) ?: return 0f
+        if (pitch != engine.templateLinePitch()) return 0f
+        if (slice.isEmpty) return 0f
+        return TemplateLineAlignment.pageShift(
+            firstRule = engine.geometry.firstRuleOffset(pageIndex),
+            pageTop = engine.geometry.pageRect(pageIndex).top,
+            contentTop = engine.geometry.contentRect(pageIndex).top,
+            columnTop = slice.columnTop,
+            firstBaseline = engine.layout.getLineBaseline(slice.firstLine).toFloat(),
+        )
+    }
 }
 
 /** `ClipDescription.EXTRA_IS_SENSITIVE`, spelled out so it also works below API 33. */
