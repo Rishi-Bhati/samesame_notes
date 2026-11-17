@@ -80,4 +80,6 @@ object Limits {
     const val MAX_SHOW_IN_NOTE_BYTES = 64L * 1024 * 1024
     /** Files pasted or inserted at once (the reference's paste/share cap). */
     const val MAX_FILES_PER_PASTE = 100
+    /** Files one Upload folder takes; a larger tree reports the rest as skipped. */
+    const val MAX_FILES_PER_UPLOAD = 1_000
 }
