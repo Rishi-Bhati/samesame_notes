@@ -20,6 +20,7 @@ import org.samesame.notes.core.document.LinkedFileEntry
 import org.samesame.notes.core.document.LinkedFileSource
 import org.samesame.notes.core.database.entity.FileFolderEntity
 import org.samesame.notes.core.database.entity.FileRefEntity
+import org.samesame.notes.core.database.entity.FileTagEntity
 import org.samesame.notes.core.database.entity.LibraryFileEntity
 import org.samesame.notes.core.database.entity.asExternalModel
 import org.samesame.notes.core.files.BlobStore
@@ -38,11 +39,13 @@ import org.samesame.notes.core.model.files.FileNames
 import org.samesame.notes.core.model.files.FileRefKind
 import org.samesame.notes.core.model.files.FileSort
 import org.samesame.notes.core.model.files.FileSortField
+import org.samesame.notes.core.model.files.FileTags
 import org.samesame.notes.core.model.files.FileUsage
 import org.samesame.notes.core.model.files.FilesSummary
 import org.samesame.notes.core.model.files.FilesTrash
 import org.samesame.notes.core.model.files.ImportResult
 import org.samesame.notes.core.model.files.LibraryFile
+import org.samesame.notes.core.model.files.OrderRanks
 import org.samesame.notes.core.model.files.PendingImport
 import java.io.FileNotFoundException
 import java.io.InputStream
@@ -123,6 +126,17 @@ class DefaultFilesRepository @Inject internal constructor(
         dao.setFolderParent(id.value, newParentId?.value, dao.maxFolderSortIndex(newParentId?.value) + SORT_STEP, clock.now())
     }
 
+    override suspend fun moveFolderWithin(id: FileFolderId, targetIndex: Int) {
+        val row = dao.folder(id.value) ?: return
+        if (row.trashedAt != null) return
+        val ordered = dao.allFolders().filter { it.parentId == row.parentId && it.trashedAt == null }
+            .sortedWith(folderOrder())
+        val from = ordered.indexOfFirst { it.id == id.value }
+        if (from < 0) return
+        val changes = OrderRanks.move(ordered.map { OrderRanks.Ranked(it.id, it.sortIndex) }, from, targetIndex)
+        if (changes.isNotEmpty()) dao.applyFolderSortIndexes(changes)
+    }
+
     override suspend fun folderPath(id: FileFolderId): List<FileFolder> {
         val all = dao.allFolders()
         val byId = all.associateBy { it.id }
@@ -139,29 +153,45 @@ class DefaultFilesRepository @Inject internal constructor(
     // ---------------------------------------------------------------- files
 
     override fun observeFiles(folderId: FileFolderId?, sort: FileSort): Flow<List<LibraryFile>> =
-        dao.observeLiveFilesIn(folderId?.value).map { rows -> rows.map { it.asExternalModel() }.sortedWith(sort.comparator()) }
-            .flowOn(Dispatchers.Default)
+        combine(dao.observeLiveFilesIn(folderId?.value), dao.observeAllTags()) { rows, tags ->
+            tagged(rows, tags).sortedWith(sort.comparator())
+        }.flowOn(Dispatchers.Default)
 
     override fun observeAllFiles(sort: FileSort, categories: Set<FileCategory>?): Flow<List<LibraryFile>> =
-        dao.observeLiveFiles().map { rows ->
-            rows.asSequence().map { it.asExternalModel() }
+        combine(dao.observeLiveFiles(), dao.observeAllTags()) { rows, tags ->
+            tagged(rows, tags).asSequence()
                 .filter { categories == null || it.category in categories }
                 .sortedWith(sort.comparator()).toList()
         }.flowOn(Dispatchers.Default)
 
-    override fun observeFile(id: FileId): Flow<LibraryFile?> = dao.observeFile(id.value).map { it?.asExternalModel() }
+    override fun observeFile(id: FileId): Flow<LibraryFile?> =
+        combine(dao.observeFile(id.value), dao.observeAllTags()) { row, tags ->
+            row?.asExternalModel(tags.filter { it.fileId == row.id }.map { it.tag }.sorted())
+        }
 
-    override suspend fun getFile(id: FileId): LibraryFile? = dao.file(id.value)?.asExternalModel()
+    override suspend fun getFile(id: FileId): LibraryFile? {
+        val row = dao.file(id.value) ?: return null
+        return row.asExternalModel(dao.tagsFor(listOf(row.id)).map { it.tag }.sorted())
+    }
 
     override suspend fun getFiles(ids: List<FileId>): List<LibraryFile> =
-        ids.map(FileId::value).distinct().chunked(CHUNK).flatMap { dao.files(it) }.map { it.asExternalModel() }
+        withTags(ids.map(FileId::value).distinct().chunked(CHUNK).flatMap { dao.files(it) })
 
     override fun search(query: String): Flow<List<LibraryFile>> {
-        val fts = toFtsQuery(query.take(Limits.MAX_SEARCH_QUERY_LENGTH))
-        if (fts.isEmpty()) return flowOf(emptyList())
-        return dao.search(fts).map { rows -> rows.map { it.asExternalModel() }.sortedWith(FileSort(FileSortField.Name, true).comparator()) }
-            .flowOn(Dispatchers.Default)
+        val text = query.take(Limits.MAX_SEARCH_QUERY_LENGTH).trim()
+        if (text.isEmpty()) return flowOf(emptyList())
+        val fts = toFtsQuery(text)
+        val tagPrefix = FileTags.normalize(text)
+        val byName = if (fts.isEmpty()) flowOf(emptyList()) else dao.search(fts)
+        val byTag = if (tagPrefix == null) flowOf(emptyList()) else dao.searchByTag(tagPrefix)
+        return combine(byName, byTag, dao.observeAllTags()) { names, tagged, tags ->
+            val seen = HashMap<String, LibraryFileEntity>()
+            (names + tagged).forEach { seen.putIfAbsent(it.id, it) }
+            tagged(seen.values.toList(), tags).sortedWith(FileSort(FileSortField.Name, true).comparator())
+        }.flowOn(Dispatchers.Default)
     }
+
+    override fun observeTags(): Flow<List<String>> = dao.observeLiveTags()
 
     override fun observeSummary(): Flow<FilesSummary> = dao.observeSummary().map {
         FilesSummary(it.fileCount, it.totalBytes, it.trashedCount, it.trashedBytes)
@@ -288,11 +318,39 @@ class DefaultFilesRepository @Inject internal constructor(
         if (ids.isEmpty()) return
         requireLiveFolder(folderId)
         val now = clock.now()
-        ids.map(FileId::value).chunked(CHUNK).forEach { dao.moveFiles(it, folderId?.value, now) }
+        val target = folderId?.value
+        // A file moved into another folder goes to the end of its custom order; files already there keep their rank.
+        var nextRank = dao.maxFileSortIndex(target)
+        ids.map(FileId::value).chunked(CHUNK).forEach { chunk ->
+            val rows = dao.files(chunk).associateBy { it.id }
+            for (id in chunk) {
+                val row = rows[id] ?: continue
+                if (row.folderId == target) continue
+                dao.moveFiles(listOf(id), target, now)
+                nextRank += SORT_STEP
+                dao.setFileSortIndex(id, nextRank)
+            }
+        }
+    }
+
+    override suspend fun moveFileWithin(id: FileId, targetIndex: Int) {
+        val row = dao.file(id.value) ?: return
+        if (row.trashedAt != null) return
+        val ordered = dao.liveFilesIn(row.folderId).sortedWith(fileOrder())
+        val from = ordered.indexOfFirst { it.id == id.value }
+        if (from < 0) return
+        val changes = OrderRanks.move(ordered.map { OrderRanks.Ranked(it.id, it.sortIndex) }, from, targetIndex)
+        if (changes.isNotEmpty()) dao.applyFileSortIndexes(changes)
     }
 
     override suspend fun setFavorite(ids: List<FileId>, favorite: Boolean) =
         ids.map(FileId::value).chunked(CHUNK).forEach { dao.setFavorite(it, favorite) }
+
+    override suspend fun setDescription(id: FileId, description: String) =
+        dao.setDescription(id.value, FileTags.normalizeDescription(description))
+
+    override suspend fun setTags(id: FileId, tags: List<String>) =
+        dao.replaceTags(id.value, FileTags.normalizeAll(tags))
 
     override suspend fun updateMetadata(id: FileId, width: Int?, height: Int?, durationMs: Long?, pageCount: Int?) =
         dao.updateMetadata(id.value, width, height, durationMs, pageCount)
@@ -490,6 +548,19 @@ class DefaultFilesRepository @Inject internal constructor(
 
     // ---------------------------------------------------------------- helpers
 
+    private fun tagged(rows: List<LibraryFileEntity>, tags: List<FileTagEntity>): List<LibraryFile> {
+        if (rows.isEmpty()) return emptyList()
+        if (tags.isEmpty()) return rows.map { it.asExternalModel() }
+        val byFile = tags.groupBy({ it.fileId }, { it.tag })
+        return rows.map { row -> row.asExternalModel(byFile[row.id].orEmpty().sorted()) }
+    }
+
+    private suspend fun withTags(rows: List<LibraryFileEntity>): List<LibraryFile> {
+        if (rows.isEmpty()) return emptyList()
+        val tags = rows.map { it.id }.chunked(CHUNK).flatMap { dao.tagsFor(it) }
+        return tagged(rows, tags)
+    }
+
     private fun FileFolderEntity.toModel(depth: Int, fileCount: Int) = FileFolder(
         id = FileFolderId(id), parentId = parentId?.let(::FileFolderId), name = name, color = color, sortIndex = sortIndex,
         depth = depth, fileCount = fileCount, createdAt = createdAt, modifiedAt = modifiedAt, trashedAt = trashedAt,
@@ -552,6 +623,18 @@ class DefaultFilesRepository @Inject internal constructor(
             visit(null, 0)
             return out
         }
+
+        /** The custom order of folders: rank, then name (the same order `treeOrder` shows). */
+        fun folderOrder(): Comparator<FileFolderEntity> {
+            val collator = Collator.getInstance()
+            return compareBy<FileFolderEntity> { it.sortIndex }.thenBy(collator) { it.name }
+        }
+
+        /** The custom order of files: rank, then name, then id, so it is stable even with legacy equal ranks. */
+        fun fileOrder(): Comparator<LibraryFileEntity> {
+            val collator = Collator.getInstance()
+            return compareBy<LibraryFileEntity> { it.sortIndex }.thenBy(collator) { it.displayName }.thenBy { it.id }
+        }
     }
 }
 
@@ -564,7 +647,9 @@ internal fun FileSort.comparator(): Comparator<LibraryFile> {
         FileSortField.DateAdded -> compareBy { it.createdAt }
         FileSortField.Size -> compareBy { it.sizeBytes }
         FileSortField.Type -> compareBy<LibraryFile> { it.ext }.thenBy { it.mimeType }
+        FileSortField.Custom -> compareBy { it.sortIndex }
     }
-    val directed = if (ascending) byField else byField.reversed()
+    // The custom order is always upwards: the direction arrow does not apply to it.
+    val directed = if (field == FileSortField.Custom) byField else if (ascending) byField else byField.reversed()
     return directed.then(byName).thenBy { it.id.value }
 }

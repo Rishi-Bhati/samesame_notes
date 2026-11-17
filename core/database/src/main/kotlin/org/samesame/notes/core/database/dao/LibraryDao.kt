@@ -65,6 +65,9 @@ interface LibraryDao {
     @Query("SELECT * FROM library_files WHERE folder_id IS :folderId AND trashed_at IS NULL")
     fun observeLiveFilesIn(folderId: String?): Flow<List<LibraryFileEntity>>
 
+    @Query("SELECT * FROM library_files WHERE folder_id IS :folderId AND trashed_at IS NULL")
+    suspend fun liveFilesIn(folderId: String?): List<LibraryFileEntity>
+
     @Query("SELECT * FROM library_files WHERE trashed_at IS NULL")
     fun observeLiveFiles(): Flow<List<LibraryFileEntity>>
 
@@ -214,6 +217,17 @@ interface LibraryDao {
     suspend fun replaceTags(fileId: String, tags: List<String>) {
         deleteTags(fileId)
         if (tags.isNotEmpty()) insertTags(tags.map { FileTagEntity(fileId, it) })
+    }
+
+    /** Applies a custom-order move in one transaction: all changed ranks or none. */
+    @Transaction
+    suspend fun applyFileSortIndexes(changes: Map<String, Long>) {
+        changes.forEach { (id, sortIndex) -> setFileSortIndex(id, sortIndex) }
+    }
+
+    @Transaction
+    suspend fun applyFolderSortIndexes(changes: Map<String, Long>) {
+        changes.forEach { (id, sortIndex) -> setFolderSortIndex(id, sortIndex) }
     }
 
     @Query(

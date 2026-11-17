@@ -151,3 +151,6 @@ fun LibraryFileEntity.asExternalModel() = LibraryFile(
     trashedAt = trashedAt,
     description = description,
 )
+
+/** The model with a file's tags (Room v4), in the order the caller passes. */
+fun LibraryFileEntity.asExternalModel(tags: List<String>) = asExternalModel().copy(tags = tags)
