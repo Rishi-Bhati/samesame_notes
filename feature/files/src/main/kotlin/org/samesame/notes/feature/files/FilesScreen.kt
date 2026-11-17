@@ -43,7 +43,9 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.samesame.notes.core.designsystem.component.AppDropdownMenu
 import org.samesame.notes.core.designsystem.component.AppFab
 import org.samesame.notes.core.designsystem.component.AppMenuItem
@@ -57,9 +59,13 @@ import org.samesame.notes.core.designsystem.icon.AppIcons
 import org.samesame.notes.core.designsystem.motion.SameSameMotion
 import org.samesame.notes.core.designsystem.theme.SameSameTheme
 import org.samesame.notes.core.model.NoteId
+import org.samesame.notes.core.model.files.FileFolderId
 import org.samesame.notes.core.model.files.FileSortField
 import org.samesame.notes.core.model.files.LibraryFile
+import org.samesame.notes.core.model.files.ZipEntryNames
 import org.samesame.notes.feature.files.viewer.openLibraryFile
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 private enum class Menu { None, Main, View }
 private enum class Dialog { None, RenameFile, RenameFolder, CreateFolder, Delete, Info }
@@ -86,6 +92,8 @@ internal fun FilesScreen(
     var dialog by remember { mutableStateOf(Dialog.None) }
     var deleteUsed by remember { mutableStateOf(0) }
     var infoFile by remember { mutableStateOf<LibraryFile?>(null) }
+    var fabMenu by remember { mutableStateOf(false) }
+    var exportFolderId by remember { mutableStateOf<FileFolderId?>(null) }
     val noApp = stringResource(R.string.feature_files_no_app)
     val shareLabel = stringResource(R.string.feature_files_open_failed_share)
 
@@ -112,6 +120,37 @@ internal fun FilesScreen(
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> viewModel.upload(uris) }
     val upload = { picker.launch(arrayOf("*/*")) }
+    val treePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) viewModel.uploadFolder(uri, context.contentResolver)
+    }
+    val uploadFolder = { treePicker.launch(null) }
+    // A folder selection exports a streaming zip; every entry name is sanitised and unique.
+    val zipExport = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        val id = exportFolderId
+        exportFolderId = null
+        if (uri != null && id != null) {
+            scope.launch {
+                val result = runCatching {
+                    withContext(Dispatchers.IO) {
+                        context.contentResolver.openOutputStream(uri)?.use { out ->
+                            val files = viewModel.folderFiles(id)
+                            val zip = ZipOutputStream(out.buffered())
+                            val used = HashSet<String>()
+                            files.forEach { file ->
+                                val name = ZipEntryNames.unique(ZipEntryNames.path(file.folderPath, file.name), used)
+                                used += name
+                                zip.putNextEntry(ZipEntry(name))
+                                file.open().use { it.copyTo(zip, 64 * 1024) }
+                                zip.closeEntry()
+                            }
+                            zip.close()
+                        } ?: error("cannot open output")
+                    }
+                }
+                snackbar.showSnackbar(stringResource(if (result.isSuccess) R.string.feature_files_export_zip_done else R.string.feature_files_err_generic))
+            }
+        }
+    }
 
     BackHandler(enabled = state.selecting) { viewModel.clearSelection() }
     BackHandler(enabled = !state.selecting) { if (!viewModel.navigateUp()) onBack() }
@@ -158,6 +197,9 @@ internal fun FilesScreen(
                 if (!state.selecting) {
                     IconButton(onClick = upload, modifier = Modifier.size(40.dp)) {
                         Icon(AppIcons.Upload, stringResource(R.string.feature_files_upload), tint = colors.textPrimary, modifier = Modifier.size(24.dp))
+                    }
+                    IconButton(onClick = uploadFolder, modifier = Modifier.size(40.dp)) {
+                        Icon(AppIcons.CreateFolder, stringResource(R.string.feature_files_upload_folder), tint = colors.textPrimary, modifier = Modifier.size(24.dp))
                     }
                     IconButton(onClick = onOpenSearch, modifier = Modifier.size(40.dp)) {
                         Icon(AppIcons.Search, stringResource(R.string.feature_files_search), tint = colors.textPrimary)
