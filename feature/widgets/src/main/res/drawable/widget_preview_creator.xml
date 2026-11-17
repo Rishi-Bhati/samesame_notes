@@ -1,9 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="250dp" android:height="80dp" android:viewportWidth="250" android:viewportHeight="80">
-    <path android:fillColor="#FFFFFFFF" android:pathData="M24,0H226A24,24 0 0 1 250,24V56A24,24 0 0 1 226,80H24A24,24 0 0 1 0,56V24A24,24 0 0 1 24,0Z" />
-    <path android:fillColor="#FF1A1A1A" android:pathData="M18,16h70v8h-70z" />
-    <path android:fillColor="#FFF2F2F2" android:pathData="M25,43H225A16,16 0 0 1 241,59V62A16,16 0 0 1 225,78H25A16,16 0 0 1 9,62V59A16,16 0 0 1 25,43Z" />
-    <path android:fillColor="#FFE5532F" android:pathData="M17,52h14v14h-14z" />
-    <path android:fillColor="#FF6E6E6E" android:pathData="M54,52h14v14h-14z M91,52h14v14h-14z M128,52h14v14h-14z M165,52h14v14h-14z M202,52h14v14h-14z" />
+<!-- Widget-picker preview image (before Android 12) of the new-note widget: own drawing. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="300dp" android:height="64dp" android:viewportWidth="300" android:viewportHeight="64">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M24,0H276A24,24 0 0 1 300,24V40A24,24 0 0 1 276,64H24A24,24 0 0 1 0,40V24A24,24 0 0 1 24,0Z" />
+    <path android:fillColor="#FFE5532F" android:pathData="M8,32A22,22 0 1 1 52,32A22,22 0 1 1 8,32Z" />
+    <path android:fillColor="#FFF1F1F3" android:pathData="M68,32A22,22 0 1 1 112,32A22,22 0 1 1 68,32Z" />
+    <path android:fillColor="#FFF1F1F3" android:pathData="M128,32A22,22 0 1 1 172,32A22,22 0 1 1 128,32Z" />
+    <path android:fillColor="#FFF1F1F3" android:pathData="M188,32A22,22 0 1 1 232,32A22,22 0 1 1 188,32Z" />
+    <path android:fillColor="#FFF1F1F3" android:pathData="M248,32A22,22 0 1 1 292,32A22,22 0 1 1 248,32Z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M21,26H39A2,2 0 0 1 41,28V36A2,2 0 0 1 39,38H21A2,2 0 0 1 19,36V28A2,2 0 0 1 21,26Z" />
+    <path android:fillColor="#FF3A3A3A" android:pathData="M84,32A6,6 0 1 1 96,32A6,6 0 1 1 84,32Z" />
+    <path android:fillColor="#FF3A3A3A" android:pathData="M144,32A6,6 0 1 1 156,32A6,6 0 1 1 144,32Z" />
+    <path android:fillColor="#FF3A3A3A" android:pathData="M204,32A6,6 0 1 1 216,32A6,6 0 1 1 204,32Z" />
+    <path android:fillColor="#FF3A3A3A" android:pathData="M264,32A6,6 0 1 1 276,32A6,6 0 1 1 264,32Z" />
 </vector>

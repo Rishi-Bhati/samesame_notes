@@ -2,17 +2,62 @@ package org.samesame.notes.feature.widgets
 
 import android.content.Context
 import org.samesame.notes.core.model.FolderId
+import org.samesame.notes.core.model.NoteFilter
 
-/** Which folder each note-list widget shows (`widget id -> folder id`); no entry means the recent notes of every folder. */
+/** What a note-list or pages widget shows. */
+sealed interface ListSource {
+    /** The most recently edited notes of every folder. */
+    data object Recent : ListSource
+
+    data object Favorites : ListSource
+
+    data class Folder(val id: FolderId) : ListSource
+
+    /** The catalog filter for this source. */
+    fun filter(): NoteFilter = when (this) {
+        Recent -> NoteFilter.All
+        Favorites -> NoteFilter.Favorites
+        is Folder -> NoteFilter.InFolder(id)
+    }
+
+    /** Stable string form (configure screen state, preferences). */
+    fun key(): String = when (this) {
+        Recent -> KEY_RECENT
+        Favorites -> KEY_FAVORITES
+        is Folder -> FOLDER_PREFIX + id.value
+    }
+
+    companion object {
+        private const val KEY_RECENT = "recent"
+        private const val KEY_FAVORITES = "favorites"
+        private const val FOLDER_PREFIX = "folder:"
+
+        fun fromKey(key: String?): ListSource = when {
+            key == KEY_FAVORITES -> Favorites
+            key != null && key.startsWith(FOLDER_PREFIX) && key.length > FOLDER_PREFIX.length ->
+                Folder(FolderId(key.removePrefix(FOLDER_PREFIX)))
+            else -> Recent
+        }
+    }
+}
+
+/**
+ * Which source each note-list / pages widget shows (`widget id -> source`). The original key (`f<id>` = folder id, no entry =
+ * recent notes) is still read, so widgets set up before favourites existed keep their folder.
+ */
 class WidgetListConfig(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("widget_list_config", Context.MODE_PRIVATE)
 
-    fun folderOf(widgetId: Int): FolderId? = prefs.getString("f$widgetId", null)?.let(::FolderId)
-
-    /** [folder] null = recent notes. */
-    fun set(widgetId: Int, folder: FolderId?) {
-        prefs.edit().apply { if (folder == null) remove("f$widgetId") else putString("f$widgetId", folder.value) }.apply()
+    fun sourceOf(widgetId: Int): ListSource {
+        prefs.getString("s$widgetId", null)?.let { return ListSource.fromKey(it) }
+        return prefs.getString("f$widgetId", null)?.let { ListSource.Folder(FolderId(it)) } ?: ListSource.Recent
     }
 
-    fun clear(widgetId: Int) = set(widgetId, null)
+    fun set(widgetId: Int, source: ListSource) {
+        prefs.edit().putString("s$widgetId", source.key()).remove("f$widgetId").apply()
+    }
+
+    fun clear(widgetId: Int) {
+        prefs.edit().remove("s$widgetId").remove("f$widgetId").apply()
+    }
 }

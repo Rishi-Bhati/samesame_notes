@@ -15,16 +15,18 @@ sealed interface SingleNoteState {
     /** The note is locked: a lock symbol only, no title and no page. */
     data object Locked : SingleNoteState
 
-    data class Ready(val noteId: NoteId, val title: String, val modifiedAt: Long) : SingleNoteState
+    /** [snippet] is the note's text preview (shown when the page can't be drawn, and on very small widgets). */
+    data class Ready(val noteId: NoteId, val title: String, val modifiedAt: Long, val snippet: String) : SingleNoteState
 }
 
-/** One row of the note-list widget. A locked row has a title and a lock symbol, nothing else. */
+/** One row of the note-list / pages widget. A locked row has a title and a lock symbol, nothing else (no snippet, no page). */
 data class ListRow(
     val noteId: NoteId,
     val title: String,
     val locked: Boolean,
     val favorite: Boolean,
     val modifiedAt: Long,
+    val snippet: String = "",
 )
 
 /** Pure mapping from catalog notes to widget states (the widgets themselves only draw these). */
@@ -35,7 +37,7 @@ object WidgetContent {
         !pinned -> SingleNoteState.NotChosen
         note == null || note.isInTrash -> SingleNoteState.Gone
         note.isLocked -> SingleNoteState.Locked
-        else -> SingleNoteState.Ready(note.id, note.title, note.modifiedAt)
+        else -> SingleNoteState.Ready(note.id, note.title, note.modifiedAt, snippet(note.previewText))
     }
 
     /** Newest first, trashed notes dropped, at most [limit] rows; locked notes keep title and lock flag only. */
@@ -44,8 +46,17 @@ object WidgetContent {
             .filter { !it.isInTrash }
             .sortedByDescending { it.modifiedAt }
             .take(limit)
-            .map { ListRow(it.id, it.title, it.isLocked, it.isFavorite && !it.isLocked, it.modifiedAt) }
+            .map {
+                ListRow(it.id, it.title, it.isLocked, it.isFavorite && !it.isLocked, it.modifiedAt, if (it.isLocked) "" else snippet(it.previewText))
+            }
             .toList()
+
+    /** The preview text as one tidy line: whitespace runs (line breaks included) collapse to one space, capped in length. */
+    fun snippet(previewText: String, max: Int = SNIPPET_MAX): String =
+        previewText.replace(WHITESPACE, " ").trim().take(max)
+
+    private val WHITESPACE = Regex("\\s+")
+    private const val SNIPPET_MAX = 280
 
     /** Whether a note may be pinned to a single-note widget: not locked and not in the trash. */
     fun canPin(note: Note): Boolean = !note.isLocked && !note.isInTrash
@@ -64,6 +75,7 @@ object WidgetContent {
             h = 31 * h + (n.folderId?.value?.hashCode() ?: 0)
             h = 31 * h + n.isLocked.hashCode()
             h = 31 * h + n.isFavorite.hashCode()
+            h = 31 * h + n.previewText.hashCode()
         }
         return h
     }

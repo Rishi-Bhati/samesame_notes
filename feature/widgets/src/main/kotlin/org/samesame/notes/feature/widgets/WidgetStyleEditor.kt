@@ -1,170 +1,415 @@
 package org.samesame.notes.feature.widgets
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
-import org.samesame.notes.core.model.NoteId
+import org.samesame.notes.core.designsystem.theme.SameSameTheme
 import dev.oneuiproject.oneui.R as Oui
 
 /**
- * The settings screen shared by the three widgets: a live [preview] of the widget on top, then the background choice
- * (white, black, match dark mode) and the opacity slider. [extra] adds a widget-specific action (change note/folder).
+ * The look part of every widget's settings: a stage with the live preview (on a wallpaper-like backdrop, with a Day/Night
+ * switch so Match dark mode and opacity can be judged), the widget-specific [content] card, the background swatches and
+ * the stepped opacity slider.
  */
 @Composable
-internal fun WidgetSettingsScreen(
-    title: String,
+internal fun WidgetSettingsBody(
     style: WidgetStyle,
     onStyle: (WidgetStyle) -> Unit,
-    onDone: () -> Unit,
-    extra: (@Composable androidx.compose.foundation.layout.RowScope.() -> Unit)? = null,
-    preview: @Composable (WidgetStyle, Boolean) -> Unit,
+    widgetSize: DpSize,
+    content: (@Composable ColumnScope.() -> Unit)? = null,
+    preview: @Composable (roles: WidgetColorRoles, night: Boolean, size: DpSize) -> Unit,
 ) {
     val systemDark = isSystemInDarkTheme()
+    var night by rememberSaveable { mutableStateOf(systemDark) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        ConfigTitle(title)
+        PreviewStage(night, widgetSize) { size ->
+            // The stage stands in for the wallpaper: light by day, dark by night.
+            preview(WidgetTheme.roles(style, wallpaperDarkText = !night), night, size)
+        }
+        DayNightSwitch(night) { night = it }
+        if (content != null) SectionCard(stringResource(R.string.widget_section_content), content = content)
+        SectionCard(stringResource(R.string.widget_section_background)) {
+            Row(Modifier.fillMaxWidth().padding(vertical = 14.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                Swatch(WidgetBackground.White, R.string.widget_style_white, style.background) { onStyle(style.copy(background = it)) }
+                Swatch(WidgetBackground.Black, R.string.widget_style_black, style.background) { onStyle(style.copy(background = it)) }
+                Swatch(WidgetBackground.MatchDark, R.string.widget_style_match_short, style.background) { onStyle(style.copy(background = it)) }
+            }
+            if (style.background == WidgetBackground.MatchDark) {
+                Text(
+                    stringResource(R.string.widget_style_match), color = SameSameTheme.colors.textSecondary, fontSize = 13.sp,
+                    modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 14.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+            }
+        }
+        SectionCard(stringResource(R.string.widget_section_opacity)) {
+            Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 16.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                val c = SameSameTheme.colors
+                Slider(
+                    value = style.opacity.toFloat(),
+                    onValueChange = { onStyle(style.copy(opacity = WidgetStyle.stepOpacity(it))) },
+                    valueRange = WidgetStyle.MIN_OPACITY.toFloat()..WidgetStyle.MAX_OPACITY.toFloat(),
+                    steps = (WidgetStyle.MAX_OPACITY - WidgetStyle.MIN_OPACITY) / WidgetStyle.OPACITY_STEP - 1,
+                    colors = SliderDefaults.colors(
+                        thumbColor = c.accent, activeTrackColor = c.accent, inactiveTrackColor = c.pill,
+                        activeTickColor = Color.Transparent, inactiveTickColor = Color.Transparent,
+                    ),
+                    modifier = Modifier.weight(1f),
+                )
+                Text("${style.opacity}%", color = c.textPrimary, fontSize = 15.sp, modifier = Modifier.width(52.dp), textAlign = androidx.compose.ui.text.style.TextAlign.End)
+            }
+            if (style.opacity < WidgetTheme.SEE_THROUGH_BELOW) {
+                Text(
+                    stringResource(R.string.widget_opacity_hint), color = SameSameTheme.colors.textSecondary, fontSize = 13.sp,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 14.dp),
+                )
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+    }
+}
+
+/** Backdrop + the preview drawn at the widget's real size, scaled down if the screen is narrower. */
+@Composable
+private fun PreviewStage(night: Boolean, widgetSize: DpSize, preview: @Composable (DpSize) -> Unit) {
+    val backdrop = if (night) {
+        Brush.linearGradient(listOf(Color(0xFF1B2140), Color(0xFF3B2241), Color(0xFF14262E)))
+    } else {
+        Brush.linearGradient(listOf(Color(0xFFFFD8C4), Color(0xFFE9D9F7), Color(0xFFC8DCF5)))
+    }
+    BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).clip(RoundedCornerShape(28.dp)).background(backdrop)) {
+        val size = DpSize(widgetSize.width, min(widgetSize.height, MAX_PREVIEW_HEIGHT))
+        val room = maxWidth - 32.dp
+        val scale = if (size.width > room) room / size.width else 1f
         Box(
-            Modifier.fillMaxWidth().padding(horizontal = 24.dp).height(150.dp)
-                .clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh),
+            Modifier.fillMaxWidth().height(size.height * scale + 48.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Box(Modifier.fillMaxWidth().padding(horizontal = 24.dp).height(110.dp)) { preview(style, style.isDark(systemDark)) }
-        }
-        Text(
-            stringResource(R.string.widget_style_background), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 4.dp),
-        )
-        BackgroundOption(R.string.widget_style_white, style.background == WidgetBackground.White) { onStyle(style.copy(background = WidgetBackground.White)) }
-        BackgroundOption(R.string.widget_style_black, style.background == WidgetBackground.Black) { onStyle(style.copy(background = WidgetBackground.Black)) }
-        BackgroundOption(R.string.widget_style_match, style.background == WidgetBackground.MatchDark) { onStyle(style.copy(background = WidgetBackground.MatchDark)) }
-        Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(R.string.widget_style_opacity), color = MaterialTheme.colorScheme.onBackground, modifier = Modifier.weight(1f))
-            Text("${style.opacity}%", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Slider(
-            value = style.opacity.toFloat(), onValueChange = { onStyle(style.copy(opacity = WidgetStyle.clampOpacity(it.toInt()))) },
-            valueRange = WidgetStyle.MIN_OPACITY.toFloat()..WidgetStyle.MAX_OPACITY.toFloat(),
-            modifier = Modifier.padding(horizontal = 16.dp),
-        )
-        Row(Modifier.fillMaxWidth().padding(24.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (extra != null) extra()
-            Button(onClick = onDone, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.widget_done)) }
+            Box(Modifier.requiredSize(size).graphicsLayer(scaleX = scale, scaleY = scale)) { preview(size) }
         }
     }
 }
 
-@Composable
-internal fun ChangeButton(textRes: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    OutlinedButton(onClick = onClick, modifier = modifier) { Text(stringResource(textRes), maxLines = 1, overflow = TextOverflow.Ellipsis) }
-}
+private val MAX_PREVIEW_HEIGHT = 320.dp
 
 @Composable
-private fun BackgroundOption(label: Int, selected: Boolean, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-        RadioButton(selected = selected, onClick = onClick)
-        Text(stringResource(label), color = MaterialTheme.colorScheme.onBackground)
-    }
-}
-
-/** The widget surface of [style] for the previews: its background colour, opacity and rounded corners. */
-@Composable
-private fun PreviewSurface(style: WidgetStyle, dark: Boolean, content: @Composable (WidgetColorRoles) -> Unit) {
-    val roles = WidgetColorRules.roles(style)
-    Box(Modifier.fillMaxSize().clip(RoundedCornerShape(16.dp)).background(roles.surface.pick(dark))) { content(roles) }
-}
-
-/** Single note: the note's page (rendered light or dark to match the background) inside the surface. */
-@Composable
-internal fun SingleNotePreview(noteId: NoteId?, title: String, style: WidgetStyle, dark: Boolean) {
-    val notes = WidgetEntryPoint.get(LocalContext.current).notes()
-    val page by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, noteId, dark) {
-        value = noteId?.let { WidgetBitmaps.page(notes, it, dark)?.asImageBitmap() }
-    }
-    PreviewSurface(style, dark) { roles ->
-        val bitmap = page
-        if (bitmap != null) {
-            androidx.compose.foundation.Image(
-                bitmap, contentDescription = title, contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize().padding(6.dp).clip(RoundedCornerShape(10.dp)),
-            )
-        } else {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(title.ifBlank { stringResource(R.string.widget_choose_note) }, color = roles.textSecondary.pick(dark), fontSize = 13.sp, maxLines = 2)
-            }
-        }
-    }
-}
-
-/** Note list: the header and up to three sample rows. */
-@Composable
-internal fun NoteListPreview(heading: String, rows: List<String>, style: WidgetStyle, dark: Boolean) {
-    PreviewSurface(style, dark) { roles ->
-        Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
-            Text(heading, color = roles.text.pick(dark), fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-            rows.take(3).forEach {
-                Text(it.ifBlank { stringResource(R.string.widget_untitled) }, color = roles.text.pick(dark), fontSize = 15.sp, maxLines = 1, modifier = Modifier.padding(top = 6.dp))
-            }
-        }
-    }
-}
-
-/** Creator: the app name row and the inset panel with the app icon and the five mode buttons. */
-@Composable
-internal fun CreatorPreview(style: WidgetStyle, dark: Boolean) {
-    val context = LocalContext.current
-    val icon = remember { AppBranding.icon(context, 96)?.asImageBitmap() }
-    val name = remember { AppBranding.name(context) }
-    PreviewSurface(style, dark) { roles ->
-        Column(Modifier.fillMaxSize()) {
-            Text(name, color = roles.text.pick(dark), fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.padding(start = 18.dp, top = 13.dp, bottom = 4.dp).height(18.dp))
-            Row(
-                Modifier.fillMaxSize().padding(start = 9.dp, end = 9.dp, top = 8.dp, bottom = 9.dp).clip(RoundedCornerShape(16.dp)).background(roles.inset.pick(dark)),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                    icon?.let { androidx.compose.foundation.Image(it, contentDescription = null, modifier = Modifier.size(28.dp)) }
+private fun DayNightSwitch(night: Boolean, onChange: (Boolean) -> Unit) {
+    val c = SameSameTheme.colors
+    Row(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp), horizontalArrangement = Arrangement.Center) {
+        Row(Modifier.clip(RoundedCornerShape(20.dp)).background(c.pill).padding(3.dp)) {
+            listOf(false to R.string.widget_preview_day, true to R.string.widget_preview_night).forEach { (value, label) ->
+                val selected = value == night
+                Row(
+                    Modifier.clip(RoundedCornerShape(17.dp)).background(if (selected) c.card else Color.Transparent)
+                        .clickable { onChange(value) }.padding(horizontal = 14.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        painterResource(if (value) Oui.drawable.ic_oui_weather_night else Oui.drawable.ic_oui_weather_sunny),
+                        contentDescription = null, tint = if (selected) c.accent else c.iconMuted, modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(label), color = if (selected) c.textPrimary else c.textSecondary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 }
-                listOf(Oui.drawable.ic_oui_keyboard, Oui.drawable.ic_oui_pen_fountain, Oui.drawable.ic_oui_brush_outline, Oui.drawable.ic_oui_image_outline, R.drawable.ic_widget_mic).forEach {
-                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                        Icon(painterResource(it), contentDescription = null, tint = roles.icon.pick(dark), modifier = Modifier.size(28.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun Swatch(value: WidgetBackground, label: Int, current: WidgetBackground, onPick: (WidgetBackground) -> Unit) {
+    val c = SameSameTheme.colors
+    val selected = value == current
+    Column(
+        Modifier.clip(RoundedCornerShape(16.dp)).clickable { onPick(value) }.padding(horizontal = 12.dp, vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            Modifier.size(56.dp).border(2.dp, if (selected) c.accent else Color.Transparent, CircleShape).padding(5.dp)
+                .clip(CircleShape).border(1.dp, c.divider, CircleShape),
+        ) {
+            when (value) {
+                WidgetBackground.White -> Box(Modifier.fillMaxSize().background(WidgetTokens.surfaceWhite))
+                WidgetBackground.Black -> Box(Modifier.fillMaxSize().background(WidgetTokens.surfaceBlack))
+                WidgetBackground.MatchDark -> Row(Modifier.fillMaxSize()) {
+                    Box(Modifier.weight(1f).fillMaxHeight().background(WidgetTokens.surfaceWhite))
+                    Box(Modifier.weight(1f).fillMaxHeight().background(WidgetTokens.surfaceNight))
+                }
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(stringResource(label), color = if (selected) c.textPrimary else c.textSecondary, fontSize = 13.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+    }
+}
+
+// ---- Compose replicas of the widgets for the settings preview (same tokens and geometry as the Glance layouts) ----
+
+private val OuterShape = RoundedCornerShape(24.dp)
+private val InnerShape = RoundedCornerShape(14.dp)
+
+@Composable
+private fun ReplicaFrame(roles: WidgetColorRoles, night: Boolean, padding: Dp = WidgetDims.Inset, content: @Composable () -> Unit) {
+    Box(Modifier.fillMaxSize().clip(OuterShape).background(roles.surface.pick(night)).padding(padding)) { content() }
+}
+
+@Composable
+private fun ReplicaHeader(title: String, roles: WidgetColorRoles, night: Boolean, icon: Int? = null, plus: Boolean = false) {
+    Row(Modifier.fillMaxWidth().height(WidgetDims.HeaderHeight), verticalAlignment = Alignment.CenterVertically) {
+        Spacer(Modifier.width(4.dp))
+        if (icon != null) {
+            Icon(painterResource(icon), contentDescription = null, tint = roles.accent.pick(night), modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+        }
+        Text(title, color = roles.text.pick(night), fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        if (plus) {
+            Box(Modifier.size(28.dp).clip(CircleShape).background(roles.accent.pick(night)), contentAlignment = Alignment.Center) {
+                Icon(painterResource(Oui.drawable.ic_oui_add), contentDescription = null, tint = roles.onAccent.pick(night), modifier = Modifier.size(16.dp))
+            }
+        }
+    }
+}
+
+private val replicaCreatorIcons = listOf(
+    Oui.drawable.ic_oui_keyboard, Oui.drawable.ic_oui_pen_fountain, Oui.drawable.ic_oui_brush_outline,
+    Oui.drawable.ic_oui_image_outline, Oui.drawable.ic_oui_voice,
+)
+private val replicaCreatorLabels = listOf(
+    R.string.widget_creator_label_pen, R.string.widget_creator_label_brush, R.string.widget_creator_label_image, R.string.widget_creator_label_voice,
+)
+
+@Composable
+internal fun CreatorReplica(roles: WidgetColorRoles, night: Boolean, size: DpSize, appName: String, appIcon: ImageBitmap?) {
+    val layout = CreatorLayout.forSize(size)
+    @Composable
+    fun buttons(icons: List<Int>, modifier: Modifier) {
+        val button = (size.height - 12.dp).coerceIn(32.dp, 44.dp)
+        Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+            icons.forEachIndexed { i, icon ->
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    Box(
+                        Modifier.size(button).clip(CircleShape).background(if (i == 0) roles.accent.pick(night) else roles.tile.pick(night)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(painterResource(icon), contentDescription = null, tint = if (i == 0) roles.onAccent.pick(night) else roles.icon.pick(night), modifier = Modifier.size(button / 2))
                     }
                 }
             }
         }
+    }
+    @Composable
+    fun appHeader() {
+        Row(Modifier.fillMaxWidth().height(WidgetDims.HeaderHeight), verticalAlignment = Alignment.CenterVertically) {
+            Spacer(Modifier.width(4.dp))
+            appIcon?.let { Image(it, contentDescription = null, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(8.dp)) }
+            Text(appName, color = roles.text.pick(night), fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+        }
+    }
+    when (layout) {
+        CreatorLayout.Small -> ReplicaFrame(roles, night, 6.dp) { buttons(replicaCreatorIcons.take(2), Modifier.fillMaxSize()) }
+        CreatorLayout.Strip -> ReplicaFrame(roles, night, 6.dp) { buttons(replicaCreatorIcons, Modifier.fillMaxSize()) }
+        CreatorLayout.Tall -> ReplicaFrame(roles, night) {
+            Column(Modifier.fillMaxSize()) {
+                appHeader()
+                Spacer(Modifier.height(4.dp))
+                buttons(replicaCreatorIcons, Modifier.fillMaxWidth().weight(1f))
+            }
+        }
+        CreatorLayout.Full -> ReplicaFrame(roles, night) {
+            Column(Modifier.fillMaxSize()) {
+                appHeader()
+                Spacer(Modifier.height(WidgetDims.Gap))
+                Row(
+                    Modifier.fillMaxWidth().weight(1f).clip(InnerShape).background(roles.accentTile.pick(night)).padding(horizontal = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(painterResource(Oui.drawable.ic_oui_keyboard), contentDescription = null, tint = roles.accent.pick(night), modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Text(stringResource(R.string.widget_creator_write), color = roles.accent.pick(night), fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                }
+                Spacer(Modifier.height(WidgetDims.Gap))
+                Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(WidgetDims.Gap)) {
+                    replicaCreatorIcons.drop(1).forEachIndexed { i, icon ->
+                        Column(
+                            Modifier.weight(1f).fillMaxHeight().clip(InnerShape).background(roles.tile.pick(night)),
+                            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+                        ) {
+                            Icon(painterResource(icon), contentDescription = null, tint = roles.icon.pick(night), modifier = Modifier.size(22.dp))
+                            Spacer(Modifier.height(4.dp))
+                            Text(stringResource(replicaCreatorLabels[i]), color = roles.textSecondary.pick(night), fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun SingleNoteReplica(roles: WidgetColorRoles, night: Boolean, size: DpSize, title: String, date: String, snippet: String, page: ImageBitmap?) {
+    ReplicaFrame(roles, night) {
+        Column(Modifier.fillMaxSize()) {
+            Row(Modifier.fillMaxWidth().height(WidgetDims.HeaderHeight), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    title.ifBlank { stringResource(R.string.widget_untitled) }, color = roles.text.pick(night), fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(start = 4.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(date, color = roles.textSecondary.pick(night), fontSize = 12.sp, maxLines = 1, modifier = Modifier.padding(end = 4.dp))
+            }
+            if (SingleNoteLayout.pageArea(size) == null) {
+                if (snippet.isNotEmpty()) Text(snippet, color = roles.textSecondary.pick(night), fontSize = 13.sp, maxLines = 1, modifier = Modifier.padding(horizontal = 4.dp))
+                return@Column
+            }
+            Spacer(Modifier.height(WidgetDims.Gap / 2))
+            if (page != null) {
+                Image(page, contentDescription = null, contentScale = ContentScale.Crop, alignment = Alignment.TopCenter, modifier = Modifier.fillMaxSize().clip(InnerShape))
+            } else {
+                Box(Modifier.fillMaxSize().clip(InnerShape).background(roles.tile.pick(night)).padding(12.dp)) {
+                    Text(snippet.ifEmpty { title }, color = roles.text.pick(night), fontSize = 13.sp, maxLines = 8)
+                }
+            }
+        }
+    }
+}
+
+/** One preview row of the list / pages replicas. */
+internal class ReplicaRow(val title: String, val snippet: String, val date: String, val thumb: ImageBitmap?, val locked: Boolean, val favorite: Boolean)
+
+@Composable
+internal fun NoteListReplica(roles: WidgetColorRoles, night: Boolean, size: DpSize, heading: String, icon: Int, rows: List<ReplicaRow>) {
+    val thumbs = size.width >= NoteListLayout.THUMBS_FROM_WIDTH
+    ReplicaFrame(roles, night) {
+        Column(Modifier.fillMaxSize()) {
+            ReplicaHeader(heading, roles, night, icon, plus = true)
+            Spacer(Modifier.height(WidgetDims.Gap / 2))
+            if (rows.isEmpty()) ReplicaEmpty(roles, night)
+            rows.forEach { row ->
+                Row(
+                    Modifier.fillMaxWidth().padding(bottom = 6.dp).clip(InnerShape).background(roles.tile.pick(night)).padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (thumbs) {
+                        ReplicaThumb(row, roles, night, Modifier.size(NoteListLayout.THUMB), RoundedCornerShape(WidgetDims.ThumbRadius))
+                        Spacer(Modifier.width(10.dp))
+                    } else {
+                        Spacer(Modifier.width(4.dp))
+                    }
+                    Column(Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                row.title.ifBlank { stringResource(R.string.widget_untitled) }, color = roles.text.pick(night), fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+                            )
+                            if (row.favorite) {
+                                Spacer(Modifier.width(4.dp))
+                                Icon(painterResource(Oui.drawable.ic_oui_favorite_on), contentDescription = null, tint = roles.accent.pick(night), modifier = Modifier.size(12.dp))
+                            }
+                            Spacer(Modifier.width(6.dp))
+                            Text(row.date, color = roles.textSecondary.pick(night), fontSize = 11.sp, maxLines = 1)
+                        }
+                        val second = if (row.locked) stringResource(R.string.widget_locked_note) else row.snippet
+                        if (second.isNotEmpty() || thumbs) Text(second, color = roles.textSecondary.pick(night), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun NoteGridReplica(roles: WidgetColorRoles, night: Boolean, size: DpSize, heading: String, icon: Int, rows: List<ReplicaRow>) {
+    val cols = NoteGridLayout.columns(size.width)
+    val thumbH = NoteGridLayout.cellWidth(size.width) * NoteGridLayout.ASPECT
+    ReplicaFrame(roles, night) {
+        Column(Modifier.fillMaxSize()) {
+            ReplicaHeader(heading, roles, night, icon, plus = true)
+            Spacer(Modifier.height(WidgetDims.Gap / 2))
+            if (rows.isEmpty()) ReplicaEmpty(roles, night)
+            rows.chunked(cols).forEach { line ->
+                Row(Modifier.fillMaxWidth()) {
+                    for (i in 0 until cols) {
+                        val row = line.getOrNull(i)
+                        Column(Modifier.weight(1f).padding(horizontal = NoteGridLayout.CELL_GAP / 2).padding(bottom = 8.dp)) {
+                            if (row != null) {
+                                ReplicaThumb(row, roles, night, Modifier.fillMaxWidth().height(thumbH), InnerShape)
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    row.title.ifBlank { stringResource(R.string.widget_untitled) }, color = roles.text.pick(night), fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 2.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReplicaThumb(row: ReplicaRow, roles: WidgetColorRoles, night: Boolean, modifier: Modifier, shape: RoundedCornerShape) {
+    if (row.thumb != null && !row.locked) {
+        Image(row.thumb, contentDescription = null, contentScale = ContentScale.Crop, alignment = Alignment.TopCenter, modifier = modifier.clip(shape))
+    } else {
+        Box(modifier.clip(shape).background(roles.tile.pick(night)), contentAlignment = Alignment.Center) {
+            Icon(
+                painterResource(if (row.locked) Oui.drawable.ic_oui_lock else Oui.drawable.ic_oui_notes), contentDescription = null,
+                tint = roles.textSecondary.pick(night), modifier = Modifier.size(18.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ColumnScope.ReplicaEmpty(roles: WidgetColorRoles, night: Boolean) {
+    Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+        Text(stringResource(R.string.widget_list_empty), color = roles.textSecondary.pick(night), fontSize = 13.sp)
     }
 }

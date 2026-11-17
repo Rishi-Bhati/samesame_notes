@@ -1,7 +1,68 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent" android:layout_height="match_parent">
-    <ImageView android:layout_width="match_parent" android:layout_height="match_parent"
-        android:scaleType="fitCenter" android:importantForAccessibility="no"
-        android:src="@drawable/widget_preview_list" />
-</FrameLayout>
+<!-- Widget-picker preview (Android 12+) of the note-list widget. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="@drawable/widget_pv_bg" android:orientation="vertical" android:padding="12dp">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="32dp" android:layout_marginBottom="4dp"
+        android:gravity="center_vertical" android:orientation="horizontal" android:paddingStart="4dp">
+        <ImageView android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/ic_oui_recent_outline"
+            android:tint="@color/widget_pv_accent" android:importantForAccessibility="no" />
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="6dp" android:layout_weight="1"
+            android:maxLines="1" android:text="@string/widget_source_recent" android:textColor="@color/widget_pv_text"
+            android:textSize="14sp" android:textStyle="bold" />
+        <ImageView android:layout_width="28dp" android:layout_height="28dp" android:background="@drawable/widget_pv_circle_accent"
+            android:padding="6dp" android:src="@drawable/ic_oui_add" android:tint="@android:color/white"
+            android:importantForAccessibility="no" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="6dp"
+        android:background="@drawable/widget_pv_tile" android:gravity="center_vertical" android:orientation="horizontal" android:padding="8dp">
+        <ImageView android:layout_width="40dp" android:layout_height="40dp" android:background="@drawable/widget_pv_thumb"
+            android:clipToOutline="true" android:scaleType="centerCrop" android:src="@drawable/widget_pv_page"
+            android:importantForAccessibility="no" />
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="10dp"
+            android:layout_weight="1" android:orientation="vertical">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:maxLines="1"
+                    android:ellipsize="end" android:text="@string/widget_sample_title" android:textColor="@color/widget_pv_text" android:textSize="14sp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="6dp"
+                    android:text="09:41" android:textColor="@color/widget_pv_text2" android:textSize="11sp" />
+            </LinearLayout>
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:maxLines="1" android:ellipsize="end"
+                android:text="@string/widget_sample_body" android:textColor="@color/widget_pv_text2" android:textSize="12sp" />
+        </LinearLayout>
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="6dp"
+        android:background="@drawable/widget_pv_tile" android:gravity="center_vertical" android:orientation="horizontal" android:padding="8dp">
+        <ImageView android:layout_width="40dp" android:layout_height="40dp" android:background="@drawable/widget_pv_thumb"
+            android:clipToOutline="true" android:scaleType="centerCrop" android:src="@drawable/widget_pv_page"
+            android:importantForAccessibility="no" />
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="10dp"
+            android:layout_weight="1" android:orientation="vertical">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:maxLines="1"
+                    android:ellipsize="end" android:text="@string/widget_sample_title_2" android:textColor="@color/widget_pv_text" android:textSize="14sp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="6dp"
+                    android:text="12 Nov" android:textColor="@color/widget_pv_text2" android:textSize="11sp" />
+            </LinearLayout>
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:maxLines="1" android:ellipsize="end"
+                android:text="@string/widget_sample_body_2" android:textColor="@color/widget_pv_text2" android:textSize="12sp" />
+        </LinearLayout>
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="6dp"
+        android:background="@drawable/widget_pv_tile" android:gravity="center_vertical" android:orientation="horizontal" android:padding="8dp">
+        <ImageView android:layout_width="40dp" android:layout_height="40dp" android:background="@drawable/widget_pv_thumb"
+            android:clipToOutline="true" android:scaleType="centerCrop" android:src="@drawable/widget_pv_page"
+            android:importantForAccessibility="no" />
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginStart="10dp"
+            android:layout_weight="1" android:orientation="vertical">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:maxLines="1"
+                    android:ellipsize="end" android:text="@string/widget_sample_title_3" android:textColor="@color/widget_pv_text" android:textSize="14sp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="6dp"
+                    android:text="10 Nov" android:textColor="@color/widget_pv_text2" android:textSize="11sp" />
+            </LinearLayout>
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:maxLines="1" android:ellipsize="end"
+                android:text="@string/widget_sample_body_3" android:textColor="@color/widget_pv_text2" android:textSize="12sp" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

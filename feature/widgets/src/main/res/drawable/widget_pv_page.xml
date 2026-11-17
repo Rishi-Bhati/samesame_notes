@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A sample handwritten page for the picker previews (own drawing): ruled paper, a few lines of ink, one orange mark. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp" android:height="144dp" android:viewportWidth="120" android:viewportHeight="144">
+    <path android:fillColor="@color/widget_pv_paper" android:pathData="M0,0h120v144h-120z" />
+    <path android:strokeColor="@color/widget_pv_rule" android:strokeWidth="0.8"
+        android:pathData="M10,34H110M10,52H110M10,70H110M10,88H110M10,106H110M10,124H110" />
+    <path android:strokeColor="@color/widget_pv_ink" android:strokeWidth="2.2" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M14,22c3,-8 6,-8 7,0s4,7 6,0s3,-7 5,0s4,6 6,0 M44,22c2,-7 5,-7 6,0s3,6 5,0s4,-6 6,0s3,6 5,0s3,-5 5,0" />
+    <path android:strokeColor="@color/widget_pv_ink" android:strokeWidth="1.6" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M14,47c2,-5 4,-5 5,0s3,5 5,0s3,-5 5,0s3,5 5,0s3,-5 5,0 M50,47c2,-5 4,-5 5,0s3,5 5,0s3,-5 5,0s3,5 4,0
+            M14,65c2,-5 4,-5 5,0s3,5 5,0s3,-5 5,0s3,5 5,0 M44,65c2,-5 4,-5 5,0s3,5 5,0s3,-5 5,0s3,5 5,0s3,-5 5,0s3,5 5,0
+            M14,83c2,-5 4,-5 5,0s3,5 5,0s3,-5 5,0s3,5 5,0s3,-5 5,0s3,5 5,0" />
+    <path android:strokeColor="@color/widget_pv_accent" android:strokeWidth="2" android:strokeLineCap="round"
+        android:pathData="M42,26c10,3 22,3 34,0" />
+    <path android:strokeColor="@color/widget_pv_accent" android:strokeWidth="1.8" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:fillColor="#00000000" android:pathData="M80,96c8,-6 18,-2 16,6c-2,8 -16,8 -18,1" />
+</vector>
