@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -78,7 +79,9 @@ internal fun GlideSizePicker(
             bottomPad = GlideBottomPad,
         ) {
             Box(Modifier.height(GlideRowHeight * placement.visible).clipToBounds()) {
-                Column(Modifier.graphicsLayer { translationY = -hold.scroll * rowPx }) {
+                // unbounded: the column holds ALL rows. Under the viewport's fixed height Column would give the rows past the
+                // viewport zero height, so any scrolled list (anything but the first rows) drew nothing at all.
+                Column(Modifier.wrapContentHeight(align = Alignment.Top, unbounded = true).graphicsLayer { translationY = -hold.scroll * rowPx }) {
                     TextSizeCatalog.Heading.entries.forEach { heading ->
                         GlideRow(hold, heading.ordinal, accent) { held ->
                             Text(stringResource(heading.label()), fontSize = 15.sp, color = rowColor(held, accent))
@@ -95,7 +98,8 @@ internal fun GlideSizePicker(
                 }
             }
         }
-        if (sample) SampleChip(hold, Modifier.align(Alignment.TopEnd).padding(end = 56.4.dp + FontSizeMenuWidth + 12.dp))
+        // Always: the highlighted number is also shown beside the popup, away from the finger (which covers the row it is on).
+        ValueChip(hold, sample, Modifier.align(Alignment.TopEnd).padding(end = 56.4.dp + FontSizeMenuWidth + 12.dp))
     }
 }
 
@@ -105,13 +109,18 @@ private fun GlideRow(hold: FontSizeHoldState, index: Int, accent: Color, label: 
     MenuRow(selected = false, held = held, height = GlideRowHeight, accent = accent, onClick = {}) { label(held) }
 }
 
-/** "Aa" at the highlighted size, vertically centred on the highlighted row (clamped to this layer). */
+/** The highlighted value ("Aa" at the highlighted size at a caret), vertically centred on the highlighted row (clamped to this layer). */
 @Composable
-private fun SampleChip(hold: FontSizeHoldState, modifier: Modifier) {
+private fun ValueChip(hold: FontSizeHoldState, sample: Boolean, modifier: Modifier) {
     val pick = hold.highlightedPick ?: return
     val y = hold.highlightedY
     if (y.isNaN()) return
     val (size, bold) = FontSizePreview.style(pick)
+    val value = when (pick) {
+        is FontSizePick.Heading -> stringResource(pick.heading.label())
+        FontSizePick.Body -> stringResource(R.string.feature_composer_body)
+        is FontSizePick.Size -> pick.pt.toString()
+    }
     val dark = SameSameTheme.colors.isDark
     Box(
         modifier.layout { measurable, constraints ->
@@ -128,7 +137,8 @@ private fun SampleChip(hold: FontSizeHoldState, modifier: Modifier) {
             .padding(horizontal = 14.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
+        if (!sample) Text(value, fontSize = 20.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
+        else Text(
             stringResource(R.string.feature_composer_font_size_sample),
             fontSize = size.sp,
             fontWeight = if (bold) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal,
