@@ -39,12 +39,31 @@ object BodyTextMetrics {
     /**
      * The marker column grows with the paragraph's text size, like the box and bullet do: at the default size it is exactly
      * [MARKER_WIDTH] wide with the box [MARKER_INSET] in, at 2x the size twice that. (A fixed 80 px made boxes of 24 pt and
-     * larger run into the text.) [em] is the scaled text size, see `fontSizePu`.
+     * larger run into the text.) [em] is the scaled text size, see [fontSizePu].
      */
     fun markerWidth(em: Float): Float = Math.round(MARKER_WIDTH * em / DEFAULT_TEXT_SIZE_PU).toFloat()
     /** Extra column of a paragraph that has a checkbox AND a bullet/number: the number or bullet sits right of the box. */
     fun numberColumnWidth(em: Float): Float = Math.round(0.95f * em).toFloat()
     fun markerInset(em: Float): Float = MARKER_INSET * em / DEFAULT_TEXT_SIZE_PU
+
+    /** Text size in page units for a model font size (null = note default). The one conversion for runs and markers alike. */
+    fun fontSizePu(fontSize: Float?): Float =
+        (fontSize ?: Limits.DEFAULT_FONT_SIZE) * Limits.FONT_PU_PER_POINT * GLYPH_SCALE
+
+    /**
+     * Model font size (points) a paragraph's marker follows: its first character's size when it has one, otherwise the size of
+     * the character before the caret (the text an empty paragraph continues). [styleAt] reads that size from the model runs,
+     * so an empty item's marker uses the same unit and scale as a filled one's instead of transient IME/typing state.
+     */
+    fun markerFontSizePt(bodyLength: Int, paragraphStart: Int, styleAt: (Int) -> Float?): Float? {
+        if (bodyLength <= 0) return null
+        val offset = if (paragraphStart < bodyLength) paragraphStart else bodyLength - 1
+        return styleAt(offset)
+    }
+
+    /** Marker size in pu for the paragraph described by [markerFontSizePt]. */
+    fun markerEm(bodyLength: Int, paragraphStart: Int, styleAt: (Int) -> Float?): Float =
+        fontSizePu(markerFontSizePt(bodyLength, paragraphStart, styleAt))
 
     /** Checkbox: 46 px square at size 17 (#74) → 0.9 em of the scaled font; 4 px stroke → 0.08 em; centre 0.35 em above baseline. */
     /** A checked item: text, box and tick at 40 % of the text colour, strike-through at 63 % (measured on the reference). */

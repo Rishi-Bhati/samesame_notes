@@ -18,8 +18,7 @@ import org.samesame.notes.core.model.richtext.TextAlign
 import org.samesame.notes.core.richtext.BodyTextMetrics
 
 /** Text size in pu for a model font size (null = note default); scaled to the reference's glyph metrics. */
-fun fontSizePu(fontSize: Float?): Float =
-    (fontSize ?: Limits.DEFAULT_FONT_SIZE) * Limits.FONT_PU_PER_POINT * BodyTextMetrics.GLYPH_SCALE
+fun fontSizePu(fontSize: Float?): Float = BodyTextMetrics.fontSizePu(fontSize)
 
 /**
  * One run's [CharStyle]: the only character-style span in a body, so the Spannable maps 1:1 onto
@@ -97,15 +96,16 @@ class ParagraphSpan(val style: ParagraphStyle, private val env: TextRenderEnv) :
 
     override fun getLeadingMargin(first: Boolean): Int = leadingMargin(style, markerEm()).toInt()
 
-    /** Text size of the paragraph's first character (the marker follows it); the default when unknown. */
+    /** Text size of the paragraph's first character (the marker follows it), or of the text an empty one continues. */
     private fun markerEm(): Float {
         if (!style.hasMarker) return fontSizePu(null)
         val host = env.host ?: return fontSizePu(null)
         val start = host.getSpanStart(this)
-        if (start < 0 || start >= host.length) return fontSizePu(null)
-        val size = host.getSpans(start, start + 1, CharStyleSpan::class.java)
-            .firstOrNull { host.getSpanStart(it) <= start }?.style?.fontSize
-        return fontSizePu(size)
+        if (start < 0) return fontSizePu(null)
+        return BodyTextMetrics.markerEm(host.length, start) { offset ->
+            host.getSpans(offset, minOf(offset + 1, host.length), CharStyleSpan::class.java)
+                .firstOrNull { host.getSpanStart(it) <= offset && host.getSpanEnd(it) > offset }?.style?.fontSize
+        }
     }
 
     override fun getAlignment(): Layout.Alignment = alignmentOf(style.align)
