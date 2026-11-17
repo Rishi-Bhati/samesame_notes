@@ -1,40 +1,77 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Widget picker -->
     <string name="widget_creator_name">New note</string>
-    <string name="widget_creator_description">Start a note with the keyboard, pen, camera, a picture or your voice.</string>
+    <string name="widget_creator_description">Start a note in one tap: type, write, draw, add a picture or record your voice.</string>
     <string name="widget_single_name">Note</string>
-    <string name="widget_single_description">Keep one note on your home screen.</string>
+    <string name="widget_single_description">Keep one note\'s page on your home screen.</string>
     <string name="widget_list_name">Note list</string>
-    <string name="widget_list_description">Your recent notes, or the notes of one folder.</string>
+    <string name="widget_list_description">Recent notes, favourites or one folder, with a line of each note.</string>
+    <string name="widget_grid_name">Pages</string>
+    <string name="widget_grid_description">The first pages of your recent notes, favourites or one folder, side by side.</string>
 
+    <!-- Creator buttons (descriptions are read by screen readers, labels sit under the tiles) -->
     <string name="widget_creator_keypad">New note with keyboard</string>
     <string name="widget_creator_pen">New handwritten note</string>
-    <string name="widget_creator_brush">New brush note</string>
+    <string name="widget_creator_brush">New drawing</string>
     <string name="widget_creator_image">New note with a picture</string>
     <string name="widget_creator_voice">New voice note</string>
+    <string name="widget_creator_label_type">Type</string>
+    <string name="widget_creator_label_pen">Write</string>
+    <string name="widget_creator_label_brush">Draw</string>
+    <string name="widget_creator_label_image">Picture</string>
+    <string name="widget_creator_label_voice">Voice</string>
+    <string name="widget_creator_write">Write a note</string>
 
+    <!-- Widget content and states -->
     <string name="widget_untitled">Untitled</string>
     <string name="widget_locked_note">Locked note</string>
-    <string name="widget_note_gone">This note is no longer available</string>
-    <string name="widget_choose_note">Tap to choose a note</string>
+    <string name="widget_locked_hint">Its content stays hidden here</string>
+    <string name="widget_note_gone">Note not available</string>
+    <string name="widget_note_gone_hint">Tap to choose another note</string>
+    <string name="widget_choose_note">Choose a note</string>
+    <string name="widget_choose_note_hint">Tap to pick the note to show here</string>
     <string name="widget_new_note">New note</string>
-    <string name="widget_list_title">Recent notes</string>
-    <string name="widget_list_empty">No notes yet</string>
-    <string name="widget_folder_gone">This folder is no longer available</string>
+    <string name="widget_source_recent">Recent notes</string>
+    <string name="widget_source_favorites">Favourites</string>
+    <string name="widget_list_empty">No notes here yet</string>
+    <string name="widget_list_empty_hint">Tap to write the first one</string>
+    <string name="widget_favorites_empty">No favourites yet</string>
+    <string name="widget_favorites_empty_hint">Star a note to see it here</string>
+    <string name="widget_folder_gone">Folder not available</string>
+    <string name="widget_folder_gone_hint">Tap to choose what to show</string>
 
+    <!-- Sample content of the widget-picker previews -->
+    <string name="widget_sample_title">Weekend plans</string>
+    <string name="widget_sample_body">Farmers market at 9, then the long walk by the river. Bring the blue notebook.</string>
+    <string name="widget_sample_title_2">Book ideas</string>
+    <string name="widget_sample_body_2">A lighthouse keeper who collects lost letters.</string>
+    <string name="widget_sample_title_3">Groceries</string>
+    <string name="widget_sample_body_3">Lemons, rice, basil, oat milk</string>
+
+    <!-- Configure screens -->
     <string name="widget_pick_note_title">Choose a note</string>
     <string name="widget_pick_note_empty">There are no notes to show yet.</string>
-    <string name="widget_pick_folder_title">Choose what to show</string>
+    <string name="widget_pick_source_title">Choose what to show</string>
     <string name="widget_pick_locked">A locked note can\'t be shown on a widget.</string>
     <string name="widget_pick_already">That note is already on a widget.</string>
-    <string name="widget_cant_lock">A note shown on a widget can\'t be locked.</string>
-    <string name="widget_style_background">Background colour</string>
+    <string name="widget_pick_folders">Folders</string>
+    <string name="widget_settings_creator">New note widget</string>
+    <string name="widget_settings_single">Note widget</string>
+    <string name="widget_settings_list">Note list widget</string>
+    <string name="widget_settings_grid">Pages widget</string>
+    <string name="widget_section_content">Shows</string>
+    <string name="widget_section_background">Background</string>
+    <string name="widget_section_opacity">Opacity</string>
     <string name="widget_style_white">White</string>
     <string name="widget_style_black">Black</string>
     <string name="widget_style_match">Match dark mode</string>
-    <string name="widget_style_opacity">Background opacity</string>
-    <string name="widget_done">Done</string>
-    <string name="widget_change_note">Change note</string>
-    <string name="widget_change_folder">Change folder</string>
-    <string name="widget_settings_title">Widget settings</string>
+    <string name="widget_style_match_short">Auto</string>
+    <string name="widget_opacity_hint">Below 50 %, text follows your wallpaper so it stays readable.</string>
+    <string name="widget_preview_day">Day</string>
+    <string name="widget_preview_night">Night</string>
+    <string name="widget_change">Change</string>
+    <string name="widget_save">Save</string>
+    <string name="widget_cancel">Cancel</string>
+    <string name="widget_close">Close</string>
 </resources>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Colours of the static widget-picker previews (the live widgets take theirs from WidgetTokens). -->
+<resources>
+    <color name="widget_pv_surface">#FFFFFFFF</color>
+    <color name="widget_pv_tile">#FFF1F1F3</color>
+    <color name="widget_pv_text">#FF1A1A1A</color>
+    <color name="widget_pv_text2">#FF6B6B6B</color>
+    <color name="widget_pv_icon">#FF3A3A3A</color>
+    <color name="widget_pv_accent">#FFE5532F</color>
+    <color name="widget_pv_accent_tile">#24E5532F</color>
+    <color name="widget_pv_paper">#FFFFFFFF</color>
+    <color name="widget_pv_ink">#FF2B2B2B</color>
+    <color name="widget_pv_rule">#FFE4E4E8</color>
+</resources>

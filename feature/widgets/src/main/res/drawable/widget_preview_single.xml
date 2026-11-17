@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="250dp" android:height="110dp" android:viewportWidth="250" android:viewportHeight="110">
-    <path android:fillColor="#FFFFFFFF" android:pathData="M16,0H234A16,16 0 0 1 250,16V94A16,16 0 0 1 234,110H16A16,16 0 0 1 0,94V16A16,16 0 0 1 16,0Z" />
-    <path android:fillColor="#FFDADADA" android:pathData="M24,24h140v8h-140z M24,44h200v6h-200z M24,60h180v6h-180z M24,76h190v6h-190z" />
+<!-- Widget-picker preview image (before Android 12) of the note widget: own drawing. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="300dp" android:height="170dp" android:viewportWidth="300" android:viewportHeight="170">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M24,0H276A24,24 0 0 1 300,24V146A24,24 0 0 1 276,170H24A24,24 0 0 1 0,146V24A24,24 0 0 1 24,0Z" />
+    <path android:fillColor="#FF1A1A1A" android:pathData="M19,22H123A3,3 0 0 1 126,25V28A3,3 0 0 1 123,31H19A3,3 0 0 1 16,28V25A3,3 0 0 1 19,22Z" />
+    <path android:fillColor="#FFB5B5B5" android:pathData="M253,23H281A3,3 0 0 1 284,26V27A3,3 0 0 1 281,30H253A3,3 0 0 1 250,27V26A3,3 0 0 1 253,23Z" />
+    <path android:fillColor="#FFF1F1F3" android:pathData="M26,48H274A14,14 0 0 1 288,62V144A14,14 0 0 1 274,158H26A14,14 0 0 1 12,144V62A14,14 0 0 1 26,48Z" />
+    <path android:strokeColor="#FF2B2B2B" android:strokeWidth="2.2" android:strokeLineCap="round" android:pathData="M28,74c3,-8 6,-8 7,0s4,7 6,0s3,-7 5,0s4,6 6,0 M66,74c2,-7 5,-7 6,0s3,6 5,0s4,-6 6,0s3,6 5,0 M28,100c2,-5 4,-5 5,0s3,5 5,0s3,-5 5,0s3,5 5,0s3,-5 5,0s3,5 5,0s3,-5 5,0 M28,124c2,-5 4,-5 5,0s3,5 5,0s3,-5 5,0s3,5 5,0" />
+    <path android:strokeColor="#FFE5532F" android:strokeWidth="2" android:strokeLineCap="round" android:pathData="M64,80c10,3 22,3 34,0" />
 </vector>

@@ -35,9 +35,11 @@ class WidgetUpdater @Inject constructor(
     @Synchronized
     fun ensureStarted() {
         if (lastNight == null) onConfigurationChanged()
+        publishPreviewsOnce()
         if (job?.isActive == true) return
         if (!hasWidgets()) return
         prunePins()
+        watchWallpaper()
         job = scope.launch {
             notes.observeNotes(NoteFilter.All, SortOrder())
                 .map(WidgetContent::signature)
@@ -70,7 +72,51 @@ class WidgetUpdater @Inject constructor(
     suspend fun updateAll() {
         runCatching { SingleNoteWidget().updateAll(context) }
         runCatching { NoteListWidget().updateAll(context) }
+        runCatching { NoteGridWidget().updateAll(context) }
         runCatching { NoteCreatorWidget().updateAll(context) }
+    }
+
+    private var wallpaperListener: Any? = null
+
+    /**
+     * A see-through widget takes its text colour from the wallpaper (see [WidgetTheme.contentDark]): redraw when the
+     * wallpaper's colours change while the app runs (any other redraw picks the new colours up too).
+     */
+    private fun watchWallpaper() {
+        if (wallpaperListener != null || android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O_MR1) return
+        val listener = android.app.WallpaperManager.OnColorsChangedListener { _, which ->
+            if (which and android.app.WallpaperManager.FLAG_SYSTEM != 0) scope.launch { updateAll() }
+        }
+        runCatching {
+            android.app.WallpaperManager.getInstance(context)
+                .addOnColorsChangedListener(listener, android.os.Handler(android.os.Looper.getMainLooper()))
+            wallpaperListener = listener
+        }
+    }
+
+    /**
+     * Android 15+ shows widget-picker previews drawn by the widgets themselves (`providePreview`, sample content only).
+     * They are published once per app version (the system rate-limits it); older systems use the XML previews.
+     */
+    private fun publishPreviewsOnce() {
+        if (android.os.Build.VERSION.SDK_INT < 35) return
+        val prefs = context.getSharedPreferences("widget_previews", Context.MODE_PRIVATE)
+        val version = runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode
+        }.getOrDefault(0L)
+        if (prefs.getLong("published", -1L) == version) return
+        scope.launch {
+            val manager = androidx.glance.appwidget.GlanceAppWidgetManager(context)
+            val receivers = listOf(
+                NoteCreatorWidgetReceiver::class, SingleNoteWidgetReceiver::class, NoteListWidgetReceiver::class, NoteGridWidgetReceiver::class,
+            )
+            val categories = androidx.collection.intSetOf(android.appwidget.AppWidgetProviderInfo.WIDGET_CATEGORY_HOME_SCREEN)
+            val ok = receivers.all { r ->
+                runCatching { manager.setWidgetPreviews(r, categories) }.getOrNull() ==
+                    androidx.glance.appwidget.GlanceAppWidgetManager.SET_WIDGET_PREVIEWS_RESULT_SUCCESS
+            }
+            if (ok) prefs.edit().putLong("published", version).apply()
+        }
     }
 
     /** Forgets pins of widgets that no longer exist (removed while the app was not running). */
@@ -80,7 +126,10 @@ class WidgetUpdater @Inject constructor(
     }
 
     private fun hasWidgets(): Boolean =
-        listOf(SingleNoteWidgetReceiver::class.java, NoteListWidgetReceiver::class.java, NoteCreatorWidgetReceiver::class.java)
+        listOf(
+            SingleNoteWidgetReceiver::class.java, NoteListWidgetReceiver::class.java, NoteGridWidgetReceiver::class.java,
+            NoteCreatorWidgetReceiver::class.java,
+        )
             .any { widgetIds(it).isNotEmpty() }
 
     private fun widgetIds(receiver: Class<*>): IntArray =

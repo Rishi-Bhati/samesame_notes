@@ -1,7 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent" android:layout_height="match_parent">
-    <ImageView android:layout_width="match_parent" android:layout_height="match_parent"
-        android:scaleType="fitCenter" android:importantForAccessibility="no"
-        android:src="@drawable/widget_preview_single" />
-</FrameLayout>
+<!-- Widget-picker preview (Android 12+) of the note widget: title, date and the top of a handwritten page. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="@drawable/widget_pv_bg" android:orientation="vertical" android:padding="12dp">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="32dp" android:gravity="center_vertical"
+        android:orientation="horizontal" android:paddingStart="4dp" android:paddingEnd="4dp">
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:maxLines="1" android:ellipsize="end" android:text="@string/widget_sample_title"
+            android:textColor="@color/widget_pv_text" android:textSize="14sp" android:textStyle="bold" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="09:41"
+            android:textColor="@color/widget_pv_text2" android:textSize="12sp" />
+    </LinearLayout>
+    <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:layout_marginTop="4dp"
+        android:background="@drawable/widget_pv_tile" android:clipToOutline="true" android:scaleType="centerCrop"
+        android:src="@drawable/widget_pv_page" android:importantForAccessibility="no" />
+</LinearLayout>

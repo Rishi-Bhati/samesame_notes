@@ -36,7 +36,18 @@ class WidgetContentTest {
 
     @Test fun `single is ready for a normal note`() {
         assertThat(WidgetContent.single(true, note("a", title = "Plan", modified = 9)))
-            .isEqualTo(SingleNoteState.Ready(NoteId("a"), "Plan", 9))
+            .isEqualTo(SingleNoteState.Ready(NoteId("a"), "Plan", 9, "secret body"))
+    }
+
+    @Test fun `locked rows never carry the note's text`() {
+        val rows = WidgetContent.rows(listOf(note("a", locked = true), note("b")))
+        assertThat(rows.first { it.noteId.value == "a" }.snippet).isEmpty()
+        assertThat(rows.first { it.noteId.value == "b" }.snippet).isEqualTo("secret body")
+    }
+
+    @Test fun `snippet is one tidy line`() {
+        assertThat(WidgetContent.snippet("  Milk\n\n  eggs\tbread  ")).isEqualTo("Milk eggs bread")
+        assertThat(WidgetContent.snippet("x".repeat(400)).length).isEqualTo(280)
     }
 
     @Test fun `rows are newest first without trashed notes and limited`() {

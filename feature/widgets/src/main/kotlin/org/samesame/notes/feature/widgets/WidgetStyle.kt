@@ -6,69 +6,122 @@ import androidx.compose.ui.graphics.Color
 /** The background choices of every widget: white, black, or follow the system's dark mode. */
 enum class WidgetBackground { MatchDark, White, Black }
 
-/** Per-widget look. [opacity] is the background's opacity in percent (100 = solid). */
-data class WidgetStyle(val background: WidgetBackground = WidgetBackground.MatchDark, val opacity: Int = 100) {
-    /** Whether content (text, icons, the rendered page) is dark-themed, given whether the system is in night mode. */
-    fun isDark(systemNight: Boolean): Boolean = when (background) {
-        WidgetBackground.MatchDark -> systemNight
-        WidgetBackground.White -> false
-        WidgetBackground.Black -> true
-    }
+/** Per-widget look. [opacity] is the background's opacity in percent (100 = solid), in steps of [OPACITY_STEP]. */
+data class WidgetStyle(val background: WidgetBackground = WidgetBackground.MatchDark, val opacity: Int = MAX_OPACITY) {
+
+    /**
+     * Whether content (text, icons, the rendered page) is drawn dark-themed (light ink on a dark ground), for the system's
+     * [systemNight] mode. See [WidgetTheme.contentDark].
+     */
+    fun isDark(systemNight: Boolean, wallpaperDarkText: Boolean? = null): Boolean =
+        WidgetTheme.contentDark(this, systemNight, wallpaperDarkText)
 
     companion object {
         const val MIN_OPACITY = 0
         const val MAX_OPACITY = 100
+        const val OPACITY_STEP = 10
         fun clampOpacity(value: Int) = value.coerceIn(MIN_OPACITY, MAX_OPACITY)
+
+        /** [value] clamped and rounded to the nearest step (the slider and stored values only take whole steps). */
+        fun stepOpacity(value: Float): Int =
+            clampOpacity((Math.round(value / OPACITY_STEP) * OPACITY_STEP))
     }
 }
 
-/** A colour for light and for dark. A fixed background uses the same colour for both. */
+/** A colour for light and for dark system mode. A fixed background uses the same colour for both. */
 class RolePair(val day: Color, val night: Color) {
-    fun pick(dark: Boolean) = if (dark) night else day
+    fun pick(night: Boolean) = if (night) this.night else day
 }
 
-/** The colours of one widget for a [WidgetStyle]: [surface] carries the opacity, the rest is solid. */
+/** The colours of one widget for a [WidgetStyle]. [surface] carries the opacity; [tile] keeps a readable minimum. */
 class WidgetColorRoles(
     val surface: RolePair,
+    /** Inner rounded panels (buttons, list rows, page frame). */
+    val tile: RolePair,
     val text: RolePair,
     val textSecondary: RolePair,
     val icon: RolePair,
     val accent: RolePair,
-    /** The inner rounded panel of the creator widget (the buttons sit on it). */
-    val inset: RolePair,
+    /** Icon/text drawn on [accent]. */
+    val onAccent: RolePair,
+    /** A soft accent wash (the creator's "write" bar). */
+    val accentTile: RolePair,
 )
 
-object WidgetColorRules {
-    private val lightText = Color(0xFF1A1A1A)
-    private val lightSecondary = Color(0xFF6E6E6E)
-    private val lightIcon = Color(0xFF3A3A3A)
-    private val lightAccent = Color(0xFFE5532F)
-    private val darkText = Color(0xFFFAFAFA)
-    private val darkSecondary = Color(0xFFA9A9A9)
-    private val darkIcon = Color(0xFFCCCCCC)
-    private val darkAccent = Color(0xFFF46A4E)
-    private val matchLightSurface = Color(0xFFFFFFFF)
-    private val matchDarkSurface = Color(0xFF171717)
+/** The widget design tokens (own palette, aligned with the app's light and dark tokens). */
+object WidgetTokens {
+    val surfaceWhite = Color(0xFFFFFFFF)
+    val surfaceBlack = Color(0xFF000000)
+    /** Match dark mode at night: the app's card tone, softer than pure black on a wallpaper. */
+    val surfaceNight = Color(0xFF1A1A1A)
 
-    fun roles(style: WidgetStyle): WidgetColorRoles {
-        val alpha = WidgetStyle.clampOpacity(style.opacity) / 100f
-        fun solid(c: Color) = RolePair(c, c)
+    val tileLight = Color(0xFFF1F1F3)
+    val tileDark = Color(0xFF2B2B2B)
+
+    val textLight = Color(0xFF1A1A1A)
+    val textSecondaryLight = Color(0xFF6B6B6B)
+    val iconLight = Color(0xFF3A3A3A)
+    val textDark = Color(0xFFF5F5F5)
+    val textSecondaryDark = Color(0xFFA6A6A6)
+    val iconDark = Color(0xFFD6D6D6)
+
+    val accentLight = Color(0xFFE5532F)
+    val accentDark = Color(0xFFF46A4E)
+    val onAccent = Color(0xFFFFFFFF)
+}
+
+/** Pure theme rules of the widgets (JVM-tested). */
+object WidgetTheme {
+    /** Below this opacity the wallpaper, not the background, decides whether the content is light or dark. */
+    const val SEE_THROUGH_BELOW = 50
+
+    /** The least alpha an inner tile keeps on a see-through widget, so its text stays readable on any wallpaper. */
+    const val MIN_TILE_ALPHA = 0.6f
+
+    /**
+     * Whether the content is dark-themed. With a mostly solid background the background decides (white = light content,
+     * black = dark content, match = the system mode). A mostly see-through widget sits on the wallpaper instead, so the
+     * wallpaper's hint decides ([wallpaperDarkText] true = the wallpaper is light and wants dark text); unknown = background.
+     */
+    fun contentDark(style: WidgetStyle, systemNight: Boolean, wallpaperDarkText: Boolean?): Boolean {
+        if (style.opacity < SEE_THROUGH_BELOW && wallpaperDarkText != null) return !wallpaperDarkText
         return when (style.background) {
-            WidgetBackground.MatchDark -> WidgetColorRoles(
-                surface = RolePair(matchLightSurface.copy(alpha = alpha), matchDarkSurface.copy(alpha = alpha)),
-                text = RolePair(lightText, darkText), textSecondary = RolePair(lightSecondary, darkSecondary),
-                icon = RolePair(lightIcon, darkIcon), accent = RolePair(lightAccent, darkAccent),
-                inset = RolePair(Color(0xFFF2F2F2), Color(0xFF2A2A2A)),
-            )
-            WidgetBackground.White -> WidgetColorRoles(
-                surface = solid(Color.White.copy(alpha = alpha)), text = solid(lightText), textSecondary = solid(lightSecondary),
-                icon = solid(lightIcon), accent = solid(lightAccent), inset = solid(Color(0xFFF2F2F2)),
-            )
-            WidgetBackground.Black -> WidgetColorRoles(
-                surface = solid(Color.Black.copy(alpha = alpha)), text = solid(darkText), textSecondary = solid(darkSecondary),
-                icon = solid(darkIcon), accent = solid(darkAccent), inset = solid(Color(0xFF2A2A2A)),
-            )
+            WidgetBackground.MatchDark -> systemNight
+            WidgetBackground.White -> false
+            WidgetBackground.Black -> true
         }
+    }
+
+    /** Alpha of the inner tiles: solid on a solid widget, never below [MIN_TILE_ALPHA]. */
+    fun tileAlpha(opacity: Int): Float =
+        MIN_TILE_ALPHA + (1f - MIN_TILE_ALPHA) * WidgetStyle.clampOpacity(opacity) / 100f
+
+    fun surfaceColor(background: WidgetBackground, night: Boolean): Color = when (background) {
+        WidgetBackground.White -> WidgetTokens.surfaceWhite
+        WidgetBackground.Black -> WidgetTokens.surfaceBlack
+        WidgetBackground.MatchDark -> if (night) WidgetTokens.surfaceNight else WidgetTokens.surfaceWhite
+    }
+
+    fun roles(style: WidgetStyle, wallpaperDarkText: Boolean? = null): WidgetColorRoles {
+        val surfaceAlpha = WidgetStyle.clampOpacity(style.opacity) / 100f
+        val tileAlpha = tileAlpha(style.opacity)
+        val darkDay = contentDark(style, systemNight = false, wallpaperDarkText = wallpaperDarkText)
+        val darkNight = contentDark(style, systemNight = true, wallpaperDarkText = wallpaperDarkText)
+        fun pair(light: Color, dark: Color) = RolePair(if (darkDay) dark else light, if (darkNight) dark else light)
+        val accent = pair(WidgetTokens.accentLight, WidgetTokens.accentDark)
+        return WidgetColorRoles(
+            surface = RolePair(
+                surfaceColor(style.background, night = false).copy(alpha = surfaceAlpha),
+                surfaceColor(style.background, night = true).copy(alpha = surfaceAlpha),
+            ),
+            tile = pair(WidgetTokens.tileLight.copy(alpha = tileAlpha), WidgetTokens.tileDark.copy(alpha = tileAlpha)),
+            text = pair(WidgetTokens.textLight, WidgetTokens.textDark),
+            textSecondary = pair(WidgetTokens.textSecondaryLight, WidgetTokens.textSecondaryDark),
+            icon = pair(WidgetTokens.iconLight, WidgetTokens.iconDark),
+            accent = accent,
+            onAccent = RolePair(WidgetTokens.onAccent, WidgetTokens.onAccent),
+            accentTile = RolePair(accent.day.copy(alpha = 0.14f), accent.night.copy(alpha = 0.18f)),
+        )
     }
 }
 
