@@ -201,12 +201,12 @@ internal fun FolderUploadSummaryDialog(summary: FolderUploader.Summary, onDismis
         atBottom = true,
     ) {
         Text(
-            stringResource(R.plurals.feature_files_folder_summary_imported, summary.imported, summary.imported),
+            pluralStringResource(R.plurals.feature_files_folder_summary_imported, summary.imported, summary.imported),
             style = SameSameText.DialogMessage.capped(), color = SameSameTheme.colors.textPrimary,
         )
         if (skipped.isNotEmpty()) {
             Text(
-                stringResource(R.plurals.feature_files_folder_summary_skipped, skipped.size, skipped.size),
+                pluralStringResource(R.plurals.feature_files_folder_summary_skipped, skipped.size, skipped.size),
                 style = SameSameText.DialogMessage.capped(), color = SameSameTheme.colors.textPrimary,
                 modifier = Modifier.padding(top = 12.dp),
             )
