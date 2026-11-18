@@ -197,6 +197,30 @@ class VersionHistoryTest {
         assertThat(textOf(store(versions()))).isEqualTo("unsaved edit")
     }
 
+    @Test fun restoreWhenWorkingCopyIsClosedPreservesMetadataInUndoVersion() = runBlocking<Unit> {
+        val v = versions()
+        val s = store(v)
+        edit(s, "v1 body", title = "V1 Title")
+        now += 10 * minute
+        edit(s, "v2 body", title = "V2 Title")
+        val v1 = v.list("n1").last()
+
+        // Close the note so working copy is deleted
+        s.flush("n1", close = true)
+        assertThat(File(working, "n1").exists()).isFalse()
+
+        now += 10 * minute
+        // Restore v1 while note is closed (working copy absent)
+        s.restoreVersion("n1", v1.id)
+
+        // The undo version taken from the container before restore must have title and preview preserved
+        val versionsAfter = v.list("n1")
+        val undoVersion = versionsAfter.first()
+        assertThat(undoVersion.title).isEqualTo("V2 Title")
+        assertThat(undoVersion.preview).isEqualTo("v2 body")
+        assertThat(undoVersion.pages).isGreaterThan(0)
+    }
+
     @Test fun restoreOfAMissingVersionFailsAndChangesNothing() = runBlocking<Unit> {
         val s = store()
         edit(s, "keep me")

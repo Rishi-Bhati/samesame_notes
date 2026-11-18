@@ -17,6 +17,10 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.samesame.notes.core.data.Clock
 import org.samesame.notes.core.data.repository.AppSettingsRepository
+import org.samesame.notes.core.data.repository.DefaultNoteRepository
+import org.samesame.notes.core.data.repository.PreviewFailureStore
+import org.samesame.notes.core.data.transfer.ShareCache
+import org.samesame.notes.core.database.DatabaseMaintenance
 import org.samesame.notes.core.database.SameSameDatabase
 import org.samesame.notes.core.database.entity.FileFolderEntity
 import org.samesame.notes.core.database.entity.FolderEntity
@@ -24,6 +28,7 @@ import org.samesame.notes.core.database.entity.LibraryFileEntity
 import org.samesame.notes.core.database.entity.NoteEntity
 import org.samesame.notes.core.database.entity.NoteSearchEntity
 import org.samesame.notes.core.document.NoteDocumentStore
+import org.samesame.notes.core.export.NoteExporter
 import org.samesame.notes.core.files.BlobStore
 import org.samesame.notes.core.model.AppSettings
 import org.samesame.notes.core.model.PageMode
@@ -43,6 +48,7 @@ class BackupRepositoryTest {
     private var now = 1_700_000_000_000L
     private val clock = Clock { now }
     private lateinit var db: SameSameDatabase
+    private lateinit var workingDir: File
     private lateinit var documents: NoteDocumentStore
     private lateinit var blobStore: BlobStore
     private lateinit var settingsRepo: FakeSettingsRepo
@@ -56,9 +62,22 @@ class BackupRepositoryTest {
         db = Room.inMemoryDatabaseBuilder(app, SameSameDatabase::class.java)
             .allowMainThreadQueries()
             .build()
-        documents = NoteDocumentStore(tmp.newFolder("notes"), tmp.newFolder("working"))
+        workingDir = tmp.newFolder("working")
+        documents = NoteDocumentStore(tmp.newFolder("notes"), workingDir)
         blobStore = BlobStore(tmp.newFolder("library"), freeSpace = { Long.MAX_VALUE / 2 })
         settingsRepo = FakeSettingsRepo()
+        val noteRepo = DefaultNoteRepository(
+            db.noteDao(),
+            db.searchDao(),
+            db.viewStateDao(),
+            documents,
+            clock,
+            NoteExporter(),
+            settingsRepo,
+            PreviewFailureStore(tmp.newFolder("previews")),
+            DatabaseMaintenance(db),
+            ShareCache(tmp.newFolder("share")),
+        )
         repo = BackupRepository(
             app,
             db.noteDao(),
@@ -69,6 +88,7 @@ class BackupRepositoryTest {
             blobStore,
             settingsRepo,
             clock,
+            noteRepo,
         )
         backupRoot = tmp.newFolder("backup")
         folder = JavaIoBackupFolder(backupRoot)
@@ -212,6 +232,8 @@ class BackupRepositoryTest {
         assertThat(restoredFolder?.name).isEqualTo("Child")
         assertThat(db.folderDao().get(restoredFolder!!.parentId!!)?.name).isEqualTo("Root")
         // content restored
+        assertThat(File(workingDir, n1).exists()).isFalse()
+        assertThat(File(workingDir, n2).exists()).isFalse()
         assertThat(documents.readDocument(n1).body.plainText()).isEqualTo("body")
     }
 
@@ -261,6 +283,9 @@ class BackupRepositoryTest {
         assertThat(all.size).isEqualTo(2)
         val copy = all.first { it.id !in before }
         assertThat(copy.title).isEqualTo("FromBackup (restored)")
+        // after restore no working/<id> dir remains
+        assertThat(File(workingDir, copy.id).exists()).isFalse()
+        // reopening shows the (restored) title
         assertThat(documents.readDocument(copy.id).title).isEqualTo("FromBackup (restored)")
         assertThat(documents.readDocument(copy.id).body.plainText()).isEqualTo("backup-body")
     }
@@ -376,6 +401,77 @@ class BackupRepositoryTest {
         // restore again -> identical sha skipped
         val again = repo.restoreFromFolder(folder, backup)
         assertThat(again.restoredLibraryFiles).isEqualTo(0)
+    }
+
+    @Test
+    fun `backup folder name format and parse round trip and backward compatibility`() {
+        val timeMs = 1_700_000_000_000L
+
+        val oldSdf = java.text.SimpleDateFormat("yyyy-MM-dd HHmm", java.util.Locale.US).apply {
+            timeZone = java.util.TimeZone.getDefault()
+        }
+        val oldFolderName = "SameSame backup " + oldSdf.format(java.util.Date(timeMs))
+        val expectedParsedTimeMs = oldSdf.parse(oldSdf.format(java.util.Date(timeMs)))!!.time
+
+        val parsedFromOld = parseBackupFolderTime(oldFolderName)
+        assertThat(parsedFromOld).isEqualTo(expectedParsedTimeMs)
+
+        val newFolderName = backupFolderName(timeMs)
+        assertThat(newFolderName).isEqualTo(oldFolderName)
+
+        val parsedFromNew = parseBackupFolderTime(newFolderName)
+        assertThat(parsedFromNew).isEqualTo(expectedParsedTimeMs)
+
+        val partialName = "$newFolderName.partial"
+        assertThat(parseBackupFolderTime(partialName)).isEqualTo(expectedParsedTimeMs)
+    }
+
+    @Test
+    fun `pre-existing truncated blob is replaced on restore`() = runBlocking<Unit> {
+        val now = clock.now()
+        val content = "full-length-blob-content-12345"
+        val sha = writeBlob(content)
+        val fileId = UUID.randomUUID().toString()
+        db.libraryDao().insertFile(
+            LibraryFileEntity(
+                id = fileId,
+                folderId = null,
+                displayName = "doc",
+                ext = "txt",
+                mimeType = "text/plain",
+                category = FileCategory.Document,
+                sizeBytes = content.length.toLong(),
+                sha256 = sha,
+                width = null,
+                height = null,
+                durationMs = null,
+                pageCount = null,
+                sourceApp = null,
+                createdAt = now,
+                modifiedAt = now,
+                sortIndex = 1L,
+                isFavorite = false,
+                trashedAt = null,
+                description = "",
+            ),
+        )
+
+        val backup = (repo.runBackup(folder) as BackupRunResult.Success).folderName
+
+        // Simulate interrupted prior restore: destination exists with non-zero truncated content
+        val destFile = blobStore.file(sha)
+        destFile.writeBytes("truncated-prefix".toByteArray())
+        assertThat(destFile.length()).isGreaterThan(0L)
+        assertThat(destFile.length()).isLessThan(content.length.toLong())
+
+        // Clear file record from DB so restore attempts to restore it
+        db.libraryDao().deleteFiles(listOf(fileId))
+
+        val result = repo.restoreFromFolder(folder, backup)
+        assertThat(result.restoredLibraryFiles).isEqualTo(1)
+
+        // Truncated blob must have been replaced with full content
+        assertThat(blobStore.file(sha).readText()).isEqualTo(content)
     }
 
     private fun createNote(

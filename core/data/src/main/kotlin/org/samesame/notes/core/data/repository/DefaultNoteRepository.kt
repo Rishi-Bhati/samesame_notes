@@ -279,6 +279,16 @@ internal class DefaultNoteRepository @Inject constructor(
     override suspend fun exportNote(id: NoteId, out: java.io.OutputStream) =
         lockFor(id.value).withLock { documents.export(id.value, out) }
 
+    override suspend fun prepareForBackup(id: NoteId) =
+        lockFor(id.value).withLock {
+            documents.prepareForBackup(id.value)
+        }
+
+    override suspend fun exportContainerForBackup(id: NoteId, out: java.io.OutputStream) =
+        lockFor(id.value).withLock {
+            documents.exportContainerForBackup(id.value, out)
+        }
+
     override suspend fun exportNote(
         id: NoteId,
         format: org.samesame.notes.core.export.ExportFormat,

@@ -683,7 +683,7 @@ class NoteDocumentStore(
     /** Writes [container] through a temp file + fsync + atomic rename. */
     private inline fun writeContainer(container: File, write: (ZipOutputStream) -> Unit) {
         notesRoot.mkdirs()
-        val tmp = File(notesRoot, container.name + TMP_SUFFIX)
+        val tmp = File(notesRoot, "${container.name}.${UUID.randomUUID()}$TMP_SUFFIX")
         try {
             FileOutputStream(tmp).use { fos ->
                 val bos = BufferedOutputStream(fos)
@@ -924,7 +924,7 @@ class NoteDocumentStore(
             val dest = containerFile(noteId)
             if (!rewriteNoteId && info.noteId == noteId) {
                 notesRoot.mkdirs()
-                val tmp = File(notesRoot, dest.name + TMP_SUFFIX)
+                val tmp = File(notesRoot, "${dest.name}.${UUID.randomUUID()}$TMP_SUFFIX")
                 try {
                     file.copyTo(tmp, overwrite = true)
                     Files.move(tmp.toPath(), dest.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
@@ -1081,10 +1081,17 @@ class NoteDocumentStore(
         openKeys.remove(noteId)?.fill(0)
         lockedCache.remove(noteId)
         containerFile(noteId).delete()
-        File(notesRoot, noteId + ".$NOTE_CONTAINER_EXTENSION$TMP_SUFFIX").delete()
+        cleanTempContainers(noteId)
         workingDir(noteId).deleteRecursively()
         File(notesRoot, checkId(noteId)).deleteRecursively() // legacy directory bundle
         forgetVersions(noteId) // the note is gone for good; moving it to the trash never reaches here
+    }
+
+    private fun cleanTempContainers(noteId: String) {
+        val prefix = "$noteId.$NOTE_CONTAINER_EXTENSION"
+        notesRoot.listFiles { file ->
+            file.name.startsWith(prefix) && file.name.endsWith(TMP_SUFFIX)
+        }?.forEach { it.delete() }
     }
 
     // ---- version history -------------------------------------------------------------------
@@ -1108,10 +1115,13 @@ class NoteDocumentStore(
         }
     }
 
+    private fun versionMeta(doc: NoteDocument): VersionMeta =
+        VersionMeta(doc.title, doc.body.plainText().trim().take(Limits.VERSION_PREVIEW_CHARS), doc.pages.size)
+
     private fun versionMeta(docFile: File): VersionMeta = try {
         val text = docFile.readBytes().decodeToString()
         val doc = parseDocument(text, documentVersion(text))
-        VersionMeta(doc.title, doc.body.plainText().trim().take(200), doc.pages.size)
+        versionMeta(doc)
     } catch (e: Exception) {
         VersionMeta()
     }
@@ -1208,10 +1218,20 @@ class NoteDocumentStore(
         // Undo point: a failure here aborts the restore (unlike the quiet snapshots).
         store.snapshot(
             noteId, container,
-            meta = { if (locked) VersionMeta(locked = true) else versionMeta(File(workingDir(noteId), DOCUMENT_FILE).takeIf { it.exists() } ?: container) },
+            meta = {
+                if (locked) VersionMeta(locked = true)
+                else {
+                    val workingDoc = File(workingDir(noteId), DOCUMENT_FILE)
+                    if (workingDoc.exists()) versionMeta(workingDoc)
+                    else runCatching {
+                        val doc = readVersionDocument(noteId, container)
+                        versionMeta(doc)
+                    }.getOrDefault(VersionMeta())
+                }
+            },
             force = true,
         )
-        val tmp = File(notesRoot, container.name + TMP_SUFFIX)
+        val tmp = File(notesRoot, "${container.name}.${UUID.randomUUID()}$TMP_SUFFIX")
         try {
             Files.copy(source.toPath(), tmp.toPath(), StandardCopyOption.REPLACE_EXISTING)
             FileOutputStream(tmp, true).use { it.fd.sync() }
@@ -1233,7 +1253,7 @@ class NoteDocumentStore(
         val working = workingDir(noteId)
         val workingDoc = File(working, DOCUMENT_FILE)
         val container = containerFile(noteId)
-        File(notesRoot, noteId + ".$NOTE_CONTAINER_EXTENSION$TMP_SUFFIX").delete() // partial pack: ignored
+        cleanTempContainers(noteId) // partial pack: ignored
         if (isLockedContainer(noteId)) {
             // A locked note is only reachable after openLocked put its key in memory.
             if (!openKeys.containsKey(noteId) || !workingDoc.exists()) throw NoteLockedException(noteId)
@@ -1341,7 +1361,7 @@ class NoteDocumentStore(
         if (!docFile.exists()) throw FileNotFoundException("No working copy for $noteId")
         notesRoot.mkdirs()
         val container = containerFile(noteId)
-        val tmp = File(notesRoot, container.name + TMP_SUFFIX)
+        val tmp = File(notesRoot, "${container.name}.${UUID.randomUUID()}$TMP_SUFFIX")
 
         var lockKey: ByteArray? = null
         var wrappedKey: ByteArray? = null
@@ -1412,7 +1432,7 @@ class NoteDocumentStore(
         transform: (NoteDocument) -> NoteDocument = { it },
     ) {
         dst.parentFile?.mkdirs()
-        val tmp = File(dst.parentFile, dst.name + TMP_SUFFIX)
+        val tmp = File(dst.parentFile, "${dst.name}.${UUID.randomUUID()}$TMP_SUFFIX")
         try {
             ZipFile(src).use { zf ->
                 FileOutputStream(tmp).use { fos ->
