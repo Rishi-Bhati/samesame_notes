@@ -17,6 +17,10 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.samesame.notes.core.data.Clock
 import org.samesame.notes.core.data.repository.AppSettingsRepository
+import org.samesame.notes.core.data.repository.DefaultNoteRepository
+import org.samesame.notes.core.data.repository.PreviewFailureStore
+import org.samesame.notes.core.data.transfer.ShareCache
+import org.samesame.notes.core.database.DatabaseMaintenance
 import org.samesame.notes.core.database.SameSameDatabase
 import org.samesame.notes.core.database.entity.FileFolderEntity
 import org.samesame.notes.core.database.entity.FolderEntity
@@ -24,6 +28,7 @@ import org.samesame.notes.core.database.entity.LibraryFileEntity
 import org.samesame.notes.core.database.entity.NoteEntity
 import org.samesame.notes.core.database.entity.NoteSearchEntity
 import org.samesame.notes.core.document.NoteDocumentStore
+import org.samesame.notes.core.export.NoteExporter
 import org.samesame.notes.core.files.BlobStore
 import org.samesame.notes.core.model.AppSettings
 import org.samesame.notes.core.model.PageMode
@@ -59,6 +64,18 @@ class BackupRepositoryTest {
         documents = NoteDocumentStore(tmp.newFolder("notes"), tmp.newFolder("working"))
         blobStore = BlobStore(tmp.newFolder("library"), freeSpace = { Long.MAX_VALUE / 2 })
         settingsRepo = FakeSettingsRepo()
+        val noteRepo = DefaultNoteRepository(
+            db.noteDao(),
+            db.searchDao(),
+            db.viewStateDao(),
+            documents,
+            clock,
+            NoteExporter(),
+            settingsRepo,
+            PreviewFailureStore(tmp.newFolder("previews")),
+            DatabaseMaintenance(db),
+            ShareCache(tmp.newFolder("share")),
+        )
         repo = BackupRepository(
             app,
             db.noteDao(),
@@ -69,6 +86,7 @@ class BackupRepositoryTest {
             blobStore,
             settingsRepo,
             clock,
+            noteRepo,
         )
         backupRoot = tmp.newFolder("backup")
         folder = JavaIoBackupFolder(backupRoot)

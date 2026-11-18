@@ -9,6 +9,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import org.samesame.notes.core.data.Clock
 import org.samesame.notes.core.data.repository.AppSettingsRepository
+import org.samesame.notes.core.data.repository.NoteRepository
+import org.samesame.notes.core.model.NoteId
 import org.samesame.notes.core.database.dao.FolderDao
 import org.samesame.notes.core.database.dao.LibraryDao
 import org.samesame.notes.core.database.dao.NoteDao
@@ -60,6 +62,7 @@ class BackupRepository @Inject constructor(
     private val blobStore: BlobStore,
     private val settings: AppSettingsRepository,
     private val clock: Clock,
+    private val noteRepository: NoteRepository,
 ) {
     private val appVersion: String by lazy {
         runCatching {
@@ -165,7 +168,8 @@ class BackupRepository @Inject constructor(
         val noteEntries = mutableListOf<BackupNoteEntry>()
         for (note in notes) {
             step(note.title.ifBlank { note.id })
-            documents.prepareForBackup(note.id)
+            val noteId = NoteId(note.id)
+            noteRepository.prepareForBackup(noteId)
             val fileName = "${note.id}.ssnote"
             val outPath = "$partialName/$BACKUP_NOTES_DIR/$fileName"
             val digest = MessageDigest.getInstance("SHA-256")
@@ -178,7 +182,7 @@ class BackupRepository @Inject constructor(
                     override fun flush() = out.flush()
                     override fun close() = out.close()
                 }
-                documents.exportContainerForBackup(note.id, counting)
+                noteRepository.exportContainerForBackup(noteId, counting)
                 counting.flush()
             }
             val sha = digest.digest().joinToString("") { "%02x".format(it) }
