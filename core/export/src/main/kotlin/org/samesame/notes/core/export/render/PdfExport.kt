@@ -8,6 +8,7 @@ import android.graphics.RectF
 import android.graphics.pdf.PdfDocument
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
+import android.util.Log
 import org.samesame.notes.core.model.Limits
 import java.io.File
 import java.io.OutputStream
@@ -20,8 +21,8 @@ import java.io.OutputStream
  * note space back onto it (the inverse of the importer's fit, so pages imported before format v6, letterboxed into the
  * note's ratio, map correctly too).
  *
- * NOTE: the original page is a raster, not vector content: the platform [PdfDocument] cannot embed another PDF's pages,
- * and a PDF library was not added in this round (owner: finish quickly). Original text is therefore not selectable.
+ * This is the FALLBACK path: the original page is a raster here and its text is not selectable. [PdfVectorExport] is tried first
+ * and keeps the original page content.
  */
 internal object PdfExport {
     const val PDF_RASTER_DPI = 300f
@@ -29,7 +30,28 @@ internal object PdfExport {
     /** Pixel cap of one original-page raster (about 48 MB while drawn); A4 at 300 dpi is 8.7 MP. */
     const val MAX_RASTER_PIXELS = 12_000_000L
 
+    /** Vector export first; if it throws for any reason the note is written with the proven raster path instead. */
     fun write(renderer: NoteRenderer, out: OutputStream) {
+        val vector = File.createTempFile("pdf-vector", ".pdf")
+        try {
+            PdfVectorExport.write(renderer, vector)
+            vector.inputStream().use { it.copyTo(out) }
+            out.flush()
+            return
+        } catch (e: Exception) {
+            Log.w("PdfExport", "vector export failed, using the raster fallback", e)
+        } catch (e: OutOfMemoryError) {
+            Log.w("PdfExport", "vector export ran out of memory, using the raster fallback", e)
+        } catch (e: LinkageError) {
+            Log.w("PdfExport", "vector export unavailable, using the raster fallback", e)
+        } finally {
+            vector.delete()
+        }
+        writeRaster(renderer, out)
+    }
+
+    /** The 0.4 export: original pages as 300 dpi pictures under vector ink. Kept as the fallback. */
+    fun writeRaster(renderer: NoteRenderer, out: OutputStream) {
         val sources = PdfSources(renderer)
         val pdf = PdfDocument()
         try {
