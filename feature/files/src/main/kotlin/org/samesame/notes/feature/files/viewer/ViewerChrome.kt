@@ -26,6 +26,8 @@ import androidx.compose.ui.unit.dp
 import org.samesame.notes.core.designsystem.icon.AppIcons
 import org.samesame.notes.core.designsystem.theme.SameSameText
 import org.samesame.notes.core.designsystem.theme.SameSameTheme
+import org.samesame.notes.core.designsystem.theme.FontSectionScope
+import org.samesame.notes.core.model.FontSection
 import org.samesame.notes.core.designsystem.theme.capped
 import org.samesame.notes.feature.files.R
 
@@ -49,7 +51,7 @@ internal fun ViewerTopBar(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     actions: @Composable RowScope.() -> Unit = {},
-) {
+) = FontSectionScope(FontSection.Chrome) {
     Row(
         modifier.fillMaxWidth().background(chrome.bar).windowInsetsPadding(WindowInsets.statusBars)
             .height(56.dp).padding(horizontal = 12.dp),
@@ -61,7 +63,7 @@ internal fun ViewerTopBar(
         Column(Modifier.weight(1f).padding(start = 4.4.dp, end = 8.dp)) {
             Text(title, style = SameSameText.ToolbarTitle.capped(), color = chrome.content, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (subtitle != null) {
-                Text(subtitle, style = SameSameText.Caption, color = chrome.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(subtitle, style = SameSameText.Caption.capped(), color = chrome.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
         actions()

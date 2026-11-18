@@ -21,9 +21,10 @@ import org.samesame.notes.core.model.richtext.RichText
  * ([org.samesame.notes.core.model.richtext.CharStyle.link]) and [ImageObject.libraryFileId] (Files: links and "Show in
  * note"), both defaulted to null, so a v7 document reads as the same v8 value (NoteDocumentMigrations.v7ToV8); v9 made the
  * checkbox a flag of its own ([org.samesame.notes.core.model.richtext.ParagraphStyle.checkbox]) so it can show together with a
- * bullet or number; a v8 checklist reads as `list = None, checkbox = true` (NoteDocumentMigrations.v8ToV9).
+ * bullet or number; a v8 checklist reads as `list = None, checkbox = true` (NoteDocumentMigrations.v8ToV9); v10 added the
+ * defaulted [NoteDocument.markdown] (null for every rich-text note, so a v9 note reads as the same value, v9ToV10).
  */
-const val NOTE_DOCUMENT_FORMAT_VERSION = 9
+const val NOTE_DOCUMENT_FORMAT_VERSION = 10
 
 /** Shared JSON configuration for document structures (defaults are written, unknown keys ignored). */
 val NoteJson: Json = Json {
@@ -45,12 +46,31 @@ data class NoteDocument(
     /** Note-level voice recordings, shown in the recording bar's list. */
     val recordings: List<NoteRecording> = emptyList(),
     val pages: List<PageSpec>,
+    /** The source of a Markdown note; null for a rich-text note (then [body] and [pages] are the content). */
+    val markdown: MarkdownBody? = null,
 ) {
-    fun toJson(): String = NoteJson.encodeToString(serializer(), this)
+    /**
+     * A rich-text note leaves out the `markdown` key instead of writing `null`, so its JSON is byte-for-byte what a
+     * v9 build wrote apart from the version number (NoteJson writes defaults).
+     */
+    fun toJson(): String {
+        val json = NoteJson.encodeToString(serializer(), this)
+        if (markdown != null) return json
+        val obj = NoteJson.parseToJsonElement(json) as kotlinx.serialization.json.JsonObject
+        return NoteJson.encodeToString(
+            kotlinx.serialization.json.JsonObject.serializer(), kotlinx.serialization.json.JsonObject(obj - "markdown"),
+        )
+    }
 
     companion object {
         fun fromJson(json: String): NoteDocument = NoteJson.decodeFromString(serializer(), json)
     }
+}
+
+/** The Markdown text of a Markdown note, stored as typed (the preview is rendered from it, never saved). */
+@Serializable
+data class MarkdownBody(val content: String = "", val version: Int = 1) {
+    val source: String get() = content
 }
 
 /**

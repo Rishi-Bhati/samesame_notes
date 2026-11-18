@@ -37,12 +37,32 @@ object LinkDetector {
     private val isoDate = Regex("""\d{4}-\d{2}-\d{2}""")
 
     // Street addresses are the most false-positive-prone kind, so the rules are deliberately narrow: a house number
-    // close before a street word, and the street word ends the candidate (or is followed by a comma or a postal code).
-    private val streetWord = Regex(
-        """(?<![\p{L}\d])(?:Street|St|Road|Rd|Avenue|Ave|Lane|Ln|Boulevard|Blvd|Drive|Dr|Way|Court|Ct|Place|Pl|""" +
-            """Square|Sq|Marg|Nagar|Colony|Sector|Highway|Hwy|Terrace|Close|Crescent|Parkway|Pkwy)(?![\p{L}\d])""",
+    // close before a street word, and the street word ends the candidate (or is followed by up to 3 comma parts).
+    private val streetAbbreviations = listOf(
+        "St", "Rd", "Ave", "Ln", "Blvd", "Dr", "Ct", "Pl", "Sq", "Hwy", "Pkwy",
+    )
+    private val streetFullWords = listOf(
+        "Street", "Road", "Avenue", "Boulevard", "Marg", "Nagar", "Colony", "Highway", "Parkway",
+        "Way", "Close", "Place", "Drive", "Court", "Square", "Terrace", "Crescent", "Lane",
+        "Sector",
+    )
+
+    private val abbreviationsRegex = Regex(
+        """(?<![\p{L}\d])(?:St|Rd|Ave|Ln|Blvd|Dr|Ct|Pl|Sq|Hwy|Pkwy)(?![\p{L}\d])""",
+    )
+    private val genericStreetWordRegex = Regex(
+        """(?<![\p{L}\d])(?:Way|Close|Place|Drive|Court|Square|Terrace|Crescent|Lane)(?![\p{L}\d])""",
         RegexOption.IGNORE_CASE,
     )
+    private val fullStreetWordRegex = Regex(
+        """(?<![\p{L}\d])(?:Street|Road|Avenue|Boulevard|Marg|Nagar|Colony|Highway|Parkway)(?![\p{L}\d])""",
+        RegexOption.IGNORE_CASE,
+    )
+    private val sectorRegex = Regex(
+        """(?<![\p{L}\d])Sector\s+\d{1,4}[A-Za-z]?(?![\p{L}\d])""",
+        RegexOption.IGNORE_CASE,
+    )
+
     private val houseNumber = Regex(
         """(?<![\p{L}\d.,/\\₹$€£-])\d{1,5}[A-Za-z]?(?:/\d{1,4}[A-Za-z]?)?(?![\p{L}\d.,/\\-])""",
     )
@@ -52,11 +72,14 @@ object LinkDetector {
     )
     private val flatWord = Regex("""\b(?:Flat|Unit|Apartment|Apt|Suite|House|Plot)\s+$""", RegexOption.IGNORE_CASE)
     private val words = Regex("""[\p{L}\d]+""")
-    private val postalCode = Regex(
-        """^(?:\d{5}(?:-\d{4})?|\d{6}|[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})(?![\p{L}\d])""",
+    private val postalCodePattern = Regex(
+        """\b(?:\d{5}(?:-\d{4})?|\d{6}|[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\b""",
         RegexOption.IGNORE_CASE,
     )
     private const val TRAILING = ".,;:!?)]}'\""
+
+    private enum class StreetKind { Abbreviation, Generic, Full }
+    private data class StreetWordMatch(val range: IntRange, val kind: StreetKind)
 
     fun find(text: CharSequence): List<TextLink> {
         val found = ArrayList<TextLink>()
@@ -120,14 +143,19 @@ object LinkDetector {
             var lineEnd = lineStart
             while (lineEnd < text.length && text[lineEnd] != '\n') lineEnd++
             val line = text.subSequence(lineStart, lineEnd)
-            val range = addressInLine(line)
-            if (range != null) {
-                val (s, e) = range
-                val raw = line.substring(s, e)
-                out += TextLink(
-                    lineStart + s, lineStart + e, TextLink.Kind.Address,
-                    "geo:0,0?q=" + java.net.URLEncoder.encode(raw, "UTF-8"),
-                )
+            if (hasAddressCandidate(line)) {
+                var offset = 0
+                while (offset < line.length) {
+                    val range = addressInLine(line, offset) ?: break
+                    val (s, e) = range
+                    if (e <= s || e <= offset) break
+                    val raw = line.substring(s, e)
+                    out += TextLink(
+                        lineStart + s, lineStart + e, TextLink.Kind.Address,
+                        "geo:0,0?q=" + java.net.URLEncoder.encode(raw, "UTF-8"),
+                    )
+                    offset = e
+                }
             }
             lineStart = lineEnd + 1
         }
@@ -135,39 +163,188 @@ object LinkDetector {
     }
 
     /**
-     * The `[start, end)` of the first address in [line], or null. A house number (optionally with a flat/unit prefix)
-     * must sit within four words before a street word, and the street word must end the line or be followed by a comma
-     * or a postal code; only then are the comma parts taken as the rest of the address.
+     * Cheap prefilter: skip line unless it contains a digit AND (case-sensitively for abbreviations /
+     * case-insensitively for full words) one of the street words as a substring.
      */
-    private fun addressInLine(line: CharSequence): Pair<Int, Int>? {
-        for (street in streetWord.findAll(line)) {
-            val streetStart = street.range.first
-            val number = houseNumber.findAll(line.subSequence(0, streetStart)).lastOrNull() ?: continue
-            val between = line.subSequence(number.range.last + 1, streetStart)
-            if (words.findAll(between).count() > 3) continue
-            if (!addressEndsAfterStreet(line, street.range.last + 1)) continue
-
-            var start = number.range.first
-            val before = line.subSequence(0, start)
-            flatWithNumber.find(before)?.takeIf { it.range.last + 1 == start }?.let { start = it.range.first }
-            flatWord.find(before)?.takeIf { it.range.last + 1 == start }?.let { start = it.range.first }
-
-            var end = line.length
-            while (end > start && (line[end - 1].isWhitespace() || line[end - 1] in TRAILING)) end--
-            if (end > start) return start to end
+    private fun hasAddressCandidate(line: CharSequence): Boolean {
+        var hasDigit = false
+        for (i in 0 until line.length) {
+            if (line[i] in '0'..'9') {
+                hasDigit = true
+                break
+            }
         }
-        return null
+        if (!hasDigit) return false
+        for (abbr in streetAbbreviations) {
+            if (line.contains(abbr)) return true
+        }
+        for (word in streetFullWords) {
+            if (line.contains(word, ignoreCase = true)) return true
+        }
+        return false
     }
 
-    /** True when the text after a street word is a line end, a comma part or a postal code (and nothing else). */
-    private fun addressEndsAfterStreet(line: CharSequence, from: Int): Boolean {
-        val rest = line.subSequence(from, line.length).toString().trim()
-        if (rest.isEmpty() || rest.startsWith(",")) return true
-        if (rest.trimStart('.').isEmpty()) return true
-        val postal = postalCode.find(rest) ?: return false
-        if (postal.range.first != 0) return false
-        val after = rest.substring(postal.range.last + 1).trim()
-        return after.isEmpty() || after.startsWith(",")
+    /**
+     * The `[start, end)` of the first address in [line] starting at or after [fromIndex], or null.
+     */
+    private fun addressInLine(line: CharSequence, fromIndex: Int = 0): Pair<Int, Int>? {
+        val candidates = ArrayList<Pair<Int, Int>>()
+
+        // 1. Sector prefix format: "Sector <1-4 digits>[letter], <Capitalized City>"
+        for (m in sectorRegex.findAll(line)) {
+            var start = m.range.first
+            if (start < fromIndex) continue
+
+            val before = line.subSequence(fromIndex, start)
+            flatWithNumber.find(before)?.takeIf { it.range.last + 1 == start - fromIndex }?.let {
+                start = fromIndex + it.range.first
+            }
+            flatWord.find(before)?.takeIf { it.range.last + 1 == start - fromIndex }?.let {
+                start = fromIndex + it.range.first
+            }
+
+            val cont = parseAddressContinuation(line, m.range.last + 1, requireCommaPart = true)
+            if (cont != null && cont > start) {
+                candidates += Pair(start, cont)
+            }
+        }
+
+        // 2. Standard street words
+        val streetMatches = buildList {
+            for (m in abbreviationsRegex.findAll(line)) add(StreetWordMatch(m.range, StreetKind.Abbreviation))
+            for (m in genericStreetWordRegex.findAll(line)) add(StreetWordMatch(m.range, StreetKind.Generic))
+            for (m in fullStreetWordRegex.findAll(line)) add(StreetWordMatch(m.range, StreetKind.Full))
+        }.sortedBy { it.range.first }
+
+        for (street in streetMatches) {
+            val streetStart = street.range.first
+            if (streetStart < fromIndex) continue
+
+            val prefixText = line.subSequence(fromIndex, streetStart)
+            val number = houseNumber.findAll(prefixText).lastOrNull() ?: continue
+            val numberStart = fromIndex + number.range.first
+            val numberEnd = fromIndex + number.range.last + 1
+
+            val between = line.subSequence(numberEnd, streetStart)
+            val betweenWords = words.findAll(between).map { it.value }.toList()
+            if (betweenWords.size !in 1..3) continue
+            if (street.kind == StreetKind.Generic && betweenWords.none { it.first().isUpperCase() }) continue
+
+            var start = numberStart
+            val before = line.subSequence(fromIndex, start)
+            flatWithNumber.find(before)?.takeIf { it.range.last + 1 == start - fromIndex }?.let {
+                start = fromIndex + it.range.first
+            }
+            flatWord.find(before)?.takeIf { it.range.last + 1 == start - fromIndex }?.let {
+                start = fromIndex + it.range.first
+            }
+
+            val cont = parseAddressContinuation(line, street.range.last + 1, requireCommaPart = false)
+            if (cont != null && cont > start) {
+                candidates += Pair(start, cont)
+            }
+        }
+
+        if (candidates.isEmpty()) return null
+        return candidates.minWithOrNull(
+            compareBy<Pair<Int, Int>> { it.first }.thenByDescending { it.second - it.first }
+        )
+    }
+
+    /**
+     * Parses the address continuation after a street word or Sector token starting at [fromPos].
+     * Returns the end index (exclusive) of the address, or null if the candidate is invalid.
+     */
+    private fun parseAddressContinuation(
+        line: CharSequence,
+        fromPos: Int,
+        requireCommaPart: Boolean,
+    ): Int? {
+        var pos = fromPos
+        if (pos < line.length && line[pos] == '.') pos++
+
+        var baseEnd = pos
+        while (baseEnd > 0 && (line[baseEnd - 1].isWhitespace() || line[baseEnd - 1] in TRAILING)) baseEnd--
+
+        var cur = pos
+        while (cur < line.length && line[cur].isWhitespace()) cur++
+
+        if (cur >= line.length) {
+            return if (requireCommaPart) null else baseEnd
+        }
+
+        if (line[cur] != ',') {
+            val rest = line.subSequence(cur, line.length)
+            if (rest.all { it in TRAILING || it.isWhitespace() }) {
+                return if (requireCommaPart) null else baseEnd
+            }
+            return null
+        }
+
+        cur++ // Skip ','
+        var partsMatched = 0
+        var lastMatchingEnd = baseEnd
+
+        while (partsMatched < 3 && cur <= line.length) {
+            val nextComma = line.indexOf(',', cur).let { if (it == -1) line.length else it }
+            val rawPart = line.substring(cur, nextComma)
+            val trimmedPart = rawPart.trim()
+            val cleanPart = trimmedPart.trimEnd { it in TRAILING || it.isWhitespace() }
+
+            if (!isValidAddressPart(cleanPart)) {
+                break
+            }
+
+            val leadingSpaces = rawPart.indexOf(cleanPart)
+            val partEndInLine = cur + leadingSpaces + cleanPart.length
+            lastMatchingEnd = partEndInLine
+            partsMatched++
+
+            if (nextComma >= line.length) break
+            cur = nextComma + 1
+        }
+
+        if (requireCommaPart && partsMatched == 0) return null
+        return lastMatchingEnd
+    }
+
+    private fun isValidAddressPart(part: String): Boolean {
+        if (part.isEmpty()) return false
+        if (part.equals("and", ignoreCase = true) || part.equals("or", ignoreCase = true)) return false
+
+        // Stop on phone number
+        if (phone.findAll(part).any { m -> m.value.count { it.isDigit() } in 9..15 }) return false
+
+        // Stop on dates or times
+        if (numericDate.find(part) != null || isoDate.find(part) != null ||
+            dayMonth.find(part) != null || monthDay.find(part) != null || time.find(part) != null
+        ) return false
+
+        val postalMatches = postalCodePattern.findAll(part).toList()
+        if (postalMatches.size > 1) return false
+
+        val withoutPostal = if (postalMatches.isNotEmpty()) {
+            part.removeRange(postalMatches[0].range).trim()
+        } else {
+            part
+        }
+
+        if (withoutPostal.isEmpty()) {
+            return postalMatches.isNotEmpty()
+        }
+
+        val wordsList = withoutPostal.split(Regex("""\s+""")).filter { it.isNotEmpty() }
+        if (wordsList.size !in 1..3) return false
+
+        for (w in wordsList) {
+            val cleanWord = w.trimEnd { it in TRAILING }
+            if (cleanWord.isEmpty()) return false
+            if (!cleanWord.first().isUpperCase()) return false
+            if (cleanWord.equals("and", ignoreCase = true) || cleanWord.equals("or", ignoreCase = true)) return false
+            if (!cleanWord.all { it.isLetter() || it == '.' || it == '-' || it == '\'' }) return false
+        }
+
+        return true
     }
 
     /**

@@ -39,6 +39,7 @@ sealed interface NoteFilter {
     data object Uncategorized : NoteFilter
     data object Favorites : NoteFilter
     data object Locked : NoteFilter
+    data object Markdown : NoteFilter
     data object Trash : NoteFilter
     data class InFolder(val folderId: FolderId, val includeSubfolders: Boolean = true) : NoteFilter
     data class WithTag(val tag: String) : NoteFilter

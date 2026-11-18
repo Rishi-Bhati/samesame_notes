@@ -68,14 +68,12 @@ object SameSameText {
 @ReadOnlyComposable
 fun fixedSp(dp: Float): TextUnit = with(LocalDensity.current) { (dp * extraFontScale()).dp.toSp() }
 
-/** [sp] scaled by the system font scale, but never by more than [max] (One UI large-text limit). */
+/** [sp] scaled by the combined system, app and section scale, capped at [max] for fixed-size chrome. */
 @Composable
 @ReadOnlyComposable
 fun cappedSp(sp: Float, max: Float = 1.1f): TextUnit =
     with(LocalDensity.current) {
-        // The app/section multiplier rides on top of the capped system scale.
-        val extra = extraFontScale()
-        (sp * minOf(fontScale / extra, max) * extra).dp.toSp()
+        cappedFontDp(sp, fontScale, max).dp.toSp()
     }
 
 /** This style with its size/line height ignoring the font scale (spec dimen in dp). */

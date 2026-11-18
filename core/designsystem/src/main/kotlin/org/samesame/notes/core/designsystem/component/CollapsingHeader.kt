@@ -47,6 +47,9 @@ import androidx.compose.ui.unit.dp
 import org.samesame.notes.core.designsystem.motion.SameSameMotion
 import org.samesame.notes.core.designsystem.theme.SameSameText
 import org.samesame.notes.core.designsystem.theme.SameSameTheme
+import org.samesame.notes.core.designsystem.theme.FontSectionScope
+import org.samesame.notes.core.designsystem.theme.capped
+import org.samesame.notes.core.model.FontSection
 import org.samesame.notes.core.designsystem.theme.fixed
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.runtime.mutableStateOf
@@ -149,87 +152,89 @@ fun CollapsingHeaderScaffold(
     val colors = SameSameTheme.colors
     Box(modifier.fillMaxSize().background(colors.background)) {
         Column(Modifier.fillMaxSize()) {
-            // The scroll offset is read in the layout/draw phases only: collapsing resizes the header (a
-            // relayout) without re-composing this scaffold, its title/actions or the content below.
-            Box(
-                Modifier.fillMaxWidth().layout { measurable, constraints ->
-                    val h = (expandedPx - offset).roundToInt().coerceIn(constraints.minHeight, constraints.maxHeight)
-                    val placeable = measurable.measure(constraints.copy(minHeight = h, maxHeight = h))
-                    layout(placeable.width, h) { placeable.place(0, 0) }
-                }.draggable(
-                    // A drag on the header moves it like a drag on the list, so a tall header can never block scrolling.
-                    orientation = androidx.compose.foundation.gestures.Orientation.Vertical,
-                    enabled = !toolbarOnly,
-                    state = androidx.compose.foundation.gestures.rememberDraggableState { delta ->
-                        if (scrollableNow) offset = (offset - delta).coerceIn(0f, range)
-                    },
-                ),
-            ) {
-                // Expanded centred title block.
-                Column(
-                    Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = if (subtitle != null) TitleTop else TitleTop + 18.3.dp)
-                        .graphicsLayer {
-                            if (toolbarOnly) {
-                                alpha = 0f
-                                return@graphicsLayer
-                            }
-                            // The big title travels up with the list (about 0.63 of the scroll) while it fades.
-                            val fraction = (offset / range).coerceIn(0f, 1f)
-                            alpha = (1f - fraction * SameSameMotion.TitleFadeK).coerceIn(0f, 1f)
-                            translationY = -offset * SameSameMotion.TitleParallax
+            FontSectionScope(FontSection.Chrome) {
+                // The scroll offset is read in the layout/draw phases only: collapsing resizes the header (a
+                // relayout) without re-composing this scaffold, its title/actions or the content below.
+                Box(
+                    Modifier.fillMaxWidth().layout { measurable, constraints ->
+                        val h = (expandedPx - offset).roundToInt().coerceIn(constraints.minHeight, constraints.maxHeight)
+                        val placeable = measurable.measure(constraints.copy(minHeight = h, maxHeight = h))
+                        layout(placeable.width, h) { placeable.place(0, 0) }
+                    }.draggable(
+                        // A drag on the header moves it like a drag on the list, so a tall header can never block scrolling.
+                        orientation = androidx.compose.foundation.gestures.Orientation.Vertical,
+                        enabled = !toolbarOnly,
+                        state = androidx.compose.foundation.gestures.rememberDraggableState { delta ->
+                            if (scrollableNow) offset = (offset - delta).coerceIn(0f, range)
                         },
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                    ),
                 ) {
-                    TitleSwap(titleKey, title) { shown ->
-                        Text(shown, style = SameSameText.LargeTitle.fixed(), color = colors.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
-                    }
-                    if (subtitle != null) {
-                        // The subtitle goes first.
-                        Text(
-                            subtitle, style = SameSameText.LargeSubtitle.fixed(), color = colors.textSecondary, maxLines = 1,
-                            modifier = Modifier.padding(top = 1.35.dp).graphicsLayer {
-                                val fraction = (offset / range).coerceIn(0f, 1f)
-                                alpha = (1f - fraction * SameSameMotion.SubtitleFadeK).coerceIn(0f, 1f)
-                            },
-                        )
-                    }
-                }
-                // Toolbar row pinned to the bottom of the header.
-                Row(
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .height(ToolbarHeight)
-                        .padding(horizontal = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    navigationIcon()
+                    // Expanded centred title block.
                     Column(
-                        Modifier.weight(1f).padding(start = 8.dp).graphicsLayer {
-                            val fraction = (offset / range).coerceIn(0f, 1f)
-                            alpha = if (toolbarOnly) 1f else ((fraction - 0.4f) / 0.6f).coerceIn(0f, 1f)
-                        },
-                        verticalArrangement = Arrangement.Center,
+                        Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = if (subtitle != null) TitleTop else TitleTop + 18.3.dp)
+                            .graphicsLayer {
+                                if (toolbarOnly) {
+                                    alpha = 0f
+                                    return@graphicsLayer
+                                }
+                                // The big title travels up with the list (about 0.63 of the scroll) while it fades.
+                                val fraction = (offset / range).coerceIn(0f, 1f)
+                                alpha = (1f - fraction * SameSameMotion.TitleFadeK).coerceIn(0f, 1f)
+                                translationY = -offset * SameSameMotion.TitleParallax
+                            },
+                        horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         TitleSwap(titleKey, title) { shown ->
+                            Text(shown, style = SameSameText.LargeTitle.fixed(), color = colors.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+                        }
+                        if (subtitle != null) {
+                            // The subtitle goes first.
                             Text(
-                                shown, style = SameSameText.ToolbarTitle, color = colors.textPrimary,
-                                maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                textAlign = if (centerCollapsedTitle) TextAlign.Center else TextAlign.Start,
-                                modifier = Modifier.fillMaxWidth(),
+                                subtitle, style = SameSameText.LargeSubtitle.fixed(), color = colors.textSecondary, maxLines = 1,
+                                modifier = Modifier.padding(top = 1.35.dp).graphicsLayer {
+                                    val fraction = (offset / range).coerceIn(0f, 1f)
+                                    alpha = (1f - fraction * SameSameMotion.SubtitleFadeK).coerceIn(0f, 1f)
+                                },
                             )
                         }
                     }
-                    actions()
+                    // Toolbar row pinned to the bottom of the header.
+                    Row(
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .height(ToolbarHeight)
+                            .padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        navigationIcon()
+                        Column(
+                            Modifier.weight(1f).padding(start = 8.dp).graphicsLayer {
+                                val fraction = (offset / range).coerceIn(0f, 1f)
+                                alpha = if (toolbarOnly) 1f else ((fraction - 0.4f) / 0.6f).coerceIn(0f, 1f)
+                            },
+                            verticalArrangement = Arrangement.Center,
+                        ) {
+                            TitleSwap(titleKey, title) { shown ->
+                                Text(
+                                    shown, style = SameSameText.ToolbarTitle.capped(), color = colors.textPrimary,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    textAlign = if (centerCollapsedTitle) TextAlign.Center else TextAlign.Start,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        }
+                        actions()
+                    }
                 }
             }
             Box(Modifier.weight(1f).fillMaxWidth().nestedScroll(connection)) { content() }
-            bottomBar()
+            FontSectionScope(FontSection.Chrome) { bottomBar() }
         }
         Box(Modifier.align(Alignment.BottomEnd).windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Bottom))) {
-            floatingActionButton()
+            FontSectionScope(FontSection.Chrome) { floatingActionButton() }
         }
     }
 }
@@ -254,7 +259,7 @@ fun SimpleTopBar(
     modifier: Modifier = Modifier,
     navigationIcon: @Composable () -> Unit = {},
     actions: @Composable RowScope.() -> Unit = {},
-) {
+) = FontSectionScope(FontSection.Chrome) {
     Row(
         modifier
             .fillMaxWidth()

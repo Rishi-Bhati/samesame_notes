@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
@@ -55,6 +55,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.samesame.notes.core.designsystem.component.AppMenuItem
 import org.samesame.notes.core.designsystem.icon.AppIcons
+import org.samesame.notes.core.designsystem.theme.FontSectionScope
+import org.samesame.notes.core.model.FontSection
 import org.samesame.notes.core.designsystem.theme.SameSameText
 import org.samesame.notes.core.designsystem.theme.SameSameTheme
 import org.samesame.notes.core.model.files.LibraryFile
@@ -162,12 +164,12 @@ internal fun TextViewer(
 }
 
 @Composable
-private fun FindBar(query: String, onQuery: (String) -> Unit, position: Int, count: Int, onStep: (forward: Boolean) -> Unit, onClose: () -> Unit) {
+private fun FindBar(query: String, onQuery: (String) -> Unit, position: Int, count: Int, onStep: (forward: Boolean) -> Unit, onClose: () -> Unit) = FontSectionScope(FontSection.Chrome) {
     val colors = SameSameTheme.colors
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).height(48.dp)
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).heightIn(min = 48.dp)
             .background(colors.card, RoundedCornerShape(24.dp)).padding(start = 18.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

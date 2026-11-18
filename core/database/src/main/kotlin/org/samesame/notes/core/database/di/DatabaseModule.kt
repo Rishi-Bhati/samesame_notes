@@ -29,6 +29,7 @@ internal object DatabaseModule {
                 org.samesame.notes.core.database.SameSameDatabase.MIGRATION_2_3,
                 org.samesame.notes.core.database.SameSameDatabase.MIGRATION_3_4,
                 org.samesame.notes.core.database.SameSameDatabase.MIGRATION_4_5,
+                org.samesame.notes.core.database.SameSameDatabase.MIGRATION_5_6,
             )
             .build()
 

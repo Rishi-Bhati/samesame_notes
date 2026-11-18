@@ -89,7 +89,7 @@ class Migration4To5Test {
     private fun openRoom(): SameSameDatabase = Room.databaseBuilder(context, SameSameDatabase::class.java, dbFile.absolutePath)
         .addMigrations(
             SameSameDatabase.MIGRATION_1_2, SameSameDatabase.MIGRATION_2_3,
-            SameSameDatabase.MIGRATION_3_4, SameSameDatabase.MIGRATION_4_5,
+            SameSameDatabase.MIGRATION_3_4, SameSameDatabase.MIGRATION_4_5, SameSameDatabase.MIGRATION_5_6,
         )
         .build().also { room = it }
 
@@ -106,7 +106,7 @@ class Migration4To5Test {
         room = null
 
         val after = SQLiteDatabase.openDatabase(dbFile.path, null, SQLiteDatabase.OPEN_READONLY).use { raw ->
-            assertThat(raw.version).isEqualTo(5)
+            assertThat(raw.version).isEqualTo(6)
             assertThat(dump(raw, "SELECT checklist_done, checklist_total FROM notes WHERE id = 'n1'"))
                 .containsExactly(listOf("0", "0"))
             oldTables.map { dump(raw, it) }

@@ -14,6 +14,7 @@ private object FontKeys {
     val appPercent = intPreferencesKey("font_app_percent")
     val choice = stringPreferencesKey("font_choice")
     val customName = stringPreferencesKey("font_custom_name")
+    val customFileName = stringPreferencesKey("font_custom_file_name")
     fun section(s: FontSection) = intPreferencesKey("font_section_${s.name.lowercase()}")
 }
 
@@ -23,12 +24,14 @@ internal fun Preferences.toFontSettings(): FontSettings = FontSettings(
     sectionPercent = FontSection.entries.mapNotNull { s -> this[FontKeys.section(s)]?.let { s to FontScaling.clamp(it) } }.toMap(),
     choice = FontChoice.parse(this[FontKeys.choice]),
     customFontName = this[FontKeys.customName],
+    customFontFileName = this[FontKeys.customFileName],
 )
 
 internal fun MutablePreferences.writeFontSettings(f: FontSettings) {
     this[FontKeys.appPercent] = FontScaling.clamp(f.appPercent)
     this[FontKeys.choice] = f.choice.serialize()
     f.customFontName?.let { this[FontKeys.customName] = it } ?: remove(FontKeys.customName)
+    f.customFontFileName?.let { this[FontKeys.customFileName] = it } ?: remove(FontKeys.customFileName)
     FontSection.entries.forEach { s ->
         val p = f.sectionPercent[s]
         if (p == null || FontScaling.clamp(p) == FontScaling.DEFAULT) remove(FontKeys.section(s)) else this[FontKeys.section(s)] = FontScaling.clamp(p)

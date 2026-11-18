@@ -13,6 +13,8 @@ import dagger.hilt.android.AndroidEntryPoint
 import org.samesame.notes.core.data.repository.AppSettingsRepository
 import org.samesame.notes.core.data.repository.ThemeModeCache
 import org.samesame.notes.core.designsystem.theme.SameSameTheme
+import org.samesame.notes.core.designsystem.theme.FontSectionScope
+import org.samesame.notes.core.model.FontSection
 import org.samesame.notes.core.model.AppSettings
 import org.samesame.notes.feature.files.viewer.FileViewerRoute
 import org.samesame.notes.feature.files.viewer.LibraryFileViewer
@@ -43,12 +45,14 @@ class FileViewerActivity : FragmentActivity() {
             var darkChrome by remember { mutableStateOf(false) }
             SystemBarAppearance(dark || darkChrome)
             SameSameTheme(darkTheme = dark, font = settings.font) {
-                FileViewerRoute(
-                    fileId = fileId,
-                    onClose = { finish() },
-                    onOpenNote = { id -> startActivity(ComposerActivity.intent(this, id.value)) },
-                    onDarkChrome = { darkChrome = it },
-                )
+                FontSectionScope(FontSection.Files) {
+                    FileViewerRoute(
+                        fileId = fileId,
+                        onClose = { finish() },
+                        onOpenNote = { id -> startActivity(ComposerActivity.intent(this, id.value)) },
+                        onDarkChrome = { darkChrome = it },
+                    )
+                }
             }
         }
     }

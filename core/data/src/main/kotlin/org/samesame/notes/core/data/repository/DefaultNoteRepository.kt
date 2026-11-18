@@ -27,6 +27,7 @@ import org.samesame.notes.core.ink.page.InkElement
 import org.samesame.notes.core.ink.page.ElementId
 import org.samesame.notes.core.ink.page.PageContent
 import org.samesame.notes.core.ink.page.floating
+import org.samesame.notes.core.model.document.MarkdownBody
 import org.samesame.notes.core.model.document.NoteDocument
 import org.samesame.notes.core.model.document.TemplateRef
 import org.samesame.notes.core.model.document.ViewState
@@ -37,6 +38,7 @@ import org.samesame.notes.core.model.FolderId
 import org.samesame.notes.core.model.Limits
 import org.samesame.notes.core.model.io.readBytesLimited
 import org.samesame.notes.core.model.Note
+import org.samesame.notes.core.model.NoteKind
 import org.samesame.notes.core.model.NoteFilter
 import org.samesame.notes.core.model.NoteId
 import org.samesame.notes.core.model.PageMode
@@ -119,6 +121,7 @@ internal class DefaultNoteRepository @Inject constructor(
             NoteFilter.Uncategorized -> noteDao.observeUncategorized()
             NoteFilter.Favorites -> noteDao.observeFavorites()
             NoteFilter.Locked -> noteDao.observeLocked()
+            NoteFilter.Markdown -> noteDao.observeByKind(NoteKind.Markdown)
             NoteFilter.Trash -> return noteDao.observeTrash().map { it.map(NoteEntity::asExternalModel) }
             is NoteFilter.InFolder ->
                 if (filter.includeSubfolders) noteDao.observeInFolderTree(filter.folderId.value)
@@ -183,7 +186,7 @@ internal class DefaultNoteRepository @Inject constructor(
         return searchDao.search(ftsQuery).map { it.map(NoteEntity::asExternalModel) }
     }
 
-    override suspend fun createNote(folderId: FolderId?, pageMode: PageMode?): NoteId {
+    override suspend fun createNote(folderId: FolderId?, pageMode: PageMode?, kind: NoteKind): NoteId {
         val id = UUID.randomUUID().toString()
         val now = clock.now()
         val settings = appSettings.settings.first()
@@ -192,7 +195,10 @@ internal class DefaultNoteRepository @Inject constructor(
         documents.create(
             id, mode, ratio = style.ratio, template = style.template,
             backgroundColor = style.backgroundColor, adjustForDarkMode = settings.adjustColourInDarkMode,
-        )
+        ).let { doc ->
+            // A Markdown note's document carries its (empty) source; the catalog row's kind says how to open it.
+            if (kind == NoteKind.Markdown) documents.commit(id, NoteSnapshot(doc.copy(markdown = MarkdownBody())))
+        }
         NewNoteRegistry.noteCreated(id)
         noteDao.upsert(
             NoteEntity(
@@ -208,6 +214,7 @@ internal class DefaultNoteRepository @Inject constructor(
                 modifiedAt = now,
                 lastOpenedAt = now,
                 trashedAt = null,
+                kind = kind,
             ),
         )
         return NoteId(id)

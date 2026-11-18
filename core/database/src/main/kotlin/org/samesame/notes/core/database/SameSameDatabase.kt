@@ -39,7 +39,7 @@ import org.samesame.notes.core.database.entity.TagEntity
         FileTagEntity::class,
         FileRefEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 abstract class SameSameDatabase : RoomDatabase() {
@@ -134,6 +134,17 @@ abstract class SameSameDatabase : RoomDatabase() {
         internal val MIGRATION_4_5_STATEMENTS = listOf(
             "ALTER TABLE `notes` ADD COLUMN `checklist_done` INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE `notes` ADD COLUMN `checklist_total` INTEGER NOT NULL DEFAULT 0",
+        )
+
+        /** v5 -> v6 adds `notes.kind` (Text or Markdown); every existing note is a Text note. Additive only. */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(connection: SQLiteConnection) {
+                MIGRATION_5_6_STATEMENTS.forEach(connection::execSQL)
+            }
+        }
+
+        internal val MIGRATION_5_6_STATEMENTS = listOf(
+            "ALTER TABLE `notes` ADD COLUMN `kind` TEXT NOT NULL DEFAULT 'Text'",
         )
     }
 }

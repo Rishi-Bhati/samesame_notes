@@ -112,4 +112,16 @@ object Limits {
     const val MAX_FILE_TAGS = 20
     /** Files one Upload folder takes; a larger tree reports the rest as skipped. */
     const val MAX_FILES_PER_UPLOAD = 1_000
+
+    // Markdown notes (0.4.0)
+    /** Source characters one Markdown note holds; a larger file opens as plain text without the live preview. */
+    const val MAX_MARKDOWN_CHARS = 1_000_000
+    /** Block nesting the parser walks; deeper nodes are dropped so a hostile file cannot overflow the stack. */
+    const val MAX_MARKDOWN_AST_DEPTH = 64
+    /** Blocks the preview composes; the rest is cut off. */
+    const val MAX_MARKDOWN_PREVIEW_NODES = 10_000
+    const val MAX_MARKDOWN_TABLE_ROWS = 500
+    const val MAX_MARKDOWN_TABLE_COLS = 50
+    /** Characters of one code block the preview shows. */
+    const val MAX_MARKDOWN_CODE_CHARS = 50_000
 }
