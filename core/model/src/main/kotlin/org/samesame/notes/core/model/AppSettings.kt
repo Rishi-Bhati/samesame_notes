@@ -22,7 +22,24 @@ data class AppSettings(
     val filePasteMode: FilePasteMode = FilePasteMode.Ask,
     /** "Calculate as you type": show an inline result after a typed `=` that can be accepted. */
     val calculateAsYouType: Boolean = true,
+    /** SAF tree URI of the chosen backup folder, or null when none is selected. */
+    val backupFolderUri: String? = null,
+    /** Automatic backup schedule; [BackupSchedule.Off] by default. */
+    val backupSchedule: BackupSchedule = BackupSchedule.Off,
+    /** Automatic backups run only while the device is charging. */
+    val backupOnlyWhileCharging: Boolean = true,
+    /** How many complete backups this app keeps in the chosen folder. */
+    val backupKeepCount: Int = 5,
+    /** Time of the last backup attempt, or null when none ran yet. */
+    val backupLastTime: Long? = null,
+    /** Notes in the last successful backup, or null when the last attempt failed or none ran yet. */
+    val backupLastNoteCount: Int? = null,
+    /** Error of the last backup attempt, or null when it succeeded or none ran yet. */
+    val backupLastError: String? = null,
 )
+
+/** How often automatic backups run. */
+enum class BackupSchedule { Off, Daily, Weekly }
 
 /** Settings > "When pasting a file link" (Files). Only links to pictures ask; other files always paste as links. */
 enum class FilePasteMode {

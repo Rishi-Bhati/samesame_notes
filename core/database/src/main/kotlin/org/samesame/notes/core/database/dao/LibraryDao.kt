@@ -83,6 +83,9 @@ interface LibraryDao {
     @Query("SELECT * FROM library_files WHERE id IN (:ids)")
     suspend fun files(ids: List<String>): List<LibraryFileEntity>
 
+    @Query("SELECT * FROM library_files")
+    suspend fun allFiles(): List<LibraryFileEntity>
+
     @Query("SELECT * FROM library_files WHERE folder_id IS :folderId AND sha256 = :sha256 AND trashed_at IS NULL LIMIT 1")
     suspend fun liveDuplicate(folderId: String?, sha256: String): LibraryFileEntity?
 

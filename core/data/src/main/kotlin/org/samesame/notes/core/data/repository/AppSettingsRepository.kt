@@ -47,6 +47,13 @@ private object SettingsKeys {
     val themeMode = stringPreferencesKey("theme_mode")
     val filePasteMode = stringPreferencesKey("file_paste_mode")
     val calculateAsYouType = booleanPreferencesKey("calculate_as_you_type")
+    val backupFolderUri = stringPreferencesKey("backup_folder_uri")
+    val backupSchedule = stringPreferencesKey("backup_schedule")
+    val backupOnlyWhileCharging = booleanPreferencesKey("backup_only_while_charging")
+    val backupKeepCount = androidx.datastore.preferences.core.intPreferencesKey("backup_keep_count")
+    val backupLastTime = longPreferencesKey("backup_last_time")
+    val backupLastNoteCount = androidx.datastore.preferences.core.intPreferencesKey("backup_last_note_count")
+    val backupLastError = stringPreferencesKey("backup_last_error")
 }
 
 /**
@@ -90,6 +97,13 @@ internal fun Preferences.toAppSettings(): AppSettings {
             backgroundColor = this[SettingsKeys.newBackground],
             pdfPageSize = enumOrDefault(this[SettingsKeys.newPdfPageSize], d.newNote.pdfPageSize),
         ),
+        backupFolderUri = this[SettingsKeys.backupFolderUri],
+        backupSchedule = enumOrDefault(this[SettingsKeys.backupSchedule], d.backupSchedule),
+        backupOnlyWhileCharging = this[SettingsKeys.backupOnlyWhileCharging] ?: d.backupOnlyWhileCharging,
+        backupKeepCount = (this[SettingsKeys.backupKeepCount] ?: d.backupKeepCount).coerceIn(1, 10),
+        backupLastTime = this[SettingsKeys.backupLastTime],
+        backupLastNoteCount = this[SettingsKeys.backupLastNoteCount],
+        backupLastError = this[SettingsKeys.backupLastError],
     )
 }
 
@@ -112,6 +126,17 @@ internal fun MutablePreferences.writeAppSettings(s: AppSettings) {
     this[SettingsKeys.newPdfPageSize] = s.newNote.pdfPageSize.name
     val bg = s.newNote.backgroundColor
     if (bg == null) remove(SettingsKeys.newBackground) else this[SettingsKeys.newBackground] = bg
+    val folder = s.backupFolderUri
+    if (folder.isNullOrBlank()) remove(SettingsKeys.backupFolderUri) else this[SettingsKeys.backupFolderUri] = folder
+    this[SettingsKeys.backupSchedule] = s.backupSchedule.name
+    this[SettingsKeys.backupOnlyWhileCharging] = s.backupOnlyWhileCharging
+    this[SettingsKeys.backupKeepCount] = s.backupKeepCount.coerceIn(1, 10)
+    val lastTime = s.backupLastTime
+    if (lastTime == null) remove(SettingsKeys.backupLastTime) else this[SettingsKeys.backupLastTime] = lastTime
+    val lastCount = s.backupLastNoteCount
+    if (lastCount == null) remove(SettingsKeys.backupLastNoteCount) else this[SettingsKeys.backupLastNoteCount] = lastCount
+    val lastError = s.backupLastError
+    if (lastError.isNullOrBlank()) remove(SettingsKeys.backupLastError) else this[SettingsKeys.backupLastError] = lastError
 }
 
 @Singleton
