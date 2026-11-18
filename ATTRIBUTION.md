@@ -18,6 +18,11 @@ taken from Samsung's apps, so the original icon artwork may be subject to Samsun
 library does not clear them. If you redistribute SameSame notes, review this yourself; if you hold rights to any
 of the artwork and want it removed, open an issue and it will be replaced.
 
+## Fonts
+
+Two fonts ship with the app, both under the SIL Open Font License 1.1 (texts in `third_party/fonts/`): Atkinson
+Hyperlegible (Braille Institute of America) and IBM Plex Serif (IBM Corp.).
+
 ## Other components
 
 Open-source dependencies (AndroidX, Jetpack Compose, Room, Hilt, AndroidX Ink, CameraX, PdfBox-Android and others)

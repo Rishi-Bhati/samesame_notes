@@ -8,6 +8,9 @@ object Limits {
     const val MAX_TOOLBAR_ITEMS = 11
     const val MAX_SEARCH_QUERY_LENGTH = 199
 
+    /** Largest font file Settings > Font accepts for "Add your own font". */
+    const val MAX_CUSTOM_FONT_BYTES = 10 * 1024 * 1024
+
     /** Rows the note-list widget shows (RemoteViews collections stay small and cheap to rebuild). */
     const val WIDGET_LIST_MAX_ROWS = 30
 
