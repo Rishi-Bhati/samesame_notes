@@ -354,6 +354,11 @@ class NotesViewModel @Inject constructor(
         return notes.createNote(folderId)
     }
 
+    suspend fun createMarkdownNote(): NoteId {
+        val folderId = (filter.value as? NoteFilter.InFolder)?.folderId
+        return notes.createMarkdownNote(folderId)
+    }
+
     fun createFolder(name: String, color: Long?) = viewModelScope.launch {
         val parent = (filter.value as? NoteFilter.InFolder)?.folderId
         runCatching { folders.createFolder(name, parent, color) }

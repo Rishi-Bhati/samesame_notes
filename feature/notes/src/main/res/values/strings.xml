@@ -162,4 +162,5 @@
     <string name="feature_notes_filter_markdown">Markdown</string>
     <string name="feature_notes_drawer_markdown">Markdown notes</string>
     <string name="feature_notes_markdown_default_title">Markdown note %1$s</string>
+    <string name="feature_notes_new_markdown_note">New Markdown note</string>
 </resources>

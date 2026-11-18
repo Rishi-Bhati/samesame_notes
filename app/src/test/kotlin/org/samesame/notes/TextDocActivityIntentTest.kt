@@ -52,4 +52,13 @@ class TextDocActivityIntentTest {
         assertThat(intent.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION).isNotEqualTo(0)
         assertThat(intent.flags and Intent.FLAG_GRANT_WRITE_URI_PERMISSION).isNotEqualTo(0)
     }
+
+    @Test
+    fun noteIntentHasComponentAndNoteIdExtra() {
+        val intent = TextDocActivity.noteIntent(context, noteId = "note-123")
+
+        assertThat(intent.component?.className).isEqualTo(TextDocActivity::class.java.name)
+        assertThat(intent.getStringExtra("org.samesame.notes.extra.TEXTDOC_NOTE_ID")).isEqualTo("note-123")
+        assertThat(intent.getBooleanExtra("org.samesame.notes.extra.TEXTDOC_WRITABLE", false)).isTrue()
+    }
 }

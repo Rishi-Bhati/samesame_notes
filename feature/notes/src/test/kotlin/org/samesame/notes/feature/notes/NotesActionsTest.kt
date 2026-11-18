@@ -48,6 +48,7 @@ class NotesActionsTest {
         val folderTrash = ArrayList<List<FolderId>>()
         val folderRestore = ArrayList<List<FolderId>>()
         val folderDelete = ArrayList<List<FolderId>>()
+        val createdMarkdownNotes = ArrayList<FolderId?>()
         var failPdf: Throwable? = null
         /** Notes the fake repository treats as locked: deletes without a token are refused for them. */
         val locked = HashSet<NoteId>()
@@ -85,6 +86,11 @@ class NotesActionsTest {
                         calls.failPdf?.let { throw it }
                         calls.pdfImports += Triple(args[0] as List<File>, args[1] as String, args[2]?.let { FolderId(it.toString()) })
                         "pdf-${calls.pdfImports.size}" // an inline-class result comes back unboxed
+                    }
+                    "createMarkdownNote" -> {
+                        val folderId = args?.getOrNull(0)?.let { FolderId(it.toString()) }
+                        calls.createdMarkdownNotes += folderId
+                        "md-note-${calls.createdMarkdownNotes.size}"
                     }
                     else -> throw UnsupportedOperationException(method.name)
                 }
@@ -376,6 +382,24 @@ class NotesActionsTest {
         assertThat(vm.uiState.value.filter).isEqualTo(org.samesame.notes.core.model.NoteFilter.InFolder(FolderId("work")))
         assertThat(vm.uiState.value.selecting).isTrue()
         assertThat(vm.uiState.value.selection).containsExactly(NoteId("a"))
+        job.cancel()
+    }
+
+    @Test
+    fun createMarkdownNoteForwardsCurrentFolder() = runTest(dispatcher) {
+        val calls = Calls()
+        val vm = NotesViewModel(fakeNotes(emptyList(), calls), fakeFolders(calls), fakePrefs, androidx.lifecycle.SavedStateHandle())
+        val job = backgroundScope.launch(dispatcher) { vm.uiState.collect {} }
+        advanceUntilIdle()
+
+        vm.selectFilter(org.samesame.notes.core.model.NoteFilter.InFolder(FolderId("work")))
+        advanceUntilIdle()
+
+        val id = vm.createMarkdownNote()
+        advanceUntilIdle()
+
+        assertThat(calls.createdMarkdownNotes).containsExactly(FolderId("work"))
+        assertThat(id).isEqualTo(NoteId("md-note-1"))
         job.cancel()
     }
 }
