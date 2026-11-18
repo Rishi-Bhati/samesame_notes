@@ -124,6 +124,12 @@ interface NoteRepository {
     /** Writes the note as a `.ssnote` ZIP to [out] (flushes first). */
     suspend fun exportNote(id: NoteId, out: java.io.OutputStream)
 
+    /** Prepares [id] for backup by flushing unsaved edits under the note lock. */
+    suspend fun prepareForBackup(id: NoteId)
+
+    /** Streams the note container bytes for backup under the note lock after flushing unsaved edits. */
+    suspend fun exportContainerForBackup(id: NoteId, out: java.io.OutputStream)
+
     /**
      * "Save as file": writes the note in [format] to [out] and returns what was written (extension,
      * MIME type) for naming the file. SDOCX throws [UnsupportedOperationException] until its exporter

@@ -50,6 +50,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -96,6 +98,18 @@ internal class BackupViewModel @Inject constructor(
 ) : ViewModel() {
     val settings: StateFlow<AppSettings> = settingsRepo.settings
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppSettings())
+
+    val folderDisplayName: StateFlow<String?> = settingsRepo.settings
+        .map { it.backupFolderUri }
+        .distinctUntilChanged()
+        .map { uriString ->
+            if (uriString.isNullOrBlank()) null
+            else withContext(Dispatchers.IO) {
+                backupRepo.folderFromSettingsUri(uriString)?.displayName
+            }
+        }
+        .flowOn(Dispatchers.IO)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val backupRun: StateFlow<BackupRunUi> = WorkManager.getInstance(context)
         .getWorkInfosForUniqueWorkFlow(BACKUP_ONCE_WORK)
@@ -155,11 +169,6 @@ internal class BackupViewModel @Inject constructor(
         runCatching { backupRepo.listBackups(folder) }.getOrDefault(emptyList())
     }
 
-    fun folderDisplayName(uriString: String?): String? {
-        if (uriString.isNullOrBlank()) return null
-        return backupRepo.folderFromSettingsUri(uriString)?.displayName
-    }
-
     fun restore(backupFolderName: String) {
         val current = _restore.value
         if (current.running) return
@@ -188,6 +197,7 @@ internal fun BackupPage(onBack: () -> Unit, viewModel: BackupViewModel = hiltVie
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val backupRun by viewModel.backupRun.collectAsStateWithLifecycle()
     val restore by viewModel.restore.collectAsStateWithLifecycle()
+    val folderDisplayName by viewModel.folderDisplayName.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -212,7 +222,7 @@ internal fun BackupPage(onBack: () -> Unit, viewModel: BackupViewModel = hiltVie
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding()) {
             SectionHeader(stringResource(R.string.feature_settings_backup_folder))
             GroupCard {
-                val folderLabel = viewModel.folderDisplayName(settings.backupFolderUri)
+                val folderLabel = folderDisplayName
                     ?: stringResource(R.string.feature_settings_backup_folder_none)
                 SettingsRow(
                     stringResource(R.string.feature_settings_backup_folder),
