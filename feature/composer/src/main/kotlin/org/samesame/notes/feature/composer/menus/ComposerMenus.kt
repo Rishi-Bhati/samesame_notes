@@ -155,7 +155,7 @@ internal fun MenuDottedDivider(modifier: Modifier = Modifier) {
 // ------------------------------------------------------------------------------------------------ Overflow (#54, #60)
 
 enum class OverflowAction {
-    PageSorter, PageTemplate, PageView, PageSettings, FullScreen, Tags, SaveAsFile, Print, Favourite, Share, Delete,
+    PageSorter, PageTemplate, PageView, PageSettings, FullScreen, Tags, VersionHistory, SaveAsFile, Print, Favourite, Share, Delete,
 }
 
 /**
@@ -181,6 +181,7 @@ internal fun OverflowMenu(penMode: Boolean, onAction: (OverflowAction) -> Unit, 
             Spacer(Modifier.height(9.9.dp))
             PlainActionRow(R.string.feature_composer_ov_full_screen) { onAction(OverflowAction.FullScreen) }
             PlainActionRow(R.string.feature_composer_ov_tags) { onAction(OverflowAction.Tags) }
+            PlainActionRow(R.string.feature_composer_ov_version_history) { onAction(OverflowAction.VersionHistory) }
             PlainActionRow(R.string.feature_composer_ov_save_as_file) { onAction(OverflowAction.SaveAsFile) }
             if (penMode) PlainActionRow(R.string.feature_composer_ov_print) { onAction(OverflowAction.Print) }
             Spacer(Modifier.height(16.3.dp))

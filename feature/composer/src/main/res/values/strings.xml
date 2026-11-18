@@ -149,7 +149,20 @@
     <string name="feature_composer_ov_page_settings">Page settings</string>
     <string name="feature_composer_ov_full_screen">Full screen</string>
     <string name="feature_composer_ov_tags">Tags</string>
+    <string name="feature_composer_ov_version_history">Version history</string>
     <string name="feature_composer_ov_save_as_file">Save as file</string>
+
+    <!-- Version history -->
+    <string name="feature_composer_version_from">Version from %1$s</string>
+    <string name="feature_composer_version_today">Today %1$s</string>
+    <string name="feature_composer_version_yesterday">Yesterday %1$s</string>
+    <string name="feature_composer_version_empty">No versions yet. A version is saved while you edit and when you close the note.</string>
+    <string name="feature_composer_version_pages">%1$d pages</string>
+    <string name="feature_composer_version_preview_failed">This version can\'t be shown.</string>
+    <string name="feature_composer_version_restore">Restore</string>
+    <string name="feature_composer_version_restore_confirm">Restore this version? The current note is kept as a version.</string>
+    <string name="feature_composer_version_restore_failed">Couldn\'t restore this version.</string>
+    <string name="feature_composer_version_restoring">Restoring…</string>
     <string name="feature_composer_ov_print">Print</string>
     <string name="feature_composer_ov_page_view">Page view</string>
     <string name="feature_composer_ov_favourite">Favourite</string>
