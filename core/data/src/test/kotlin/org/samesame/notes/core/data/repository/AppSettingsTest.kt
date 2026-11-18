@@ -19,6 +19,7 @@ class AppSettingsTest {
         assertThat(s.autoSaveNotes).isTrue()
         assertThat(s.showLinks).isTrue()
         assertThat(s.showWebPreviews).isFalse()
+        assertThat(s.moveCheckedToBottom).isTrue()
         assertThat(s.hideScrollBar).isFalse()
         assertThat(s.blockBackKey).isFalse()
         assertThat(s.newNote.pageMode).isEqualTo(PageMode.Pages)
@@ -47,6 +48,16 @@ class AppSettingsTest {
     }
 
     @Test
+    fun moveCheckedToBottomRoundTrips() {
+        val prefs = mutablePreferencesOf()
+        prefs.writeAppSettings(AppSettings(moveCheckedToBottom = false))
+        assertThat(prefs.toAppSettings().moveCheckedToBottom).isFalse()
+        assertThat(prefs[androidx.datastore.preferences.core.booleanPreferencesKey("move_checked_to_bottom")]).isFalse()
+        prefs.writeAppSettings(AppSettings(moveCheckedToBottom = true))
+        assertThat(prefs.toAppSettings().moveCheckedToBottom).isTrue()
+    }
+
+    @Test
     fun unknownThemeFallsBackToSystem() {
         val prefs = mutablePreferencesOf()
         prefs.writeAppSettings(AppSettings())
@@ -60,6 +71,7 @@ class AppSettingsTest {
             autoSaveNotes = false, showLinks = false, showWebPreviews = true, hideScrollBar = true, blockBackKey = true,
             toolbarChangeStyle = false, toolbarEasyWritingPad = false, toolbarZoomLock = false, adjustColourInDarkMode = false,
             calculateAsYouType = false, replaceArrows = false,
+            moveCheckedToBottom = false,
             newNote = NewNoteStyle(
                 PageMode.Infinite, PageRatio.Long, PageTemplate.GridWide, 0xFFFFEC94, PdfPageSize.FitToNote,
             ),

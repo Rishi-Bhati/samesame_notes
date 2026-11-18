@@ -555,6 +555,7 @@ internal fun ComposerEditor(
             it.state.sensitive = locked
             it.state.calculateAsYouType = settings.calculateAsYouType
             it.state.replaceArrows = settings.replaceArrows
+            it.state.moveCheckedToBottom = settings.moveCheckedToBottom
         }
         textState.hideKeyboard()
         if (session.chrome.value.toolbar.mode == EditorMode.Pen) session.dispatch(ToolbarIntent.ToggleHandwriting)
@@ -583,6 +584,7 @@ internal fun ComposerEditor(
     SideEffect {
         editor?.state?.calculateAsYouType = settings.calculateAsYouType
         editor?.state?.replaceArrows = settings.replaceArrows
+        editor?.state?.moveCheckedToBottom = settings.moveCheckedToBottom
     }
     LaunchedEffect(editor) {
         val e = editor ?: return@LaunchedEffect
@@ -640,6 +642,7 @@ internal fun ComposerEditor(
         textState.showLinks = settings.showLinks
         textState.calculateAsYouType = settings.calculateAsYouType
         textState.replaceArrows = settings.replaceArrows
+        textState.moveCheckedToBottom = settings.moveCheckedToBottom
         textState.onPasteFileLinks = fileLinkController?.let { c -> { targets -> c.paste(targets) } }
         fileLinkController?.let { c ->
             c.pasteMode = settings.filePasteMode
@@ -931,7 +934,7 @@ internal fun ComposerEditor(
      */
     fun viewTap(p: Offset) {
         val d = viewport.viewToDoc(p)
-        textState.engine.checkboxAt(d.x, d.y)?.let { body.toggleChecked(it); return }
+        textState.engine.checkboxAt(d.x, d.y)?.let { body.toggleChecked(it, textState.moveCheckedToBottom); return }
         if (textState.onReadTap(p)) return
         if (lastViewDownStylus) {
             // A pen tap: edit in pen mode (handwriting), no caret / keyboard.

@@ -84,13 +84,17 @@ interface NoteDao {
     suspend fun updateTitleOnly(id: String, title: String)
 
     @Query(
-        "UPDATE notes SET preview_text = :previewText, modified_at = :now, is_dirty = 1 WHERE id = :id",
+        "UPDATE notes SET preview_text = :previewText, checklist_done = :done, checklist_total = :total, " +
+            "modified_at = :now, is_dirty = 1 WHERE id = :id",
     )
-    suspend fun updatePreview(id: String, previewText: String, now: Long)
+    suspend fun updatePreview(id: String, previewText: String, done: Int, total: Int, now: Long)
 
-    /** Locking keeps the title visible in the catalog but drops the preview text; unlocking restores both. */
-    @Query("UPDATE notes SET is_locked = :locked, title = :title, preview_text = :preview, is_dirty = 1 WHERE id = :id")
-    suspend fun setLocked(id: String, locked: Boolean, title: String, preview: String)
+    /** Locking keeps the title visible in the catalog but drops the preview and checklist counts; unlocking restores both. */
+    @Query(
+        "UPDATE notes SET is_locked = :locked, title = :title, preview_text = :preview, " +
+            "checklist_done = :done, checklist_total = :total, is_dirty = 1 WHERE id = :id",
+    )
+    suspend fun setLocked(id: String, locked: Boolean, title: String, preview: String, done: Int, total: Int)
 
     @Query("UPDATE notes SET last_opened_at = :now WHERE id = :id")
     suspend fun markOpened(id: String, now: Long)

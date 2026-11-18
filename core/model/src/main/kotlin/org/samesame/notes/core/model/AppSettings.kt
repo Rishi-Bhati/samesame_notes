@@ -26,6 +26,8 @@ data class AppSettings(
     val font: FontSettings = FontSettings(),
     /** "Replace arrows as you type": `->` becomes `→`, `<-` `←`, `<->` `↔`, `=>` `⇒`, `<=>` `⇔`. */
     val replaceArrows: Boolean = true,
+    /** "Move checked items to the bottom": a ticked checkbox moves below the unchecked items of its run. */
+    val moveCheckedToBottom: Boolean = true,
 )
 
 /** Settings > "When pasting a file link" (Files). Only links to pictures ask; other files always paste as links. */

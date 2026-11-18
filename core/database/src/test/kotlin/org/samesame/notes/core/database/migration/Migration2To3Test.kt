@@ -88,13 +88,18 @@ class Migration2To3Test {
     }
 
     private val oldTables = listOf(
-        "SELECT * FROM notes ORDER BY id", "SELECT * FROM folders ORDER BY id",
+        "SELECT id, title, preview_text, folder_id, is_favorite, is_locked, page_mode, background_color, created_at, " +
+            "modified_at, last_opened_at, trashed_at, is_dirty FROM notes ORDER BY id",
+        "SELECT * FROM folders ORDER BY id",
         "SELECT * FROM folder_closure ORDER BY ancestor, descendant", "SELECT * FROM tags", "SELECT * FROM note_tags",
         "SELECT note_id, title, body, ink_text FROM note_search", "SELECT * FROM note_view_state",
     )
 
     private fun openRoom(): SameSameDatabase = Room.databaseBuilder(context, SameSameDatabase::class.java, dbFile.absolutePath)
-        .addMigrations(SameSameDatabase.MIGRATION_1_2, SameSameDatabase.MIGRATION_2_3, SameSameDatabase.MIGRATION_3_4)
+        .addMigrations(
+            SameSameDatabase.MIGRATION_1_2, SameSameDatabase.MIGRATION_2_3,
+            SameSameDatabase.MIGRATION_3_4, SameSameDatabase.MIGRATION_4_5,
+        )
         .build().also { room = it }
 
     @Test fun `migration 2 to 3 validates and keeps every note, folder, tag, search entry and view state`() = runBlocking<Unit> {
@@ -110,7 +115,7 @@ class Migration2To3Test {
         room = null
 
         val after = SQLiteDatabase.openDatabase(dbFile.path, null, SQLiteDatabase.OPEN_READONLY).use { raw ->
-            assertThat(raw.version).isEqualTo(4)
+            assertThat(raw.version).isEqualTo(5) // openRoom() now carries migrations all the way to v5.
             oldTables.map { dump(raw, it) }
         }
         assertThat(after).isEqualTo(before)

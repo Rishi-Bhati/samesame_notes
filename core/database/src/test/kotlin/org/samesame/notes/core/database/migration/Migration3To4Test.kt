@@ -90,7 +90,9 @@ class Migration3To4Test {
     }
 
     private val oldTables = listOf(
-        "SELECT * FROM notes ORDER BY id", "SELECT * FROM folders ORDER BY id", "SELECT * FROM tags",
+        "SELECT id, title, preview_text, folder_id, is_favorite, is_locked, page_mode, background_color, created_at, " +
+            "modified_at, last_opened_at, trashed_at, is_dirty FROM notes ORDER BY id",
+        "SELECT * FROM folders ORDER BY id", "SELECT * FROM tags",
         "SELECT * FROM note_tags", "SELECT note_id, title, body, ink_text FROM note_search", "SELECT * FROM file_folders",
         "SELECT id, folder_id, display_name, ext, mime_type, category, size_bytes, sha256, width, height, duration_ms, " +
             "page_count, source_app, created_at, modified_at, sort_index, is_favorite, trashed_at FROM library_files",
@@ -98,7 +100,10 @@ class Migration3To4Test {
     )
 
     private fun openRoom(): SameSameDatabase = Room.databaseBuilder(context, SameSameDatabase::class.java, dbFile.absolutePath)
-        .addMigrations(SameSameDatabase.MIGRATION_1_2, SameSameDatabase.MIGRATION_2_3, SameSameDatabase.MIGRATION_3_4)
+        .addMigrations(
+            SameSameDatabase.MIGRATION_1_2, SameSameDatabase.MIGRATION_2_3,
+            SameSameDatabase.MIGRATION_3_4, SameSameDatabase.MIGRATION_4_5,
+        )
         .build().also { room = it }
 
     @Test fun `migration 3 to 4 validates and keeps every note, folder, tag and file row`() = runBlocking<Unit> {
@@ -113,7 +118,7 @@ class Migration3To4Test {
         room = null
 
         val after = SQLiteDatabase.openDatabase(dbFile.path, null, SQLiteDatabase.OPEN_READONLY).use { raw ->
-            assertThat(raw.version).isEqualTo(4)
+            assertThat(raw.version).isEqualTo(5) // openRoom() now carries migrations all the way to v5.
             assertThat(dump(raw, "SELECT description FROM library_files WHERE id = '$fileId'")).containsExactly(listOf(""))
             oldTables.map { dump(raw, it) }
         }
