@@ -2,6 +2,7 @@ package org.samesame.notes.core.data.repository
 
 import androidx.ink.strokes.Stroke
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
@@ -750,20 +751,24 @@ internal class DefaultNoteRepository @Inject constructor(
         )
     }
 
-    override suspend fun readMarkdown(id: NoteId): String? = lockFor(id.value).withLock {
-        val row = noteDao.get(id.value) ?: return@withLock null
-        if (row.isLocked || documents.isLocked(id.value)) return@withLock null
-        val doc = documents.readDocument(id.value, titleFromDb = row.title)
-        doc.markdown?.content
+    override suspend fun readMarkdown(id: NoteId): String? = withContext(Dispatchers.IO) {
+        lockFor(id.value).withLock {
+            val row = noteDao.get(id.value) ?: return@withLock null
+            if (row.isLocked || documents.isLocked(id.value)) return@withLock null
+            val doc = documents.readDocument(id.value, titleFromDb = row.title)
+            doc.markdown?.content
+        }
     }
 
-    override suspend fun writeMarkdown(id: NoteId, text: String) = lockFor(id.value).withLock {
-        val row = noteDao.get(id.value) ?: return@withLock
-        if (row.isLocked || documents.isLocked(id.value)) return@withLock
-        val doc = documents.readDocument(id.value, titleFromDb = row.title)
-        val updated = doc.copy(markdown = MarkdownBody(content = text))
-        saveContentLocked(id, NoteSnapshot(document = updated, dirtyPages = emptyList()))
-        documents.flush(id.value, false)
+    override suspend fun writeMarkdown(id: NoteId, text: String) = withContext(Dispatchers.IO) {
+        lockFor(id.value).withLock {
+            val row = noteDao.get(id.value) ?: return@withLock
+            if (row.isLocked || documents.isLocked(id.value)) return@withLock
+            val doc = documents.readDocument(id.value, titleFromDb = row.title)
+            val updated = doc.copy(markdown = MarkdownBody(content = text))
+            saveContentLocked(id, NoteSnapshot(document = updated, dirtyPages = emptyList()))
+            documents.flush(id.value, false)
+        }
     }
 
     /** The bundle document with the catalog's title (the catalog is authoritative for renames). */

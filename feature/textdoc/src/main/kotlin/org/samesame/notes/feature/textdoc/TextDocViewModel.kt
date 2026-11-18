@@ -6,6 +6,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.samesame.notes.core.model.Limits
 import org.samesame.notes.core.model.files.FileId
 import org.samesame.notes.core.model.textdoc.LineEnding
@@ -71,6 +74,7 @@ class TextDocViewModel @Inject constructor(
     private var writable = true
     private var savedText = ""
     private var matches: List<IntRange> = emptyList()
+    var ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 
     /** Loads [uri], or the Files entry [libraryFileId], or the note [noteId], or an empty untitled document when all are null. */
     fun load(
@@ -80,10 +84,10 @@ class TextDocViewModel @Inject constructor(
         displayName: String? = null,
         noteId: String? = null,
         mimeType: String? = null,
-    ) {
-        if (isSameDocumentLoaded(uri, libraryFileId, noteId)) return
+    ): Job {
+        if (isSameDocumentLoaded(uri, libraryFileId, noteId)) return Job().apply { complete() }
         autosaveJob?.cancel()
-        viewModelScope.launch {
+        return viewModelScope.launch {
             currentNoteId = noteId
             this@TextDocViewModel.writable = writable
             _uiState.update { it.copy(isLoading = true, loadFailed = false) }
@@ -135,7 +139,9 @@ class TextDocViewModel @Inject constructor(
                 val doc = if (target == null) {
                     TextDocument("", TextEncoding.Utf8, LineEnding.Lf, hasBom = false)
                 } else {
-                    uris.read(target).use { TextDocumentCodec.read(it) }
+                    withContext(ioDispatcher) {
+                        uris.read(target).use { TextDocumentCodec.read(it) }
+                    }
                 }
                 savedText = doc.text
                 undoRedo.reset(doc.text)
@@ -345,8 +351,9 @@ class TextDocViewModel @Inject constructor(
         }
     }
 
-    private fun bytes(state: TextDocUiState): ByteArray =
+    private suspend fun bytes(state: TextDocUiState): ByteArray = withContext(ioDispatcher) {
         TextDocumentCodec.roundTripBytes(state.text, state.encoding, state.lineEnding, state.hasBom)
+    }
 
     private fun isSameDocumentLoaded(uri: Uri?, libraryFileId: String?, noteId: String?): Boolean {
         if (_uiState.value.isLoading || _uiState.value.loadFailed) return false

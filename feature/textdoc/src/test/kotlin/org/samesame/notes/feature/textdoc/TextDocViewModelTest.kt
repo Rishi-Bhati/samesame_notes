@@ -50,9 +50,11 @@ class TextDocViewModelTest {
     @Before fun setUp() = Dispatchers.setMain(UnconfinedTestDispatcher())
     @After fun tearDown() = Dispatchers.resetMain()
 
+    private fun createViewModel() = TextDocViewModel(files, uris, noteStore).apply { ioDispatcher = Dispatchers.Main }
+
     @Test
     fun loadsAndSavesALibraryFileInPlace() = runTest {
-        val vm = TextDocViewModel(files, uris, noteStore)
+        val vm = createViewModel()
         vm.load(null, file.id.value, writable = true)
 
         assertThat(vm.uiState.value.text).isEqualTo("hello")
@@ -68,7 +70,7 @@ class TextDocViewModelTest {
 
     @Test
     fun undoAndRedoTrackModificationState() = runTest {
-        val vm = TextDocViewModel(files, uris, noteStore)
+        val vm = createViewModel()
         vm.load(null, file.id.value, writable = true)
 
         vm.updateText("hello!")
@@ -85,7 +87,7 @@ class TextDocViewModelTest {
     fun anExternalUriThatCannotBeWrittenFallsBackToSaveAs() = runTest {
         val source = Uri.parse("content://test/read-only.txt")
         uris.failWrite = true
-        val vm = TextDocViewModel(files, uris, noteStore)
+        val vm = createViewModel()
         vm.load(source, null, writable = true)
         vm.updateText("changed")
 
@@ -100,7 +102,7 @@ class TextDocViewModelTest {
 
     @Test
     fun aReadOnlyDocumentCannotBeEditedOrSavedInPlace() = runTest {
-        val vm = TextDocViewModel(files, uris, noteStore)
+        val vm = createViewModel()
         vm.load(null, file.id.value, writable = false)
 
         vm.updateText("changed")
@@ -110,7 +112,7 @@ class TextDocViewModelTest {
 
     @Test
     fun htmlPreviewToggles() = runTest {
-        val vm = TextDocViewModel(files, uris, noteStore)
+        val vm = createViewModel()
         vm.load(null, file.id.value, writable = true)
 
         assertThat(vm.uiState.value.isHtmlPreview).isFalse()
@@ -120,7 +122,7 @@ class TextDocViewModelTest {
 
     @Test
     fun findAndReplaceUpdatesTheDocument() = runTest {
-        val vm = TextDocViewModel(files, uris, noteStore)
+        val vm = createViewModel()
         vm.load(null, file.id.value, writable = true)
 
         vm.find("l")
@@ -138,7 +140,7 @@ class TextDocViewModelTest {
         noteStore.note = note
         noteStore.text = "- [ ] milk\n- [ ] eggs\n"
 
-        val vm = TextDocViewModel(files, uris, noteStore)
+        val vm = createViewModel()
         vm.load(noteId = "md-note", writable = true)
 
         assertThat(vm.uiState.value.text).isEqualTo("- [ ] milk\n- [ ] eggs\n")
@@ -156,7 +158,7 @@ class TextDocViewModelTest {
 
     @Test
     fun editTypedDuringSlowSaveIsSavedByNextAutosave() = runTest {
-        val vm = TextDocViewModel(files, uris, noteStore)
+        val vm = createViewModel()
         vm.load(null, null, writable = true, noteId = "note-slow")
         vm.updateText("first edit")
 
@@ -188,7 +190,7 @@ class TextDocViewModelTest {
         noteStore.note = note
         noteStore.text = "disk content"
 
-        val vm = TextDocViewModel(files, uris, noteStore)
+        val vm = createViewModel()
         vm.load(noteId = "md-note", writable = true)
         assertThat(vm.uiState.value.text).isEqualTo("disk content")
 
@@ -209,7 +211,7 @@ class TextDocViewModelTest {
         noteStore.note = note1
         noteStore.text = "content 1"
 
-        val vm = TextDocViewModel(files, uris, noteStore)
+        val vm = createViewModel()
         vm.load(noteId = "note-1", writable = true)
         assertThat(vm.uiState.value.text).isEqualTo("content 1")
 
@@ -223,7 +225,7 @@ class TextDocViewModelTest {
 
     @Test
     fun flushOnStopSavesPendingEditsImmediately() = runTest {
-        val vm = TextDocViewModel(files, uris, noteStore)
+        val vm = createViewModel()
         vm.load(noteId = "stop-note", writable = true)
 
         vm.updateText("pending stop content")
@@ -237,12 +239,18 @@ class TextDocViewModelTest {
     }
 
     @Test
+    fun defaultIoDispatcherIsDispatchersIO() {
+        val vm = TextDocViewModel(files, uris, noteStore)
+        assertThat(vm.ioDispatcher).isEqualTo(Dispatchers.IO)
+    }
+
+    @Test
     fun lockedMarkdownNoteOpensReadOnlyWithNotice() = runTest {
         val note = sampleNote(id = "locked-md", title = "Secret note", isLocked = true)
         noteStore.note = note
         noteStore.text = "secret content"
 
-        val vm = TextDocViewModel(files, uris, noteStore)
+        val vm = createViewModel()
         vm.load(noteId = "locked-md", writable = true)
 
         assertThat(vm.uiState.value.title).isEqualTo("Secret note")
@@ -262,7 +270,7 @@ class TextDocViewModelTest {
         noteStore.note = note
         noteStore.text = "initial text"
 
-        val vm = TextDocViewModel(files, uris, noteStore)
+        val vm = createViewModel()
         vm.load(noteId = "debounced-note", writable = true)
 
         assertThat(noteStore.writeCount).isEqualTo(0)
