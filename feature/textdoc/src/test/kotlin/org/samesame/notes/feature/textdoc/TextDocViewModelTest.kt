@@ -4,6 +4,7 @@ import android.net.Uri
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -154,6 +155,34 @@ class TextDocViewModelTest {
     }
 
     @Test
+    fun editTypedDuringSlowSaveIsSavedByNextAutosave() = runTest {
+        val vm = TextDocViewModel(files, uris, noteStore)
+        vm.load(null, null, writable = true, noteId = "note-slow")
+        vm.updateText("first edit")
+
+        var secondEditTyped = false
+        noteStore.onWriteStarted = {
+            if (!secondEditTyped) {
+                secondEditTyped = true
+                noteStore.writeDelayMs = 0
+                vm.updateText("second edit")
+            }
+        }
+        noteStore.writeDelayMs = 500
+
+        val saveJob = launch { vm.saveInPlace() }
+        testScheduler.advanceTimeBy(600)
+        saveJob.join()
+
+        assertThat(vm.uiState.value.isModified).isTrue()
+        assertThat(noteStore.lastWrittenText).isEqualTo("first edit")
+
+        testScheduler.advanceTimeBy(1100)
+        assertThat(noteStore.lastWrittenText).isEqualTo("second edit")
+        assertThat(vm.uiState.value.isModified).isFalse()
+    }
+
+    @Test
     fun lockedMarkdownNoteOpensReadOnlyWithNotice() = runTest {
         val note = sampleNote(id = "locked-md", title = "Secret note", isLocked = true)
         noteStore.note = note
@@ -234,9 +263,13 @@ class TextDocViewModelTest {
     ) : TextDocNoteStore {
         var writeCount = 0
         var lastWrittenText: String? = null
+        var onWriteStarted: (() -> Unit)? = null
+        var writeDelayMs: Long = 0
 
         override suspend fun readMarkdown(noteId: String): String? = text
         override suspend fun writeMarkdown(noteId: String, text: String) {
+            onWriteStarted?.invoke()
+            if (writeDelayMs > 0) kotlinx.coroutines.delay(writeDelayMs)
             this.text = text
             this.lastWrittenText = text
             writeCount++

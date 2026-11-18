@@ -188,14 +188,20 @@ class TextDocViewModel @Inject constructor(
     suspend fun saveInPlace(context: Context? = null): Boolean {
         val state = _uiState.value
         if (state.isReadOnly) return false
+        val textSaved = state.text
         val noteId = currentNoteId
         if (noteId != null) {
             autosaveJob?.cancel()
             return try {
                 _uiState.update { it.copy(isSaving = true) }
-                notes.writeMarkdown(noteId, state.text)
-                savedText = state.text
-                _uiState.update { it.copy(isModified = false, isSaving = false) }
+                notes.writeMarkdown(noteId, textSaved)
+                savedText = textSaved
+                _uiState.update { current ->
+                    current.copy(isModified = current.text != textSaved, isSaving = false)
+                }
+                if (_uiState.value.text != textSaved) {
+                    scheduleAutosave()
+                }
                 true
             } catch (c: CancellationException) {
                 throw c
@@ -215,8 +221,13 @@ class TextDocViewModel @Inject constructor(
                 if (context == null) return false
                 uris.write(target, bytes)
             }
-            savedText = state.text
-            _uiState.update { it.copy(isModified = false, isSaving = false) }
+            savedText = textSaved
+            _uiState.update { current ->
+                current.copy(isModified = current.text != textSaved, isSaving = false)
+            }
+            if (_uiState.value.text != textSaved) {
+                scheduleAutosave()
+            }
             true
         } catch (c: CancellationException) {
             throw c
@@ -312,7 +323,7 @@ class TextDocViewModel @Inject constructor(
         autosaveJob?.cancel()
         autosaveJob = viewModelScope.launch {
             delay(1000)
-            if (currentNoteId == noteId && _uiState.value.isModified) {
+            if (currentNoteId == noteId && (_uiState.value.isModified || _uiState.value.text != savedText)) {
                 saveInPlace()
             }
         }
