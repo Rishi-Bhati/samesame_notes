@@ -169,6 +169,11 @@ object Limits {
     const val PDF_TILE_POOL_MAX_BYTES = 2L * 1024 * 1024
     /** Tiles are drawn only above this zoom; at or below it the base page bitmap is enough. */
     const val PDF_TILE_ZOOM_THRESHOLD = 1.25f
+    /** Positioned glyphs and UTF-16 text units retained from one PDF page. */
+    const val PDF_TEXT_MAX_GLYPHS_PER_PAGE = 50_000
+    const val PDF_TEXT_MAX_CHARS_PER_PAGE = 50_000
+    /** Estimated heap retained by the extracted-page cache for one note. */
+    const val PDF_TEXT_CACHE_MAX_BYTES = 16 * 1024 * 1024
     /** Pages of extracted text kept in memory per open PDF. */
     const val PDF_TEXT_CACHE_MAX_PAGES = 100
     /** Outline levels read; deeper entries are dropped so a hostile file cannot blow the stack. */

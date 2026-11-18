@@ -1313,9 +1313,13 @@ internal fun ComposerEditor(
             showHit(searchNav.currentHit())
         } else scope.launch {
             // The text layers come off the main thread (cached per page); the hit list is built once they are in.
-            val texts = pdfHost.textForSearch(pdfPages)
+            val hits = mutableListOf<org.samesame.notes.core.model.pdf.PdfSearchMatch>()
+            pdfHost.forEachSearchPage(pdfPages) { text ->
+                hits += org.samesame.notes.core.data.pdf.PdfTextExtractor.search(text, q, Limits.PDF_SEARCH_MAX_MATCHES - hits.size)
+                hits.size < Limits.PDF_SEARCH_MAX_MATCHES
+            }
             if (searchOpen && searchQuery == q) {
-                searchNav.search(body.editable, q, texts)
+                searchNav.searchWithPdfHits(body.editable, q, hits)
                 showHit(searchNav.currentHit())
             }
         }

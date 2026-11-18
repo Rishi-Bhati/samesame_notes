@@ -19,6 +19,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.samesame.notes.core.model.pdf.PdfLinkDestination
+import org.samesame.notes.core.model.Limits
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -207,4 +208,24 @@ class PdfTextExtractorTest {
 
         doc.close()
     }
+    @Test fun densePageStopsRetainingGlyphsAndText() {
+        PDDocument().use { doc ->
+            val page = PDPage(PDRectangle.A4)
+            doc.addPage(page)
+            PDPageContentStream(doc, page).use { cs ->
+                cs.beginText()
+                cs.setFont(PDType1Font.HELVETICA, 12f)
+                cs.newLineAtOffset(10f, 750f)
+                cs.showText("a".repeat(Limits.PDF_TEXT_MAX_CHARS_PER_PAGE + 1000))
+                cs.endText()
+            }
+            val text = PdfTextExtractor().extractPage(doc, 0)
+            assertThat(text.text.length).isAtMost(Limits.PDF_TEXT_MAX_CHARS_PER_PAGE)
+            assertThat(text.glyphs.size).isEqualTo(text.text.length)
+            assertThat(text.text.length).isGreaterThan(0)
+            assertThat(PdfTextExtractor.search(text, "a", 7)).hasSize(7)
+            assertThat(PdfTextExtractor.search(text, "a", 0)).isEmpty()
+        }
+    }
+
 }

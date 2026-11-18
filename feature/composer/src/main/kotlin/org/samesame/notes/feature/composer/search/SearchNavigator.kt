@@ -51,6 +51,16 @@ class SearchNavigator {
             emptyList()
         }
 
+        return publishSearch(bodyMatches, pdfHits)
+    }
+
+    fun searchWithPdfHits(text: CharSequence, query: String, hits: List<PdfSearchMatch>): IntRange? {
+        this.query = query.take(TextSearch.MAX_QUERY_LENGTH)
+        val body = TextSearch.find(text, this.query)
+        return publishSearch(body, hits.take(org.samesame.notes.core.model.Limits.PDF_SEARCH_MAX_MATCHES - minOf(body.size, org.samesame.notes.core.model.Limits.PDF_SEARCH_MAX_MATCHES)))
+    }
+
+    private fun publishSearch(bodyMatches: List<IntRange>, pdfHits: List<PdfSearchMatch>): IntRange? {
         matches = bodyMatches
         pdfMatches = pdfHits
         allHits = bodyMatches.map { SearchHit.Body(it) } + pdfHits.map { SearchHit.Pdf(it) }

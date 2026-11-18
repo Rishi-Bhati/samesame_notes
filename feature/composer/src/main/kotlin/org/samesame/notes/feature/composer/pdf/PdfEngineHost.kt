@@ -1,11 +1,12 @@
 package org.samesame.notes.feature.composer.pdf
 
 import android.content.Context
-import android.util.LruCache
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -39,7 +40,7 @@ class PdfEngineHost(
     private val renderers = ConcurrentHashMap<String, PdfTileRenderer>()
     private val opening = ConcurrentHashMap.newKeySet<String>()
     private val failed = ConcurrentHashMap.newKeySet<String>()
-    private val textCache = LruCache<String, PdfPageText>(Limits.PDF_TEXT_CACHE_MAX_PAGES)
+    private val textCache = PdfTextCache()
     private val loadingText = ConcurrentHashMap.newKeySet<String>()
     private val docs = HashMap<String, PdfTextSource>() // touched only on the extraction thread
     private val extractThread = Dispatchers.IO.limitedParallelism(1)
@@ -84,12 +85,15 @@ class PdfEngineHost(
         return raw.copy(pageIndex = noteIndex).also { memo = raw to it }
     }
 
-    /** Extracts every PDF page of [pages] (note index to background) for a search; one document load per source. */
-    suspend fun textForSearch(pages: List<Pair<Int, PdfBackground>>): List<PdfPageText> = withContext(extractThread) {
-        pages.mapNotNull { (noteIndex, pdf) ->
-            val k = key(pdf)
-            val raw = textCache.get(k) ?: extract(pdf)?.also { textCache.put(k, it) }
-            raw?.copy(pageIndex = noteIndex)
+    /** Visit one extracted page at a time; stop as soon as the search budget is filled. */
+    suspend fun forEachSearchPage(pages: List<Pair<Int, PdfBackground>>, visit: suspend (PdfPageText) -> Boolean) {
+        for ((noteIndex, pdf) in pages) {
+            currentCoroutineContext().ensureActive()
+            val raw = withContext(extractThread) {
+                val k = key(pdf)
+                textCache.get(k) ?: extract(pdf)?.also { textCache.put(k, it) }
+            }
+            if (raw != null && !visit(raw.copy(pageIndex = noteIndex))) break
         }
     }
 
