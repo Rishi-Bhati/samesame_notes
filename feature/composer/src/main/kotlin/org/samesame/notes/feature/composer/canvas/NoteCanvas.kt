@@ -466,6 +466,7 @@ private class PageDrawer(
                         viewport = viewport,
                         matches = pageMatches,
                         activeMatch = activePdfSearchMatch,
+                        rendererProvider = pdfTileRenderer,
                     )
                 }
             }
@@ -479,6 +480,7 @@ private class PageDrawer(
                         viewport = viewport,
                         selectionState = pdfSelectionState,
                         pageText = pt,
+                        rendererProvider = pdfTileRenderer,
                     )
                 }
             }
@@ -696,7 +698,7 @@ private class PageDrawer(
     ) = with(scope) {
         val pdfBg = spec.pdf ?: return
         val renderer = rendererProvider?.invoke(pdfBg.media)
-        val widthPt = spec.size?.widthPt ?: 595f
+        val (widthPt, transform) = pdfFit(spec, pageRect, rendererProvider) ?: return
         // Tiles render at a quantised scale (half steps), so one lod always means one pixel grid.
         val lod = (viewport.scale * 2f).roundToInt().coerceAtLeast(1)
         val sc = lod / 2f
@@ -726,7 +728,7 @@ private class PageDrawer(
             clipRect(0f, 0f, pageRect.width, pageRect.height) {
                 for (c in colStart..colEnd) {
                     for (row in rowStart..rowEnd) {
-                        val key = org.samesame.notes.feature.composer.pdf.PdfTileKey(pdfBg.media, pdfBg.pageIndex, lod, c, row)
+                        val key = org.samesame.notes.feature.composer.pdf.PdfTileKey(pdfBg.media, pdfBg.pageIndex, lod, c, row, transform)
                         visibleKeys.add(key)
                         val tileBmp = cache.get(key)
                         val tileLeftPu = c * tileSize.toFloat() / sc
@@ -750,6 +752,17 @@ private class PageDrawer(
                 }
             }
         }
+    }
+
+    private fun pdfFit(
+        spec: PageSpec,
+        rect: Rect,
+        rendererProvider: ((String) -> org.samesame.notes.core.data.pdf.PdfTileRenderer?)?,
+    ): Pair<Float, org.samesame.notes.core.data.pdf.PdfCoordinates.PageTransform>? {
+        val pdf = spec.pdf ?: return null
+        val size = spec.size?.takeIf { it.isValid }?.let { it.widthPt to it.heightPt }
+            ?: rendererProvider?.invoke(pdf.media)?.pageSize(pdf.pageIndex) ?: return null
+        return size.first to org.samesame.notes.core.data.pdf.PdfCoordinates.fit(size.first, size.second, rect.height)
     }
 
     private val frameTileKeys = HashSet<org.samesame.notes.feature.composer.pdf.PdfTileKey>()
@@ -787,8 +800,9 @@ private class PageDrawer(
         viewport: Viewport,
         matches: List<org.samesame.notes.core.model.pdf.PdfSearchMatch>,
         activeMatch: org.samesame.notes.core.model.pdf.PdfSearchMatch?,
+        rendererProvider: ((String) -> org.samesame.notes.core.data.pdf.PdfTileRenderer?)?,
     ) = with(scope) {
-        val widthPt = spec.size?.widthPt ?: 595f
+        val (widthPt, transform) = pdfFit(spec, pageRect, rendererProvider) ?: return
         inPage(pageRect, viewport.origin, viewport.scale) {
             clipRect(0f, 0f, pageRect.width, pageRect.height) {
                 for (m in matches) {
@@ -796,7 +810,7 @@ private class PageDrawer(
                         activeMatch.start == m.start && activeMatch.endExclusive == m.endExclusive
                     val color = if (isActive) Color(0xB3FF9800) else Color(0x80FFEB3B)
                     for (rectPt in m.rectsPt) {
-                        val puRect = org.samesame.notes.core.data.pdf.PdfCoordinates.ptToPagePu(rectPt, widthPt)
+                        val puRect = org.samesame.notes.core.data.pdf.PdfCoordinates.ptToPagePu(rectPt, widthPt, transform)
                         drawRect(
                             color = color,
                             topLeft = Offset(puRect.left, puRect.top),
@@ -815,13 +829,14 @@ private class PageDrawer(
         viewport: Viewport,
         selectionState: org.samesame.notes.feature.composer.pdf.PdfSelectionState,
         pageText: org.samesame.notes.core.model.pdf.PdfPageText,
+        rendererProvider: ((String) -> org.samesame.notes.core.data.pdf.PdfTileRenderer?)?,
     ) = with(scope) {
-        val widthPt = spec.size?.widthPt ?: 595f
+        val (widthPt, transform) = pdfFit(spec, pageRect, rendererProvider) ?: return
         val rects = selectionState.selectionRectsPt(pageText)
         inPage(pageRect, viewport.origin, viewport.scale) {
             clipRect(0f, 0f, pageRect.width, pageRect.height) {
                 for (rectPt in rects) {
-                    val puRect = org.samesame.notes.core.data.pdf.PdfCoordinates.ptToPagePu(rectPt, widthPt)
+                    val puRect = org.samesame.notes.core.data.pdf.PdfCoordinates.ptToPagePu(rectPt, widthPt, transform)
                     drawRect(
                         color = Color(0x401976D2),
                         topLeft = Offset(puRect.left, puRect.top),

@@ -1,15 +1,23 @@
 package org.samesame.notes.core.data.pdf
 
 import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.io.MemoryUsageSetting
+import org.samesame.notes.core.model.Limits
 import org.samesame.notes.core.model.pdf.PdfPageText
 import java.io.Closeable
 import java.io.File
 
 /** One PDF kept open for repeated page extraction (loading a document per page is far too slow). Not thread safe. */
 class PdfTextSource(file: File, private val extractor: PdfTextExtractor) : Closeable {
-    private val document: PDDocument = PDDocument.load(file)
+    private val document: PDDocument = PDDocument.load(file, MemoryUsageSetting.setupMixed(Limits.PDF_SCRATCH_MEMORY_BYTES))
 
     val pageCount: Int get() = document.numberOfPages
+
+    fun pageSize(index: Int): Pair<Float, Float> {
+        val page = document.getPage(index)
+        val crop = page.cropBox
+        return if (page.rotation % 180 != 0) crop.height to crop.width else crop.width to crop.height
+    }
 
     fun page(index: Int): PdfPageText = extractor.extractPage(document, index)
 

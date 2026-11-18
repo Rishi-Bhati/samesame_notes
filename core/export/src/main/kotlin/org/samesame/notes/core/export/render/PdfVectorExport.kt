@@ -2,9 +2,12 @@ package org.samesame.notes.core.export.render
 
 import android.graphics.pdf.PdfDocument
 import com.tom_roush.pdfbox.cos.COSName
+import com.tom_roush.pdfbox.cos.COSDictionary
+import com.tom_roush.pdfbox.multipdf.PDFCloneUtility
 import com.tom_roush.pdfbox.multipdf.LayerUtility
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
+import com.tom_roush.pdfbox.pdmodel.PDResources
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
 import com.tom_roush.pdfbox.pdmodel.graphics.color.PDColor
@@ -18,9 +21,9 @@ import org.samesame.notes.core.model.Limits
 import org.samesame.notes.core.model.document.PageSpec
 import org.samesame.notes.core.model.document.PdfMarkupKind
 import org.samesame.notes.core.model.document.PdfTextMarkup
-import java.io.ByteArrayOutputStream
+import com.tom_roush.pdfbox.io.MemoryUsageSetting
+import java.io.IOException
 import java.io.File
-import java.util.concurrent.TimeoutException
 
 /**
  * Real PDF export. Pages that came from a PDF keep their original page (content stream, fonts, images, so vectors and
@@ -32,152 +35,149 @@ import java.util.concurrent.TimeoutException
  * copied to the caller's stream after a complete save, so a failure never leaves half a PDF behind.
  */
 internal object PdfVectorExport {
-    fun write(renderer: NoteRenderer, outFile: File) {
-        val started = System.nanoTime()
-        fun checkTime() {
-            if ((System.nanoTime() - started) / 1_000_000 > Limits.PDF_VECTOR_EXPORT_TIMEOUT_MS) throw TimeoutException("vector PDF export")
-        }
+    private fun scratch() = MemoryUsageSetting.setupMixed(Limits.PDF_SCRATCH_MEMORY_BYTES)
 
-        val closeables = ArrayList<AutoCloseable>()
-        val tempFiles = ArrayList<File>()
+    fun write(renderer: NoteRenderer, outFile: File, deadline: PdfExportDeadline = PdfExportDeadline()) {
+        deadline.check("vector start")
+        val overlayFile = File.createTempFile("pdf-overlay", ".pdf")
         try {
-            val sources = HashMap<String, PDDocument>()
-            fun source(media: String): PDDocument = sources.getOrPut(media) {
-                val bytes = renderer.note.media[media] ?: error("missing PDF media $media")
-                val f = File.createTempFile("pdf-vector-src", ".pdf").also { tempFiles += it }
-                f.writeBytes(bytes)
-                PDDocument.load(f).also { closeables += it }
-            }
-
-            // Pass 1: everything the note draws, as one platform PDF (transparent where the original page shows through).
-            val overlay = PdfDocument()
-            val srcPages = arrayOfNulls<PDPage>(renderer.pageCount)
-            val overlayBytes = try {
+            PDDocument(scratch()).use { target ->
                 for (i in 0 until renderer.pageCount) {
-                    checkTime()
+                    deadline.check("source load")
                     val spec = renderer.note.doc.pages.getOrNull(i)
-                    val pdfRef = spec?.pdf
-                    val noteH = unrotatedPageH(renderer, i)
-                    if (pdfRef != null && renderer.note.media.containsKey(pdfRef.media)) {
-                        val srcDoc = source(pdfRef.media)
-                        val src = srcDoc.getPage(pdfRef.pageIndex)
-                        srcPages[i] = src
-                        val crop = src.cropBox
-                        val rot = src.rotation
-                        val sideways = rot % 180 != 0
-                        val srcW = if (sideways) crop.height else crop.width
-                        val srcH = if (sideways) crop.width else crop.height
-                        val (pw, ph) = PdfPageGeometry.pageBox(srcW, srcH)
-                        val page = overlay.startPage(PdfDocument.PageInfo.Builder(pw, ph, i + 1).create())
-                        val c = page.canvas
-                        c.clipRect(0f, 0f, pw.toFloat(), ph.toFloat())
-                        val t = PdfPageGeometry.fit(srcW, srcH, Limits.PAGE_WIDTH_PU, noteH)
-                        c.scale(pw / srcW, ph / srcH)
-                        c.scale(1f / t.scale, 1f / t.scale)
-                        c.translate(-t.dx, -t.dy)
-                        renderer.drawPage(c, i, Layers(background = false, template = false))
-                        overlay.finishPage(page)
-                    } else {
-                        val (pw, ph) = PdfPageGeometry.nativePageBox(spec?.size, noteH / renderer.pageW)
-                        val page = overlay.startPage(PdfDocument.PageInfo.Builder(pw, ph, i + 1).create())
-                        val c = page.canvas
-                        c.clipRect(0f, 0f, pw.toFloat(), ph.toFloat())
-                        c.scale(PdfPageGeometry.pointsPerPu(pw), ph / noteH)
-                        c.clipRect(0f, 0f, renderer.pageW, noteH)
-                        renderer.drawPage(c, i)
-                        overlay.finishPage(page)
+                    val noteH = renderer.unrotatedPageH(i)
+                    val ref = spec?.pdf
+                    val source = ref?.let {
+                        val file = renderer.note.pdfMedia[it.media] ?: throw IOException("Missing PDF source: ${it.media}")
+                        PDDocument.load(file, scratch())
+                    }
+                    source.use { document ->
+                        deadline.check("source load")
+                        val src = document?.getPage(ref!!.pageIndex)
+                        writeOverlay(renderer, i, src, overlayFile, deadline)
+                        deadline.check("overlay load")
+                        PDDocument.load(overlayFile, scratch()).use { overlay ->
+                            deadline.check("overlay load")
+                            assemblePage(target, spec, src, noteH, overlay, deadline)
+                        }
                     }
                 }
-                ByteArrayOutputStream().also { overlay.writeTo(it) }.toByteArray()
-            } finally {
-                overlay.close()
+                deadline.check("vector save")
+                target.save(outFile)
+                deadline.check("vector save")
             }
-
-            // Pass 2: assemble with PdfBox.
-            val jobs = (0 until renderer.pageCount).map { PageJob(renderer.note.doc.pages.getOrNull(it), srcPages[it], unrotatedPageH(renderer, it)) }
-            assemble(jobs, overlayBytes, outFile, ::checkTime)
         } finally {
-            closeables.asReversed().forEach { runCatching { it.close() } }
-            tempFiles.forEach { it.delete() }
+            overlayFile.delete()
         }
     }
 
-    /**
-     * Height of page [i] in page units BEFORE its rotation: ink and markup are stored unrotated, while the layout's
-     * [NoteRenderer.pageH] already swaps the aspect of a sideways page.
-     */
-    private fun unrotatedPageH(renderer: NoteRenderer, i: Int): Float {
+    private fun writeOverlay(renderer: NoteRenderer, i: Int, src: PDPage?, file: File, deadline: PdfExportDeadline) {
         val spec = renderer.note.doc.pages.getOrNull(i)
-        if (spec == null || !spec.isSideways) return renderer.pageH(i)
-        val ratio = spec.size?.takeIf { it.isValid }?.heightOverWidth ?: renderer.note.doc.layout.ratio.heightOverWidth
-        return renderer.pageW * ratio
+        val noteH = renderer.unrotatedPageH(i)
+        deadline.check("overlay start")
+        val overlay = PdfDocument()
+        var activePage: PdfDocument.Page? = null
+        try {
+            if (src != null) {
+                val crop = src.cropBox
+                val sideways = src.rotation % 180 != 0
+                val srcW = if (sideways) crop.height else crop.width
+                val srcH = if (sideways) crop.width else crop.height
+                val (pw, ph) = PdfPageGeometry.pageBox(srcW, srcH)
+                val page = overlay.startPage(PdfDocument.PageInfo.Builder(pw, ph, 1).create()).also { activePage = it }
+                val c = page.canvas
+                c.clipRect(0f, 0f, pw.toFloat(), ph.toFloat())
+                val t = PdfPageGeometry.fit(srcW, srcH, Limits.PAGE_WIDTH_PU, noteH)
+                c.scale(pw / srcW, ph / srcH)
+                c.scale(1f / t.scale, 1f / t.scale)
+                c.translate(-t.dx, -t.dy)
+                deadline.check("overlay draw")
+                renderer.drawPage(c, i, Layers(background = false, template = false))
+                deadline.check("overlay draw")
+                overlay.finishPage(page)
+                activePage = null
+            } else {
+                val (pw, ph) = PdfPageGeometry.nativePageBox(spec?.size, noteH / renderer.pageW)
+                val page = overlay.startPage(PdfDocument.PageInfo.Builder(pw, ph, 1).create()).also { activePage = it }
+                val c = page.canvas
+                c.clipRect(0f, 0f, pw.toFloat(), ph.toFloat())
+                c.scale(PdfPageGeometry.pointsPerPu(pw), ph / noteH)
+                c.clipRect(0f, 0f, renderer.pageW, noteH)
+                deadline.check("overlay draw")
+                renderer.drawPage(c, i)
+                deadline.check("overlay draw")
+                overlay.finishPage(page)
+                activePage = null
+            }
+            deadline.check("overlay save")
+            file.outputStream().use { overlay.writeTo(it) }
+            deadline.check("overlay save")
+        } finally {
+            activePage?.let { runCatching { overlay.finishPage(it) } }
+            overlay.close()
+        }
     }
 
-    /** One output page: its spec, the original PDF page behind it (null for a native page) and the note page height in units. */
-    class PageJob(val spec: PageSpec?, val src: PDPage?, val noteH: Float)
-
-    /**
-     * Pass 2. [overlayBytes] holds one page per job: the note's drawing on top of the original page, or the whole native page.
-     * Split from [write] so it can be tested on the JVM (the platform PDF writer used by pass 1 is not available there).
-     */
-    fun assemble(jobs: List<PageJob>, overlayBytes: ByteArray, outFile: File, checkTime: () -> Unit = {}) {
-        val closeables = ArrayList<AutoCloseable>()
-        try {
-            val overlayDoc = PDDocument.load(overlayBytes).also { closeables += it }
-            val target = PDDocument().also { closeables += it }
-            val layers = LayerUtility(target)
-            jobs.forEachIndexed { i, job ->
-                checkTime()
-                val spec = job.spec
-                val src = job.src
-                val overlayPage = overlayDoc.getPage(i)
-                val specRotation = spec?.normalizedRotation ?: 0
-                val noteH = job.noteH
-                val toUser: FloatArray
-                val mapPu: (Float, Float) -> Pair<Float, Float> // page units -> displayed points, y down
-                val page: PDPage
-                if (src != null) {
-                    val crop = src.cropBox
-                    val rot = src.rotation
-                    val sideways = rot % 180 != 0
-                    val srcW = if (sideways) crop.height else crop.width
-                    val srcH = if (sideways) crop.width else crop.height
-                    page = target.importPage(src)
-                    stripSourceLinks(page)
-                    toUser = PdfPageGeometry.displayedToUser(rot, crop.lowerLeftX, crop.lowerLeftY, crop.width, crop.height)
-                    val form = layers.importPageAsForm(overlayDoc, i)
-                    val (pw, ph) = PdfPageGeometry.pageBox(srcW, srcH)
-                    PDPageContentStream(target, page, PDPageContentStream.AppendMode.APPEND, true, true).use { cs ->
-                        cs.saveGraphicsState()
-                        // The overlay page is srcW x srcH with its origin at the displayed bottom-left.
-                        cs.transform(Matrix(toUser[0], toUser[1], toUser[2], toUser[3], toUser[4], toUser[5]))
-                        cs.transform(Matrix.getScaleInstance(srcW / pw, srcH / ph)) // whole-point overlay page vs exact size
-                        cs.drawForm(form)
-                        cs.restoreGraphicsState()
-                    }
-                    val t = PdfPageGeometry.fit(srcW, srcH, Limits.PAGE_WIDTH_PU, noteH)
-                    mapPu = { x, y -> PdfPageGeometry.toPdfX(x, t) to (srcH - PdfPageGeometry.toPdfY(y, t)) }
-                    page.rotation = (rot + specRotation) % 360
-                } else {
-                    page = target.importPage(overlayPage)
-                    val box = page.mediaBox
-                    toUser = floatArrayOf(1f, 0f, 0f, 1f, 0f, 0f)
-                    mapPu = { x, y -> x * box.width / Limits.PAGE_WIDTH_PU to box.height - y * box.height / noteH }
-                    page.rotation = specRotation
-                }
-                val extra = spec?.textMarkup.orEmpty()
-                    .take(Limits.MAX_MARKUPS_PER_PAGE)
-                    .map { annotation(it, toUser, mapPu) }
-                if (extra.isNotEmpty()) {
-                    val list = page.annotations
-                    list.addAll(extra)
-                    page.annotations = list
-                }
+    private fun assemblePage(target: PDDocument, spec: PageSpec?, src: PDPage?, noteH: Float, overlayDoc: PDDocument, deadline: PdfExportDeadline) {
+        deadline.check("page import")
+        val layers = LayerUtility(target)
+        val overlayPage = overlayDoc.getPage(0)
+        val specRotation = spec?.normalizedRotation ?: 0
+        val toUser: FloatArray
+        val mapPu: (Float, Float) -> Pair<Float, Float> // page units -> displayed points, y down
+        val page: PDPage
+        if (src != null) {
+            val crop = src.cropBox
+            val rot = src.rotation
+            val sideways = rot % 180 != 0
+            val srcW = if (sideways) crop.height else crop.width
+            val srcH = if (sideways) crop.width else crop.height
+            page = target.importPage(src)
+            // importPage omits resources inherited from the source page tree.
+            src.resources?.let { resources ->
+                page.resources = PDResources(PDFCloneUtility(target).cloneForNewDocument(resources.cosObject) as COSDictionary)
             }
-            target.save(outFile)
-        } finally {
-            closeables.asReversed().forEach { runCatching { it.close() } }
+            stripSourceLinks(page)
+            page.cosObject.getDictionaryObject(COSName.ANNOTS)?.let { annotations ->
+                page.cosObject.setItem(COSName.ANNOTS, PDFCloneUtility(target).cloneForNewDocument(annotations))
+            }
+            deadline.check("page import")
+            toUser = PdfPageGeometry.displayedToUser(rot, crop.lowerLeftX, crop.lowerLeftY, crop.width, crop.height)
+            deadline.check("overlay import")
+            val form = layers.importPageAsForm(overlayDoc, 0)
+            deadline.check("overlay import")
+            val (pw, ph) = PdfPageGeometry.pageBox(srcW, srcH)
+            PDPageContentStream(target, page, PDPageContentStream.AppendMode.APPEND, true, true).use { cs ->
+                cs.saveGraphicsState()
+                // The overlay page is srcW x srcH with its origin at the displayed bottom-left.
+                cs.transform(Matrix(toUser[0], toUser[1], toUser[2], toUser[3], toUser[4], toUser[5]))
+                cs.transform(Matrix.getScaleInstance(srcW / pw, srcH / ph)) // whole-point overlay page vs exact size
+                cs.drawForm(form)
+                cs.restoreGraphicsState()
+            }
+            val t = PdfPageGeometry.fit(srcW, srcH, Limits.PAGE_WIDTH_PU, noteH)
+            mapPu = { x, y -> PdfPageGeometry.toPdfX(x, t) to (srcH - PdfPageGeometry.toPdfY(y, t)) }
+            page.rotation = (rot + specRotation) % 360
+        } else {
+            page = target.importPage(overlayPage)
+            overlayPage.resources?.let { resources ->
+                page.resources = PDResources(PDFCloneUtility(target).cloneForNewDocument(resources.cosObject) as COSDictionary)
+            }
+            deadline.check("page import")
+            val box = page.mediaBox
+            toUser = floatArrayOf(1f, 0f, 0f, 1f, 0f, 0f)
+            mapPu = { x, y -> x * box.width / Limits.PAGE_WIDTH_PU to box.height - y * box.height / noteH }
+            page.rotation = specRotation
         }
+        val extra = spec?.textMarkup.orEmpty()
+            .take(Limits.MAX_MARKUPS_PER_PAGE)
+            .map { deadline.check("markup overlay"); annotation(it, toUser, mapPu) }
+        if (extra.isNotEmpty()) {
+            val list = page.annotations
+            list.addAll(extra)
+            page.annotations = list
+        }
+        deadline.check("page overlay")
     }
 
     private fun annotation(m: PdfTextMarkup, toUser: FloatArray, mapPu: (Float, Float) -> Pair<Float, Float>): PDAnnotation {

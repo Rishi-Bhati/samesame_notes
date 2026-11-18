@@ -377,6 +377,7 @@ internal class DefaultNoteRepository @Inject constructor(
             }
             override suspend fun page(pageId: String): PageContent = documents.readPage(id.value, pageId)
             override suspend fun media(path: String): ByteArray? = documents.readMedia(id.value, path)
+            override suspend fun mediaFile(path: String) = documents.mediaFile(id.value, path)
             override suspend fun linkedFiles(ids: Set<String>) = exportLinkedFiles(ids)
         }
         return exporter.export(source, format, options, out)

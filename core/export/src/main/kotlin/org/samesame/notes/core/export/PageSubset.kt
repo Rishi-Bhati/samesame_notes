@@ -17,5 +17,9 @@ class PageSubsetSource(private val source: ExportSource, private val pageIds: Se
 
     override suspend fun media(path: String): ByteArray? = source.media(path)
 
+    override suspend fun mediaFile(path: String) = source.mediaFile(path)
+
+    override suspend fun openMedia(path: String) = source.openMedia(path)
+
     override suspend fun linkedFiles(ids: Set<String>): List<ExportLinkedFile> = source.linkedFiles(ids)
 }

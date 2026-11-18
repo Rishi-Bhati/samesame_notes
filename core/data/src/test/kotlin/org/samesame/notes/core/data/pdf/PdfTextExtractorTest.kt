@@ -6,6 +6,7 @@ import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
 import com.tom_roush.pdfbox.pdmodel.font.PDType1Font
+import com.tom_roush.pdfbox.pdmodel.font.PDType0Font
 import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionGoTo
 import com.tom_roush.pdfbox.pdmodel.interactive.action.PDActionURI
 import com.tom_roush.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink
@@ -19,6 +20,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.samesame.notes.core.model.pdf.PdfLinkDestination
+import org.samesame.notes.core.model.Limits
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -207,4 +209,86 @@ class PdfTextExtractorTest {
 
         doc.close()
     }
+    @Test fun densePageStopsRetainingGlyphsAndText() {
+        PDDocument().use { doc ->
+            val page = PDPage(PDRectangle.A4)
+            doc.addPage(page)
+            PDPageContentStream(doc, page).use { cs ->
+                cs.beginText()
+                cs.setFont(PDType1Font.HELVETICA, 12f)
+                cs.newLineAtOffset(10f, 750f)
+                cs.showText("a".repeat(Limits.PDF_TEXT_MAX_CHARS_PER_PAGE + 1000))
+                cs.endText()
+            }
+            val text = PdfTextExtractor().extractPage(doc, 0)
+            assertThat(text.text.length).isAtMost(Limits.PDF_TEXT_MAX_CHARS_PER_PAGE)
+            assertThat(text.glyphs.size).isEqualTo(text.text.length)
+            assertThat(text.text.length).isGreaterThan(0)
+            assertThat(PdfTextExtractor.search(text, "a", 7)).hasSize(7)
+            assertThat(PdfTextExtractor.search(text, "a", 0)).isEmpty()
+        }
+    }
+
+    @Test fun rotatedCropGlyphsAndXyzTargetsUseDisplayedCoordinates() {
+        PDDocument().use { doc ->
+            val rotations = listOf(0, 90, 180, 270)
+            for (rotation in rotations) {
+                val page = PDPage(PDRectangle(300f, 400f))
+                page.cropBox = PDRectangle(10f, 20f, 200f, 300f)
+                page.rotation = rotation
+                doc.addPage(page)
+                PDPageContentStream(doc, page).use { cs ->
+                    cs.beginText(); cs.setFont(PDType1Font.HELVETICA, 12f)
+                    cs.newLineAtOffset(30f, 270f); cs.showText("A"); cs.endText()
+                }
+                page.annotations = listOf(PDAnnotationLink().apply {
+                    rectangle = PDRectangle(30f, 260f, 12f, 12f)
+                    destination = PDPageXYZDestination().apply { this.page = page; left = 30; top = 270 }
+                })
+            }
+            val pages = rotations.indices.map { PdfTextExtractor().extractPage(doc, it) }
+            val base = pages[0].glyphs.first { it.char == 'A' }.boundsPt
+            assertThat(base.left).isWithin(0.1f).of(20f)
+            assertThat(base.top).isWithin(0.1f).of(38f)
+            val expected = listOf(
+                base,
+                org.samesame.notes.core.model.pdf.RectPt(300f - base.bottom, base.left, 300f - base.top, base.right),
+                org.samesame.notes.core.model.pdf.RectPt(200f - base.right, 300f - base.bottom, 200f - base.left, 300f - base.top),
+                org.samesame.notes.core.model.pdf.RectPt(base.top, 200f - base.right, base.bottom, 200f - base.left),
+            )
+            pages.forEachIndexed { i, text ->
+                val bounds = text.glyphs.first { it.char == 'A' }.boundsPt
+                assertThat(bounds.left).isWithin(0.1f).of(expected[i].left)
+                assertThat(bounds.top).isWithin(0.1f).of(expected[i].top)
+                assertThat(bounds.right).isWithin(0.1f).of(expected[i].right)
+                assertThat(bounds.bottom).isWithin(0.1f).of(expected[i].bottom)
+                val target = text.links.single().destination as PdfLinkDestination.Internal
+                assertThat(target.targetPageIndex).isEqualTo(i)
+                assertThat(target.targetYPt!!).isWithin(0.1f).of(listOf(50f, 20f, 250f, 180f)[i])
+                assertThat(PdfTextExtractor.search(text, "A").single().rectsPt).containsExactly(bounds)
+            }
+        }
+    }
+
+    @Test fun ligatureExpansionAndWhitespaceKeepFollowingGlyphAligned() {
+        PDDocument().use { doc ->
+            val page = PDPage(PDRectangle.A4)
+            doc.addPage(page)
+            val font = RuntimeEnvironment.getApplication().assets.open("com/tom_roush/pdfbox/resources/ttf/LiberationSans-Regular.ttf").use { PDType0Font.load(doc, it) }
+            PDPageContentStream(doc, page).use { cs ->
+                cs.beginText(); cs.setFont(font, 12f); cs.newLineAtOffset(50f, 750f)
+                cs.showText("A\uFB01 B"); cs.endText()
+            }
+            val text = PdfTextExtractor().extractPage(doc, 0)
+            assertThat(text.text).contains("Afi B")
+            val f = text.glyphs[text.text.indexOf('f')]
+            val i = text.glyphs[text.text.indexOf('i')]
+            val b = text.glyphs[text.text.indexOf('B')]
+            assertThat(f.boundsPt).isEqualTo(i.boundsPt)
+            assertThat(f.boundsPt.width).isGreaterThan(0f)
+            assertThat(b.boundsPt.left).isGreaterThan(f.boundsPt.right)
+            assertThat(b.boundsPt.width).isGreaterThan(0f)
+        }
+    }
+
 }

@@ -21,7 +21,6 @@ import org.samesame.notes.core.model.pdf.PdfLinkDestination
 import org.samesame.notes.feature.composer.canvas.DocumentLayout
 import org.samesame.notes.feature.composer.canvas.Viewport
 
-private const val DEFAULT_WIDTH_PT = 595f
 private const val HIGHLIGHT_COLOR = 0x66FFEB3BL
 private const val LINE_COLOR = 0xFFE53935L
 
@@ -60,12 +59,17 @@ fun rememberPdfInteraction(
         return layoutNow.pageRects.indexOfFirst { it.contains(doc) }
     }
 
-    fun widthPtOf(i: Int) = pagesNow.getOrNull(i)?.size?.widthPt ?: DEFAULT_WIDTH_PT
+    fun fitOf(i: Int): Pair<Float, PdfCoordinates.PageTransform>? {
+        val spec = pagesNow.getOrNull(i) ?: return null
+        val height = layoutNow.pageRects.getOrNull(i)?.height ?: return null
+        return host.pageFit(spec, height)
+    }
 
-    fun toPt(view: Offset, i: Int): Offset {
+    fun toPt(view: Offset, i: Int): Offset? {
+        val (width, transform) = fitOf(i) ?: return null
         val o = layoutNow.pageOrigin(i)
         val (x, y) = PdfCoordinates.viewToPt(
-            view.x, view.y, viewport.origin.x, viewport.origin.y, viewport.scale, o.x, o.y, widthPtOf(i),
+            view.x, view.y, viewport.origin.x, viewport.origin.y, viewport.scale, o.x, o.y, width, transform,
         )
         return Offset(x, y)
     }
@@ -74,7 +78,8 @@ fun rememberPdfInteraction(
         val target = pagesNow.indexOfFirst { it.pdf?.media == media && it.pdf?.pageIndex == targetPdfPage }
         if (target < 0) return
         val o = layoutNow.pageOrigin(target)
-        val yPu = if (yPt != null) yPt * PdfCoordinates.puPerPt(widthPtOf(target)) else 0f
+        val fit = fitOf(target)?.second ?: return
+        val yPu = if (yPt != null) yPt * fit.scale + fit.dy else 0f
         val margin = 24f
         val dest = if (layoutNow.horizontal) Offset(o.x, viewport.scroll.y) else Offset(viewport.scroll.x, o.y + yPu - margin)
         viewport.scrollTo(dest)
@@ -103,7 +108,7 @@ fun rememberPdfInteraction(
                 val i = pageAt(p)
                 val pdf = pagesNow.getOrNull(i)?.pdf ?: return@pdfPresses false
                 val text = host.pageText(pdf, i) ?: return@pdfPresses false
-                val pt = toPt(p, i)
+                val pt = toPt(p, i) ?: return@pdfPresses false
                 val word = selection.hitTestWord(text, pt.x, pt.y) ?: return@pdfPresses false
                 selection.selectWord(i, word)
                 true
@@ -116,16 +121,17 @@ fun rememberPdfInteraction(
             PdfSelectionOverlay(
                 selectionState = selection,
                 pageTextProvider = { i -> pagesNow.getOrNull(i)?.pdf?.let { host.pageText(it, i) } },
-                pageWidthPtProvider = { i -> widthPtOf(i) },
+                pageFitProvider = { i -> fitOf(i) },
                 layout = layout,
                 viewport = viewport,
                 onMarkup = { kind ->
                     val i = selection.selectedPage
                     val text = i?.let { idx -> pagesNow.getOrNull(idx)?.pdf?.let { host.pageText(it, idx) } }
-                    if (i != null && text != null) {
-                        val w = widthPtOf(i)
+                    val fit = i?.let { fitOf(it) }
+                    if (i != null && text != null && fit != null) {
+                        val (w, transform) = fit
                         val quads = selection.selectionRectsPt(text).map { r ->
-                            val pu = PdfCoordinates.ptToPagePu(r, w)
+                            val pu = PdfCoordinates.ptToPagePu(r, w, transform)
                             QuadPu.fromRect(RectPu(pu.left, pu.top, pu.right, pu.bottom))
                         }
                         val color = if (kind == PdfMarkupKind.Highlight) HIGHLIGHT_COLOR else LINE_COLOR

@@ -161,8 +161,19 @@ object Limits {
     const val PDF_TILE_SIZE_PX = 512
     /** Tile bitmap memory kept by the LRU cache (48 tiles of 512x512 ARGB_8888). */
     const val PDF_TILE_CACHE_MAX_BYTES = 48L * 1024 * 1024
+    /** Queued/running render requests retained at once. */
+    const val PDF_TILE_MAX_REQUESTS = 32
+    /** Destinations reserved before allocation (four maximum-size tiles). */
+    const val PDF_TILE_IN_FLIGHT_MAX_BYTES = 4L * 1024 * 1024
+    /** Failed destinations kept for reuse; published tiles never enter this pool. */
+    const val PDF_TILE_POOL_MAX_BYTES = 2L * 1024 * 1024
     /** Tiles are drawn only above this zoom; at or below it the base page bitmap is enough. */
     const val PDF_TILE_ZOOM_THRESHOLD = 1.25f
+    /** Positioned glyphs and UTF-16 text units retained from one PDF page. */
+    const val PDF_TEXT_MAX_GLYPHS_PER_PAGE = 50_000
+    const val PDF_TEXT_MAX_CHARS_PER_PAGE = 50_000
+    /** Estimated heap retained by the extracted-page cache for one note. */
+    const val PDF_TEXT_CACHE_MAX_BYTES = 16 * 1024 * 1024
     /** Pages of extracted text kept in memory per open PDF. */
     const val PDF_TEXT_CACHE_MAX_PAGES = 100
     /** Outline levels read; deeper entries are dropped so a hostile file cannot blow the stack. */
@@ -177,6 +188,8 @@ object Limits {
     const val MAX_QUADS_PER_MARKUP = 1_000
     /** Characters of selected text stored with one markup. */
     const val MAX_MARKUP_TEXT_LENGTH = 10_000
+    /** Heap portion of each PdfBox scratch store; larger streams spill to disk. */
+    const val PDF_SCRATCH_MEMORY_BYTES = 8L * 1024 * 1024
     /** Vector PDF export gives up after this long. */
     const val PDF_VECTOR_EXPORT_TIMEOUT_MS = 60_000L
 }

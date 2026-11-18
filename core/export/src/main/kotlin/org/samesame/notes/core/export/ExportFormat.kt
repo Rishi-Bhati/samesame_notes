@@ -110,6 +110,10 @@ interface ExportSource {
     suspend fun page(pageId: String): PageContent
     /** Bytes of `media/<name>` or null when missing. */
     suspend fun media(path: String): ByteArray?
+    /** Seekable media file, borrowed for the export; PDFs use this to avoid a full in-memory copy. */
+    suspend fun mediaFile(path: String): java.io.File? = null
+    /** Stream for sources without a seekable file. */
+    suspend fun openMedia(path: String): java.io.InputStream? = media(path)?.inputStream()
     /** Library files available for `linkFilesAsZip`; empty unless the caller opts in. */
     suspend fun linkedFiles(ids: Set<String>): List<ExportLinkedFile> = emptyList()
 }

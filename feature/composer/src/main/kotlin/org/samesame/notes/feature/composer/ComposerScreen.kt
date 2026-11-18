@@ -1284,8 +1284,9 @@ internal fun ComposerEditor(
             val page = latestLayout.pageRects.getOrNull(m.pageIndex)
             val first = m.rectsPt.firstOrNull()
             if (page != null && first != null) {
-                val wPt = doc.pages.getOrNull(m.pageIndex)?.size?.widthPt ?: 595f
-                val pu = org.samesame.notes.core.data.pdf.PdfCoordinates.ptToPagePu(first, wPt)
+                val spec = doc.pages.getOrNull(m.pageIndex) ?: return
+                val (wPt, transform) = pdfHost.pageFit(spec, page.height) ?: return
+                val pu = org.samesame.notes.core.data.pdf.PdfCoordinates.ptToPagePu(first, wPt, transform)
                 val v = viewport.visibleDoc
                 if (latestLayout.horizontal) viewport.scrollTo(Offset(page.left + pu.left - v.width / 2f, viewport.scroll.y))
                 else viewport.scrollTo(Offset(viewport.scroll.x, page.top + pu.top - v.height / 3f))
@@ -1304,23 +1305,25 @@ internal fun ComposerEditor(
         }
     }
     var searchPending by remember { mutableStateOf(false) }
+    val searchRunner = remember(session, pdfHost) {
+        org.samesame.notes.feature.composer.search.NoteSearchRunner(scope, pdfHost::forEachSearchPage)
+    }
+    DisposableEffect(searchRunner) { onDispose { searchRunner.cancel() } }
     fun runSearch() {
-        searchPending = false
         val q = searchQuery
+        val bodySnapshot = body.editable.toString()
         val pdfPages = doc.pages.mapIndexedNotNull { i, p -> p.pdf?.let { i to it } }
-        if (pdfPages.isEmpty() || q.isEmpty()) {
-            searchNav.search(body.editable, q)
-            showHit(searchNav.currentHit())
-        } else scope.launch {
-            // The text layers come off the main thread (cached per page); the hit list is built once they are in.
-            val texts = pdfHost.textForSearch(pdfPages)
+        searchPending = true
+        searchRunner.submit(bodySnapshot, q, pdfPages) { result ->
             if (searchOpen && searchQuery == q) {
-                searchNav.search(body.editable, q, texts)
+                searchNav.publish(result)
+                searchPending = false
                 showHit(searchNav.currentHit())
             }
         }
     }
     LaunchedEffect(searchOpen, searchQuery) {
+        searchRunner.cancel()
         if (!searchOpen) {
             searchNav.clear()
             textState.searchMatches = emptyList()

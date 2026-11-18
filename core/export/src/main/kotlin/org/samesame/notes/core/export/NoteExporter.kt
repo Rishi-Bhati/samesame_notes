@@ -12,6 +12,7 @@ import org.samesame.notes.core.export.render.ImageExport
 import org.samesame.notes.core.export.render.LoadedNote
 import org.samesame.notes.core.export.render.NoteRenderer
 import org.samesame.notes.core.export.render.PdfExport
+import org.samesame.notes.core.export.render.PdfExportDeadline
 import org.samesame.notes.core.export.render.loadNote
 import org.samesame.notes.core.export.text.HtmlExport
 import org.samesame.notes.core.export.text.MarkdownConverter
@@ -51,99 +52,102 @@ class NoteExporter(private val context: Context? = null) {
         if (format == ExportFormat.SSNOTE || format == ExportFormat.SDOCX) {
             throw UnsupportedOperationException("$format export is not available (TODO(sdocx) / handled by the repository)")
         }
-        val loaded = loadNote(scoped, includePdfMedia = format == ExportFormat.PDF)
-        if (format == ExportFormat.PDF) context?.let { PDFBoxResourceLoader.init(it.applicationContext) }
-        return withContext(Dispatchers.Default) {
-            val doc = loaded.doc
-            val markdown = doc.markdown
+        val deadline = if (format == ExportFormat.PDF) PdfExportDeadline() else null
+        val loaded = loadNote(scoped, includePdfMedia = format == ExportFormat.PDF, checkTime = { deadline?.check(it) })
+        try {
+            if (format == ExportFormat.PDF) context?.let { PDFBoxResourceLoader.init(it.applicationContext) }
+            return withContext(Dispatchers.Default) {
+                val doc = loaded.doc
+                val markdown = doc.markdown
 
-            // Dispatch Markdown notes to Markdown export pipelines
-            if (markdown != null) {
-                val md = markdown.source
-                val target = expectedTarget(format, options, doc.layout.mode == PageMode.Infinite, 1)
-                when (format) {
-                    ExportFormat.MARKDOWN -> {
-                        if (options.markdownAsZip || options.linkFilesAsZip) {
-                            val files = linkedFiles(md, scoped)
-                            val paths = ZipEntryNames.allocate(files.map { it.id.lowercase() to it.name })
-                            BundleZip.write(
-                                out, "note.md", BundleZip.rewriteLinks(md, paths),
-                                media = emptyMap(), files = files, paths = paths,
-                            )
-                        } else out.write(md.toByteArray(Charsets.UTF_8))
+                // Dispatch Markdown notes to Markdown export pipelines
+                if (markdown != null) {
+                    val md = markdown.source
+                    val target = expectedTarget(format, options, doc.layout.mode == PageMode.Infinite, 1)
+                    when (format) {
+                        ExportFormat.MARKDOWN -> {
+                            if (options.markdownAsZip || options.linkFilesAsZip) {
+                                val files = linkedFiles(md, scoped)
+                                val paths = ZipEntryNames.allocate(files.map { it.id.lowercase() to it.name })
+                                BundleZip.write(
+                                    out, "note.md", BundleZip.rewriteLinks(md, paths),
+                                    media = emptyMap(), files = files, paths = paths,
+                                )
+                            } else out.write(md.toByteArray(Charsets.UTF_8))
+                        }
+                        ExportFormat.HTML -> {
+                            val html = MarkdownHtmlExport.render(md, doc.title)
+                            if (options.linkFilesAsZip) {
+                                val files = linkedFiles(html, scoped)
+                                val paths = ZipEntryNames.allocate(files.map { it.id.lowercase() to it.name })
+                                BundleZip.write(out, "note.html", BundleZip.rewriteLinks(html, paths), files = files, paths = paths)
+                            } else out.write(html.toByteArray(Charsets.UTF_8))
+                        }
+                        ExportFormat.PDF -> {
+                            val richText = MarkdownConverter.markdownToRichText(md)
+                            val pages = doc.pages.ifEmpty { listOf(PageSpec("p1")) }
+                            val convertedDoc = doc.copy(body = richText, pages = pages, markdown = null)
+                            val convertedPages = if (loaded.pages.isEmpty()) mapOf(pages.first().id to PageContent(pages.first().id, emptyList(), 0)) else loaded.pages
+                            val convertedLoaded = LoadedNote(convertedDoc, convertedPages, loaded.media, loaded.pdfMedia)
+                            val renderer = NoteRenderer(convertedLoaded)
+                            PdfExport.write(renderer, out, deadline ?: PdfExportDeadline())
+                        }
+                        ExportFormat.DOCX -> {
+                            MarkdownDocxExport.write(md, doc.title, out)
+                        }
+                        ExportFormat.TXT -> {
+                            val text = MarkdownConverter.markdownToPlainText(md)
+                            out.write(text.toByteArray(Charsets.UTF_8))
+                        }
+                        ExportFormat.IMAGES -> {
+                            val renderer = NoteRenderer(loaded)
+                            return@withContext ImageExport.write(renderer, doc.title, options, out)
+                        }
+                        ExportFormat.PPTX -> {
+                            val renderer = NoteRenderer(loaded)
+                            val assets = AndroidAssets(renderer)
+                            PptxExport.write(doc, assets, out)
+                        }
+                        ExportFormat.SSNOTE, ExportFormat.SDOCX -> error("unreachable")
                     }
+                    out.flush()
+                    return@withContext target
+                }
+
+                val renderer = NoteRenderer(loaded)
+                val assets = AndroidAssets(renderer)
+                val target = expectedTarget(format, options, doc.layout.mode == PageMode.Infinite, renderer.pageCount)
+                when (format) {
+                    ExportFormat.PDF -> PdfExport.write(renderer, out, deadline ?: PdfExportDeadline())
+                    ExportFormat.IMAGES -> return@withContext ImageExport.write(renderer, doc.title, options, out)
+                    ExportFormat.TXT -> out.write(TextExport.render(doc, assets).toByteArray(Charsets.UTF_8))
                     ExportFormat.HTML -> {
-                        val html = MarkdownHtmlExport.render(md, doc.title)
+                        val html = HtmlExport.render(doc, assets)
                         if (options.linkFilesAsZip) {
                             val files = linkedFiles(html, scoped)
                             val paths = ZipEntryNames.allocate(files.map { it.id.lowercase() to it.name })
                             BundleZip.write(out, "note.html", BundleZip.rewriteLinks(html, paths), files = files, paths = paths)
                         } else out.write(html.toByteArray(Charsets.UTF_8))
                     }
-                    ExportFormat.PDF -> {
-                        val richText = MarkdownConverter.markdownToRichText(md)
-                        val pages = doc.pages.ifEmpty { listOf(PageSpec("p1")) }
-                        val convertedDoc = doc.copy(body = richText, pages = pages, markdown = null)
-                        val convertedPages = if (loaded.pages.isEmpty()) mapOf(pages.first().id to PageContent(pages.first().id, emptyList(), 0)) else loaded.pages
-                        val convertedLoaded = LoadedNote(convertedDoc, convertedPages, loaded.media)
-                        val renderer = NoteRenderer(convertedLoaded)
-                        PdfExport.write(renderer, out)
-                    }
-                    ExportFormat.DOCX -> {
-                        MarkdownDocxExport.write(md, doc.title, out)
-                    }
-                    ExportFormat.TXT -> {
-                        val text = MarkdownConverter.markdownToPlainText(md)
-                        out.write(text.toByteArray(Charsets.UTF_8))
-                    }
-                    ExportFormat.IMAGES -> {
-                        val renderer = NoteRenderer(loaded)
-                        return@withContext ImageExport.write(renderer, doc.title, options, out)
-                    }
-                    ExportFormat.PPTX -> {
-                        val renderer = NoteRenderer(loaded)
-                        val assets = AndroidAssets(renderer)
-                        PptxExport.write(doc, assets, out)
+                    ExportFormat.DOCX -> DocxExport.write(doc, assets, out)
+                    ExportFormat.PPTX -> PptxExport.write(doc, assets, out)
+                    ExportFormat.MARKDOWN -> {
+                        val result = MarkdownExport.render(doc, assets, writeMedia = options.markdownAsZip)
+                        if (options.markdownAsZip || options.linkFilesAsZip) {
+                            val files = linkedFiles(result.markdown, scoped)
+                            val paths = ZipEntryNames.allocate(files.map { it.id.lowercase() to it.name })
+                            BundleZip.write(
+                                out, "note.md", BundleZip.rewriteLinks(result.markdown, paths),
+                                media = result.media, files = files, paths = paths,
+                            )
+                        } else out.write(result.markdown.toByteArray(Charsets.UTF_8))
                     }
                     ExportFormat.SSNOTE, ExportFormat.SDOCX -> error("unreachable")
                 }
                 out.flush()
-                return@withContext target
+                target
             }
-
-            val renderer = NoteRenderer(loaded)
-            val assets = AndroidAssets(renderer)
-            val target = expectedTarget(format, options, doc.layout.mode == PageMode.Infinite, renderer.pageCount)
-            when (format) {
-                ExportFormat.PDF -> PdfExport.write(renderer, out)
-                ExportFormat.IMAGES -> return@withContext ImageExport.write(renderer, doc.title, options, out)
-                ExportFormat.TXT -> out.write(TextExport.render(doc, assets).toByteArray(Charsets.UTF_8))
-                ExportFormat.HTML -> {
-                    val html = HtmlExport.render(doc, assets)
-                    if (options.linkFilesAsZip) {
-                        val files = linkedFiles(html, scoped)
-                        val paths = ZipEntryNames.allocate(files.map { it.id.lowercase() to it.name })
-                        BundleZip.write(out, "note.html", BundleZip.rewriteLinks(html, paths), files = files, paths = paths)
-                    } else out.write(html.toByteArray(Charsets.UTF_8))
-                }
-                ExportFormat.DOCX -> DocxExport.write(doc, assets, out)
-                ExportFormat.PPTX -> PptxExport.write(doc, assets, out)
-                ExportFormat.MARKDOWN -> {
-                    val result = MarkdownExport.render(doc, assets, writeMedia = options.markdownAsZip)
-                    if (options.markdownAsZip || options.linkFilesAsZip) {
-                        val files = linkedFiles(result.markdown, scoped)
-                        val paths = ZipEntryNames.allocate(files.map { it.id.lowercase() to it.name })
-                        BundleZip.write(
-                            out, "note.md", BundleZip.rewriteLinks(result.markdown, paths),
-                            media = result.media, files = files, paths = paths,
-                        )
-                    } else out.write(result.markdown.toByteArray(Charsets.UTF_8))
-                }
-                ExportFormat.SSNOTE, ExportFormat.SDOCX -> error("unreachable")
-            }
-            out.flush()
-            target
-        }
+        } finally { loaded.close() }
     }
 
     /** The linked files actually referenced by the rendered text (missing files are simply not bundled). */

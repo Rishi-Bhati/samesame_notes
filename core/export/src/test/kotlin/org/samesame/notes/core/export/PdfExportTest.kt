@@ -5,6 +5,7 @@ import android.graphics.pdf.PdfDocument
 import org.robolectric.RuntimeEnvironment
 import com.google.common.truth.Truth.assertThat
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
@@ -15,6 +16,7 @@ import com.tom_roush.pdfbox.text.PDFTextStripper
 import kotlinx.coroutines.runBlocking
 import org.junit.Before
 import org.junit.Test
+import org.junit.Assert.assertThrows
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
@@ -164,5 +166,44 @@ class PdfExportTest {
             assertThat(out.numberOfPages).isEqualTo(2)
             assertThat(out.getPage(1).rotation).isEqualTo(270)
         }
+    }
+
+    @Test fun `inherited fonts survive import and overlay resources`() {
+        val bytes = PDDocument().use { d ->
+            val page = PDPage(PDRectangle(200f, 300f))
+            d.addPage(page)
+            PDPageContentStream(d, page).use { cs ->
+                cs.beginText()
+                cs.setFont(PDType1Font.HELVETICA, 14f)
+                cs.newLineAtOffset(20f, 250f)
+                cs.showText("INHERITED FONT")
+                cs.endText()
+            }
+            val parent = page.cosObject.getDictionaryObject(COSName.PARENT) as com.tom_roush.pdfbox.cos.COSDictionary
+            val probe = d.document.createCOSStream()
+            probe.createOutputStream().use { it.write("resource stream".toByteArray()) }
+            page.resources.cosObject.setItem(COSName.getPDFName("Probe"), probe)
+            parent.setItem(COSName.RESOURCES, page.resources)
+            page.cosObject.removeItem(COSName.RESOURCES)
+            ByteArrayOutputStream().also { d.save(it) }.toByteArray()
+        }
+        val doc = NoteDocument(id = "n", pages = listOf(PageSpec("p", pdf = PdfBackground("media/src.pdf", 0))))
+        PDDocument.load(export(doc, mapOf("media/src.pdf" to bytes))).use { out ->
+            assertThat(PDFTextStripper().getText(out)).contains("INHERITED FONT")
+            assertThat(out.getPage(0).cosObject.containsKey(COSName.RESOURCES)).isTrue()
+            val probe = out.getPage(0).resources.cosObject.getDictionaryObject(COSName.getPDFName("Probe")) as com.tom_roush.pdfbox.cos.COSStream
+            assertThat(probe.createInputStream().use { it.readBytes().toString(Charsets.UTF_8) }).isEqualTo("resource stream")
+        }
+    }
+
+    @Test fun `missing PDF source fails without writing a blank page`() {
+        val doc = NoteDocument(id = "n", pages = listOf(PageSpec("p", pdf = PdfBackground("media/missing.pdf", 0))))
+        val out = ByteArrayOutputStream()
+        assertThrows(java.io.IOException::class.java) {
+            runBlocking {
+                NoteExporter(RuntimeEnvironment.getApplication()).export(source(doc, emptyMap()), ExportFormat.PDF, ExportOptions(), out)
+            }
+        }
+        assertThat(out.size()).isEqualTo(0)
     }
 }

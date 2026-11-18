@@ -24,10 +24,11 @@ import org.samesame.notes.core.model.pdf.PdfPageText
 import org.samesame.notes.core.model.pdf.PdfSearchMatch
 import org.samesame.notes.core.model.pdf.PdfWord
 import org.samesame.notes.core.model.pdf.RectPt
-import java.io.ByteArrayOutputStream
+import java.io.Writer
+import com.tom_roush.pdfbox.io.MemoryUsageSetting
 import java.io.File
-import java.io.OutputStreamWriter
 import java.util.concurrent.atomic.AtomicBoolean
+import java.text.Normalizer
 
 /**
  * Extracts text layers (glyphs, words, lines), link annotations, and outlines from PDF files using PdfBox-Android.
@@ -51,10 +52,11 @@ class PdfTextExtractor(context: Context? = null) {
         stripper.endPage = pageIndex + 1
         stripper.sortByPosition = true
 
-        val dummyOut = ByteArrayOutputStream()
-        OutputStreamWriter(dummyOut).use { writer ->
-            stripper.writeText(document, writer)
-        }
+        stripper.writeText(document, object : Writer() {
+            override fun write(chars: CharArray, offset: Int, length: Int) = Unit
+            override fun flush() = Unit
+            override fun close() = Unit
+        })
 
         val (text, glyphs, lines) = stripper.buildResult()
         val links = extractLinks(document, page)
@@ -69,10 +71,10 @@ class PdfTextExtractor(context: Context? = null) {
     }
 
     fun extractPage(file: File, pageIndex: Int): PdfPageText =
-        PDDocument.load(file).use { doc -> extractPage(doc, pageIndex) }
+        PDDocument.load(file, MemoryUsageSetting.setupMixed(Limits.PDF_SCRATCH_MEMORY_BYTES)).use { doc -> extractPage(doc, pageIndex) }
 
     fun extractAllPages(file: File): List<PdfPageText> =
-        PDDocument.load(file).use { doc ->
+        PDDocument.load(file, MemoryUsageSetting.setupMixed(Limits.PDF_SCRATCH_MEMORY_BYTES)).use { doc ->
             List(doc.numberOfPages) { i -> extractPage(doc, i) }
         }
 
@@ -90,7 +92,7 @@ class PdfTextExtractor(context: Context? = null) {
     }
 
     fun extractOutline(file: File): List<PdfOutlineNode> =
-        PDDocument.load(file).use { doc -> extractOutline(doc) }
+        PDDocument.load(file, MemoryUsageSetting.setupMixed(Limits.PDF_SCRATCH_MEMORY_BYTES)).use { doc -> extractOutline(doc) }
 
     private fun parseOutlineItem(doc: PDDocument, item: PDOutlineItem, depth: Int): PdfOutlineNode? {
         if (depth > Limits.PDF_MAX_OUTLINE_DEPTH) return null
@@ -148,10 +150,13 @@ class PdfTextExtractor(context: Context? = null) {
             val pageIndex = resolveDestinationPage(doc, dest)
             if (pageIndex >= 0) {
                 var targetYPt: Float? = null
-                val resolvedPage = resolveDestinationPageObj(doc, dest)
-                if (dest is PDPageXYZDestination && dest.top != -1) {
-                    val pageHeight = resolvedPage?.cropBox?.height ?: 842f
-                    targetYPt = pageHeight - dest.top
+                val resolved = resolvePageDestination(doc, dest)
+                val targetPage = resolveDestinationPageObj(doc, dest)
+                if (resolved is PDPageXYZDestination && targetPage != null && (resolved.top != -1 || resolved.left != -1)) {
+                    val crop = targetPage.cropBox
+                    val x = if (resolved.left != -1) resolved.left.toFloat() else crop.lowerLeftX
+                    val y = if (resolved.top != -1) resolved.top.toFloat() else crop.upperRightY
+                    targetYPt = displayedPoint(x - crop.lowerLeftX, y - crop.lowerLeftY, crop.width, crop.height, targetPage.rotation).second
                 }
                 return PdfLinkDestination.Internal(pageIndex, targetYPt)
             }
@@ -172,15 +177,15 @@ class PdfTextExtractor(context: Context? = null) {
         return -1
     }
 
+    private fun resolvePageDestination(doc: PDDocument, dest: Any): PDPageDestination? = when (dest) {
+        is PDPageDestination -> dest
+        is PDNamedDestination -> doc.documentCatalog.findNamedDestinationPage(dest)
+        else -> null
+    }
+
     private fun resolveDestinationPageObj(doc: PDDocument, dest: Any): PDPage? {
-        return when (dest) {
-            is PDPageDestination -> dest.page
-            is PDNamedDestination -> {
-                val named = doc.documentCatalog.findNamedDestinationPage(dest)
-                if (named is PDPageDestination) named.page else null
-            }
-            else -> null
-        }
+        val resolved = resolvePageDestination(doc, dest) ?: return null
+        return resolved.page ?: resolved.pageNumber.takeIf { it in 0 until doc.numberOfPages }?.let { doc.getPage(it) }
     }
 
     /**
@@ -228,6 +233,17 @@ class PdfTextExtractor(context: Context? = null) {
      * Custom stripper that records glyphs, words, and lines.
      */
     private class PageStripper(private val targetPageIndex: Int) : PDFTextStripper() {
+        private var positionedGlyphs = 0
+        private var positionedChars = 0
+
+        override fun processTextPosition(text: TextPosition) {
+            val chars = text.unicode?.length ?: 0
+            if (positionedGlyphs >= Limits.PDF_TEXT_MAX_GLYPHS_PER_PAGE || positionedChars + chars > Limits.PDF_TEXT_MAX_CHARS_PER_PAGE) return
+            positionedGlyphs++
+            positionedChars += chars
+            super.processTextPosition(text)
+        }
+
         private val textBuilder = StringBuilder()
         private val glyphs = mutableListOf<PdfGlyph>()
         private val currentLineWords = mutableListOf<PdfWord>()
@@ -238,24 +254,26 @@ class PdfTextExtractor(context: Context? = null) {
         private val wordGlyphBounds = mutableListOf<RectPt>()
 
         override fun writeString(text: String, textPositions: List<TextPosition>) {
-            var posIdx = 0
-            for (ch in text) {
+            // A PDF glyph may expand to several UTF-16 characters, including ligatures and surrogate pairs.
+            val positions = textPositions.flatMap { position ->
+                val unicode = position.unicode.orEmpty()
+                val normalized = buildString {
+                    for (ch in unicode) {
+                        if (ch.code in 0xFB00..0xFDFF || ch.code in 0xFE70..0xFEFF) append(Normalizer.normalize(ch.toString(), Normalizer.Form.NFKC).trim())
+                        else append(ch)
+                    }
+                }
+                List(normalized.length) { position }
+            }
+            for ((charIndex, ch) in text.withIndex()) {
+                if (glyphs.size >= Limits.PDF_TEXT_MAX_CHARS_PER_PAGE) break
                 if (ch.isWhitespace()) {
                     finishCurrentWord()
                     val idx = glyphs.size
                     textBuilder.append(ch)
                     glyphs.add(PdfGlyph(ch, RectPt(0f, 0f, 0f, 0f), idx))
                 } else {
-                    val pos = textPositions.getOrNull(posIdx)
-                    posIdx++
-                    val bounds = if (pos != null) {
-                        val h = if (pos.fontSize > 0f) pos.fontSize else if (pos.heightDir > 0f) pos.heightDir else 12f
-                        val left = pos.xDirAdj
-                        val top = pos.yDirAdj - h
-                        RectPt(left, top, left + pos.widthDirAdj, top + h)
-                    } else {
-                        RectPt(0f, 0f, 0f, 0f)
-                    }
+                    val bounds = positions.getOrNull(charIndex)?.let { glyphBounds(it) } ?: RectPt(0f, 0f, 0f, 0f)
 
                     if (wordStartIndex == -1) {
                         wordStartIndex = glyphs.size
@@ -270,9 +288,20 @@ class PdfTextExtractor(context: Context? = null) {
             }
         }
 
+        private fun glyphBounds(pos: TextPosition): RectPt {
+            val matrix = pos.textMatrix // PdfBox has already removed the crop origin.
+            val x = matrix.translateX
+            val y = matrix.translateY
+            val dx = matrix.shearX
+            val dy = if (dx != 0f || matrix.scaleY != 0f) matrix.scaleY else pos.heightDir
+            val corners = listOf(x to y, pos.endX to pos.endY, x + dx to y + dy, pos.endX + dx to pos.endY + dy)
+                .map { (px, py) -> displayedPoint(px, py, pos.pageWidth, pos.pageHeight, pos.rotation) }
+            return RectPt(corners.minOf { it.first }, corners.minOf { it.second }, corners.maxOf { it.first }, corners.maxOf { it.second })
+        }
+
         override fun writeWordSeparator() {
             finishCurrentWord()
-            if (textBuilder.isNotEmpty() && !textBuilder.last().isWhitespace()) {
+            if (glyphs.size < Limits.PDF_TEXT_MAX_CHARS_PER_PAGE && textBuilder.isNotEmpty() && !textBuilder.last().isWhitespace()) {
                 val idx = glyphs.size
                 textBuilder.append(' ')
                 glyphs.add(PdfGlyph(' ', RectPt(0f, 0f, 0f, 0f), idx))
@@ -282,7 +311,7 @@ class PdfTextExtractor(context: Context? = null) {
         override fun writeLineSeparator() {
             finishCurrentWord()
             finishCurrentLine()
-            if (textBuilder.isNotEmpty() && textBuilder.last() != '\n') {
+            if (glyphs.size < Limits.PDF_TEXT_MAX_CHARS_PER_PAGE && textBuilder.isNotEmpty() && textBuilder.last() != '\n') {
                 val idx = glyphs.size
                 textBuilder.append('\n')
                 glyphs.add(PdfGlyph('\n', RectPt(0f, 0f, 0f, 0f), idx))
@@ -338,6 +367,13 @@ class PdfTextExtractor(context: Context? = null) {
     }
 
     companion object {
+        private fun displayedPoint(x: Float, y: Float, width: Float, height: Float, rotation: Int): Pair<Float, Float> = when ((rotation % 360 + 360) % 360) {
+            90 -> y to x
+            180 -> width - x to y
+            270 -> height - y to width - x
+            else -> x to height - y
+        }
+
         private val initialized = AtomicBoolean(false)
 
         fun init(context: Context) {
@@ -349,19 +385,19 @@ class PdfTextExtractor(context: Context? = null) {
         /**
          * Finds matches of [query] in [pageText] and computes hit bounding boxes.
          */
-        fun search(pageText: PdfPageText, query: String): List<PdfSearchMatch> {
+        fun search(pageText: PdfPageText, query: String, maxMatches: Int = Limits.PDF_SEARCH_MAX_MATCHES): List<PdfSearchMatch> {
             val q = query.trim()
             if (q.isEmpty() || pageText.text.isEmpty()) return emptyList()
 
             val matches = mutableListOf<PdfSearchMatch>()
             var start = 0
-            while (start < pageText.text.length && matches.size < Limits.PDF_SEARCH_MAX_MATCHES) {
+            while (start < pageText.text.length && matches.size < maxMatches.coerceIn(0, Limits.PDF_SEARCH_MAX_MATCHES)) {
                 val idx = pageText.text.indexOf(q, start, ignoreCase = true)
                 if (idx < 0) break
                 val endExclusive = idx + q.length
 
                 // Compute bounding rects per line touched
-                val hitGlyphs = pageText.glyphs.subList(idx, minOf(endExclusive, pageText.glyphs.size))
+                val hitGlyphs = pageText.glyphs.subList(minOf(idx, pageText.glyphs.size), minOf(endExclusive, pageText.glyphs.size))
                     .filter { it.boundsPt.width > 0f && it.boundsPt.height > 0f }
 
                 val lineRects = mutableListOf<RectPt>()

@@ -1,15 +1,24 @@
 package org.samesame.notes.feature.composer.pdf
 
 import android.content.Context
-import android.util.LruCache
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.cancel
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.samesame.notes.core.data.pdf.PdfTextExtractor
+import org.samesame.notes.core.data.pdf.PdfCoordinates
+import org.samesame.notes.core.model.document.PageSpec
 import org.samesame.notes.core.data.pdf.PdfTextSource
 import org.samesame.notes.core.data.pdf.PdfTileRenderer
 import org.samesame.notes.core.model.Limits
@@ -25,9 +34,12 @@ import java.util.concurrent.ConcurrentHashMap
  */
 class PdfEngineHost(
     context: Context,
-    private val scope: CoroutineScope,
+    scope: CoroutineScope,
     private val resolveFile: suspend (media: String) -> File?,
 ) {
+    private val closed = AtomicBoolean(false)
+    private val workScope = CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job]))
+    private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val appContext = context.applicationContext
     val tileCache = PdfTileCache()
     val selection = PdfSelectionState()
@@ -36,10 +48,11 @@ class PdfEngineHost(
     var version: Int by mutableIntStateOf(0)
         private set
 
+    private val sourceSizes = ConcurrentHashMap<String, Pair<Float, Float>>()
     private val renderers = ConcurrentHashMap<String, PdfTileRenderer>()
     private val opening = ConcurrentHashMap.newKeySet<String>()
     private val failed = ConcurrentHashMap.newKeySet<String>()
-    private val textCache = LruCache<String, PdfPageText>(Limits.PDF_TEXT_CACHE_MAX_PAGES)
+    private val textCache = PdfTextCache()
     private val loadingText = ConcurrentHashMap.newKeySet<String>()
     private val docs = HashMap<String, PdfTextSource>() // touched only on the extraction thread
     private val extractThread = Dispatchers.IO.limitedParallelism(1)
@@ -48,31 +61,54 @@ class PdfEngineHost(
 
     /** The renderer of [media], or null while it is still opening (the call starts opening it). */
     fun renderer(media: String): PdfTileRenderer? {
+        if (closed.get()) return null
         renderers[media]?.let { return it }
         if (media in failed || !opening.add(media)) return null
-        scope.launch {
-            val r = withContext(Dispatchers.IO) {
-                runCatching { resolveFile(media)?.let { PdfTileRenderer(it) } }.getOrNull()
+        workScope.launch {
+            var r: PdfTileRenderer? = null
+            var published = false
+            try {
+                val file = withContext(Dispatchers.IO) { resolveFile(media) }
+                if (file != null) r = PdfTileRenderer.open(file)
+                ensureActive()
+                if (!closed.get() && r != null) {
+                    renderers[media] = r
+                    published = true
+                    tileCache.touch()
+                } else failed.add(media)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                failed.add(media)
+            } finally {
+                opening.remove(media)
+                if (!published) r?.close()
             }
-            if (r != null) renderers[media] = r else failed.add(media)
-            opening.remove(media)
-            tileCache.touch()
         }
         return null
     }
 
     private fun key(pdf: PdfBackground) = "${pdf.media}#${pdf.pageIndex}"
 
+    /** Effective import fit; a legacy page's source size comes from PDF metadata, never an A4 guess. */
+    fun pageFit(spec: PageSpec, heightPu: Float): Pair<Float, PdfCoordinates.PageTransform>? {
+        val pdf = spec.pdf ?: return null
+        val size = spec.size?.takeIf { it.isValid }?.let { it.widthPt to it.heightPt }
+            ?: sourceSizes[key(pdf)] ?: renderer(pdf.media)?.pageSize(pdf.pageIndex) ?: return null
+        return size.first to PdfCoordinates.fit(size.first, size.second, heightPu)
+    }
+
     /** Text layer of one PDF page, raw (its pageIndex is the PDF's). Null until extracted off the main thread. */
     fun rawText(pdf: PdfBackground): PdfPageText? {
+        if (closed.get()) return null
         val k = key(pdf)
         textCache.get(k)?.let { return it }
         if (pdf.media in failed || !loadingText.add(k)) return null
-        scope.launch {
-            val t = withContext(extractThread) { extract(pdf) }
-            if (t != null) textCache.put(k, t)
-            loadingText.remove(k)
-            if (t != null) version++
+        workScope.launch {
+            try {
+                val t = withContext(extractThread) { extract(pdf) }
+                if (t != null && !closed.get()) { textCache.put(k, t); version++ }
+            } finally { loadingText.remove(k) }
         }
         return null
     }
@@ -84,29 +120,55 @@ class PdfEngineHost(
         return raw.copy(pageIndex = noteIndex).also { memo = raw to it }
     }
 
-    /** Extracts every PDF page of [pages] (note index to background) for a search; one document load per source. */
-    suspend fun textForSearch(pages: List<Pair<Int, PdfBackground>>): List<PdfPageText> = withContext(extractThread) {
-        pages.mapNotNull { (noteIndex, pdf) ->
-            val k = key(pdf)
-            val raw = textCache.get(k) ?: extract(pdf)?.also { textCache.put(k, it) }
-            raw?.copy(pageIndex = noteIndex)
+    /** Visit one extracted page at a time; stop as soon as the search budget is filled. */
+    suspend fun forEachSearchPage(pages: List<Pair<Int, PdfBackground>>, visit: suspend (PdfPageText) -> Boolean) {
+        for ((noteIndex, pdf) in pages) {
+            if (closed.get()) break
+            currentCoroutineContext().ensureActive()
+            val raw = withContext(extractThread) {
+                val k = key(pdf)
+                textCache.get(k) ?: extract(pdf)?.also { textCache.put(k, it) }
+            }
+            if (raw != null && !visit(raw.copy(pageIndex = noteIndex))) break
         }
     }
 
-    private suspend fun extract(pdf: PdfBackground): PdfPageText? = runCatching {
-        val doc = docs[pdf.media] ?: run {
-            val f = resolveFile(pdf.media) ?: return null
-            PdfTextSource(f, extractor).also { docs[pdf.media] = it }
+    private suspend fun extract(pdf: PdfBackground): PdfPageText? {
+        if (closed.get()) return null
+        return try {
+            val doc = docs[pdf.media] ?: run {
+                val f = resolveFile(pdf.media) ?: return null
+                currentCoroutineContext().ensureActive()
+                if (closed.get()) return null
+                PdfTextSource(f, extractor).also { docs[pdf.media] = it }
+            }
+            sourceSizes[key(pdf)] = doc.pageSize(pdf.pageIndex)
+            doc.page(pdf.pageIndex)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
         }
-        doc.page(pdf.pageIndex)
-    }.getOrNull()
+    }
 
     fun close() {
+        if (!closed.compareAndSet(false, true)) return
+        workScope.cancel()
         tileCache.clear()
-        renderers.values.forEach { it.close() }
-        renderers.clear()
-        val toClose = docs.values.toList()
-        docs.clear()
-        scope.launch(extractThread) { toClose.forEach { runCatching { it.close() } } }
+        memo = null
+        cleanupScope.launch {
+            try {
+                withContext(NonCancellable) {
+                    renderers.values.forEach { it.close() }
+                    renderers.clear()
+                    sourceSizes.clear()
+                    withContext(extractThread) {
+                        docs.values.forEach { it.close() }
+                        docs.clear()
+                        textCache.evictAll()
+                    }
+                }
+            } finally { cleanupScope.cancel() }
+        }
     }
 }
