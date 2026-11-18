@@ -147,6 +147,7 @@ internal fun headerTitleRes(filter: NoteFilter): Int? = when (filter) {
     NoteFilter.Trash -> R.string.feature_notes_trash
     NoteFilter.Favorites -> R.string.feature_notes_favorites
     NoteFilter.Locked -> R.string.feature_notes_locked
+    NoteFilter.Markdown -> R.string.feature_notes_filter_markdown
     is NoteFilter.InFolder -> null
     is NoteFilter.WithTag -> R.string.feature_notes_all
 }
@@ -627,6 +628,7 @@ internal fun encodeFilter(filter: NoteFilter): String = when (filter) {
     NoteFilter.Uncategorized -> "folders"
     NoteFilter.Favorites -> "favorites"
     NoteFilter.Locked -> "locked"
+    NoteFilter.Markdown -> "markdown"
     NoteFilter.Trash -> "trash"
     is NoteFilter.InFolder -> "folder:${filter.folderId.value}:${filter.includeSubfolders}"
     is NoteFilter.WithTag -> "tag:${filter.tag}"
@@ -638,6 +640,7 @@ internal fun decodeFilter(code: String?): NoteFilter = when {
     code == "folders" -> NoteFilter.Uncategorized
     code == "favorites" -> NoteFilter.Favorites
     code == "locked" -> NoteFilter.Locked
+    code == "markdown" -> NoteFilter.Markdown
     code == "trash" -> NoteFilter.Trash
     code.startsWith("folder:") -> {
         val rest = code.removePrefix("folder:")

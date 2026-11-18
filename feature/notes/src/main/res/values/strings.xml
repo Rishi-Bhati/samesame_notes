@@ -159,4 +159,7 @@
     <string name="feature_notes_search_delete_recent">Clear</string>
     <string name="feature_notes_files">Files</string>
     <string name="feature_notes_widget_cant_lock">A note shown on a widget can\'t be locked.</string>
+    <string name="feature_notes_filter_markdown">Markdown</string>
+    <string name="feature_notes_drawer_markdown">Markdown notes</string>
+    <string name="feature_notes_markdown_default_title">Markdown note %1$s</string>
 </resources>

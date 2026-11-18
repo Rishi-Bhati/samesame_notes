@@ -7,6 +7,7 @@ import androidx.room.PrimaryKey
 import org.samesame.notes.core.model.FolderId
 import org.samesame.notes.core.model.Note
 import org.samesame.notes.core.model.NoteId
+import org.samesame.notes.core.model.NoteKind
 import org.samesame.notes.core.model.PageMode
 
 /**
@@ -35,6 +36,8 @@ data class NoteEntity(
     /** Ticked / total checkbox paragraphs, cached from the body at save time. Zero for locked notes. */
     @ColumnInfo(name = "checklist_done", defaultValue = "0") val checklistDone: Int = 0,
     @ColumnInfo(name = "checklist_total", defaultValue = "0") val checklistTotal: Int = 0,
+    /** Text (rich-text/handwriting document) or Markdown; stored by enum name. */
+    @ColumnInfo(name = "kind", defaultValue = "'Text'") val kind: NoteKind = NoteKind.Text,
 )
 
 fun NoteEntity.asExternalModel(tags: List<String> = emptyList()) = Note(
@@ -53,4 +56,5 @@ fun NoteEntity.asExternalModel(tags: List<String> = emptyList()) = Note(
     tags = tags,
     checklistDone = checklistDone,
     checklistTotal = checklistTotal,
+    kind = kind,
 )

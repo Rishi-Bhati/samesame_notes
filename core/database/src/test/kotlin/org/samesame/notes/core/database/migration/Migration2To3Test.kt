@@ -98,7 +98,7 @@ class Migration2To3Test {
     private fun openRoom(): SameSameDatabase = Room.databaseBuilder(context, SameSameDatabase::class.java, dbFile.absolutePath)
         .addMigrations(
             SameSameDatabase.MIGRATION_1_2, SameSameDatabase.MIGRATION_2_3,
-            SameSameDatabase.MIGRATION_3_4, SameSameDatabase.MIGRATION_4_5,
+            SameSameDatabase.MIGRATION_3_4, SameSameDatabase.MIGRATION_4_5, SameSameDatabase.MIGRATION_5_6,
         )
         .build().also { room = it }
 
@@ -115,7 +115,7 @@ class Migration2To3Test {
         room = null
 
         val after = SQLiteDatabase.openDatabase(dbFile.path, null, SQLiteDatabase.OPEN_READONLY).use { raw ->
-            assertThat(raw.version).isEqualTo(5) // openRoom() now carries migrations all the way to v5.
+            assertThat(raw.version).isEqualTo(6) // openRoom() now carries migrations all the way to v6.
             oldTables.map { dump(raw, it) }
         }
         assertThat(after).isEqualTo(before)

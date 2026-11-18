@@ -5,6 +5,7 @@ import androidx.room.Query
 import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 import org.samesame.notes.core.database.entity.NoteEntity
+import org.samesame.notes.core.model.NoteKind
 
 /** Drawer badges: every note outside the trash, the ones at the folder root, favourites and locked notes. */
 data class NoteCounts(
@@ -38,6 +39,9 @@ interface NoteDao {
 
     @Query("SELECT * FROM notes WHERE is_locked = 1 AND trashed_at IS NULL")
     fun observeLocked(): Flow<List<NoteEntity>>
+
+    @Query("SELECT * FROM notes WHERE kind = :kind AND trashed_at IS NULL")
+    fun observeByKind(kind: NoteKind): Flow<List<NoteEntity>>
 
     /** The ids among [ids] whose catalog row is locked (trashed or not). */
     @Query("SELECT id FROM notes WHERE is_locked = 1 AND id IN (:ids)")

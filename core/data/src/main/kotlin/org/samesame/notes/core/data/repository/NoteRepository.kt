@@ -10,6 +10,7 @@ import org.samesame.notes.core.model.document.NoteDocument
 import org.samesame.notes.core.model.document.ViewState
 import org.samesame.notes.core.model.FolderId
 import org.samesame.notes.core.model.Note
+import org.samesame.notes.core.model.NoteKind
 import org.samesame.notes.core.model.NoteFilter
 import org.samesame.notes.core.model.NoteId
 import org.samesame.notes.core.model.PageMode
@@ -48,7 +49,10 @@ interface NoteRepository {
      * Creates an empty note. Page style, layout, template and background come from "Style of new notes"
      * ([org.samesame.notes.core.model.AppSettings.newNote]); an explicit [pageMode] overrides the page style only.
      */
-    suspend fun createNote(folderId: FolderId?, pageMode: PageMode? = null): NoteId
+    suspend fun createNote(folderId: FolderId?, pageMode: PageMode? = null, kind: NoteKind = NoteKind.Text): NoteId
+
+    /** Creates an empty Markdown note (a [NoteKind.Markdown] note whose document carries an empty `markdown` body). */
+    suspend fun createMarkdownNote(folderId: FolderId?): NoteId = createNote(folderId, kind = NoteKind.Markdown)
 
     /**
      * True exactly once for a note created by [createNote] in this process (the FAB note): the composer opens it
