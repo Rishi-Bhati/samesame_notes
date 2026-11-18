@@ -233,7 +233,40 @@ interface NoteRepository {
 
     /** Permanently deletes notes that have been in Trash longer than the retention period. */
     suspend fun purgeExpiredTrash()
+
+    /** The automatic versions of the note, newest first (empty when there are none or the history is off). */
+    suspend fun listVersions(id: NoteId): List<NoteVersionInfo> = emptyList()
+
+    /**
+     * The text of one version, for the read-only preview. A locked note's version needs the note open in this session
+     * (otherwise [org.samesame.notes.core.document.NoteLockedException]). Null when it is gone or unreadable.
+     */
+    suspend fun readVersion(id: NoteId, versionId: Long): NoteVersionText? = null
+
+    /**
+     * Replaces the note with version [versionId]. The current state is kept as a version first, so a restore can be undone.
+     * The caller must have saved and stopped any open editor session and opens a fresh one afterwards. A locked note must
+     * be open in this session ([org.samesame.notes.core.document.NoteLockedException] otherwise). Failure leaves the note as it was.
+     */
+    suspend fun restoreVersion(id: NoteId, versionId: Long) {
+        throw UnsupportedOperationException("Version history is not available")
+    }
 }
+
+/** One saved version in the history list. [id] is also the time it was taken (epoch ms). Title and preview are empty for locked notes. */
+class NoteVersionInfo(
+    val id: Long,
+    val sizeBytes: Long,
+    val title: String,
+    val preview: String,
+    val pages: Int,
+    val locked: Boolean,
+) {
+    val takenAtMs: Long get() = id
+}
+
+/** What the read-only version preview shows. */
+class NoteVersionText(val title: String, val body: String, val pages: Int)
 
 /**
  * A delete of locked notes was refused: no verified [org.samesame.notes.core.security.LockToken], or one that does not open

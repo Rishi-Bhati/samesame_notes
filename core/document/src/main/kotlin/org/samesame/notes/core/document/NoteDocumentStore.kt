@@ -107,9 +107,17 @@ class LockedNoteSaveException(val noteId: String, cause: Throwable? = null) :
  * Callers serialize access per note (the repository holds a per-note mutex).
  */
 @Singleton
-class NoteDocumentStore(private val notesRoot: File, private val workingRoot: File) {
+class NoteDocumentStore(
+    private val notesRoot: File,
+    private val workingRoot: File,
+    /** Version history; null (the default, used by tests) keeps none. The app's store lives in `filesDir/versions`. */
+    private val versions: NoteVersionStore? = null,
+) {
     @Inject constructor(@ApplicationContext context: Context) :
-        this(File(context.filesDir, "notes"), File(context.noBackupFilesDir, "working"))
+        this(File(context.filesDir, "notes"), File(context.noBackupFilesDir, "working"), NoteVersionStore(File(context.filesDir, "versions")))
+
+    /** Notes packed since their newest version was taken: closing one takes a version (see [flush]). */
+    private val versionDirty = ConcurrentHashMap.newKeySet<String>()
 
     /** Data keys of locked notes that are currently open (decrypted working copy exists). Memory only. */
     private val openKeys = ConcurrentHashMap<String, ByteArray>()
@@ -219,7 +227,7 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
             val dir = workingDir(noteId)
             dir.deleteRecursively()
             writeFileAtomically(File(dir, DOCUMENT_FILE)) { it.write(document.toJson().encodeToByteArray()) }
-            pack(noteId)
+            pack(noteId, takeVersion = false) // a blank new note is not worth a version
             document
         }
 
@@ -562,12 +570,14 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
                 openKeys.remove(noteId)?.fill(0)
                 throw if (e is LockedNoteSaveException) e else LockedNoteSaveException(noteId, e)
             }
+            if (noteId in versionDirty) snapshotVersion(noteId, force = true, locked = true)
             dir.deleteRecursively()
             openKeys.remove(noteId)?.fill(0)
             return@withContext
         }
         if (!isInSync(noteId)) pack(noteId)
         if (close) {
+            if (noteId in versionDirty) snapshotVersion(noteId, force = true, locked = false)
             dir.deleteRecursively()
             openKeys.remove(noteId)?.fill(0)
             }
@@ -620,6 +630,8 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
         workingDir(noteId).deleteRecursively()
         openKeys.remove(noteId)?.fill(0)
         unpacked -= noteId
+        // Earlier versions are plain copies of the note: they must not outlive the lock.
+        forgetVersions(noteId)
     }
 
     /**
@@ -755,6 +767,8 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
         workingDir(noteId).deleteRecursively()
         openKeys.remove(noteId)?.fill(0)
         unpacked -= noteId
+        // Versions taken while locked carry the old key; restoring one would lock the note again behind the catalog's back.
+        forgetVersions(noteId)
         document
     }
 
@@ -994,6 +1008,147 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
         File(notesRoot, noteId + ".$NOTE_CONTAINER_EXTENSION$TMP_SUFFIX").delete()
         workingDir(noteId).deleteRecursively()
         File(notesRoot, checkId(noteId)).deleteRecursively() // legacy directory bundle
+        forgetVersions(noteId) // the note is gone for good; moving it to the trash never reaches here
+    }
+
+    // ---- version history -------------------------------------------------------------------
+
+    /**
+     * Copies the packed container as a version. Runs after a successful [pack]; any failure is logged (no note content)
+     * and ignored: a broken history must never break saving. [force] ignores the minimum interval (close, restore).
+     */
+    private fun snapshotVersion(noteId: String, force: Boolean, locked: Boolean) {
+        val store = versions ?: return
+        try {
+            val taken = store.snapshot(
+                noteId, containerFile(noteId),
+                meta = { if (locked) VersionMeta(locked = true) else versionMeta(File(workingDir(noteId), DOCUMENT_FILE)) },
+                force = force,
+            )
+            // A throttled skip keeps the note marked, so closing it still takes a version; a forced skip means identical.
+            if (taken != null || force) versionDirty -= noteId
+        } catch (e: Exception) {
+            log.log(Level.WARNING, "Could not save a version of note $noteId", e)
+        }
+    }
+
+    private fun versionMeta(docFile: File): VersionMeta = try {
+        val text = docFile.readBytes().decodeToString()
+        val doc = parseDocument(text, documentVersion(text))
+        VersionMeta(doc.title, doc.body.plainText().trim().take(200), doc.pages.size)
+    } catch (e: Exception) {
+        VersionMeta()
+    }
+
+    private fun forgetVersions(noteId: String) {
+        versionDirty -= noteId
+        try {
+            versions?.deleteAll(noteId)
+        } catch (e: Exception) {
+            log.log(Level.WARNING, "Could not delete the versions of note $noteId", e)
+        }
+    }
+
+    /** The saved versions of a note, newest first. Empty when the history is off or unreadable. */
+    suspend fun listVersions(noteId: String): List<NoteVersion> = withContext(Dispatchers.IO) {
+        try {
+            versions?.list(checkId(noteId)).orEmpty()
+        } catch (e: Exception) {
+            log.log(Level.WARNING, "Could not list the versions of note $noteId", e)
+            emptyList()
+        }
+    }
+
+    suspend fun deleteVersion(noteId: String, versionId: Long) = withContext(Dispatchers.IO) {
+        versions?.delete(checkId(noteId), versionId)
+        Unit
+    }
+
+    /** What the read-only version preview shows. */
+    class VersionText(val title: String, val body: String, val pages: Int)
+
+    /**
+     * The text of one version. A locked note's versions are decrypted with the note's open key, so this needs the note
+     * unlocked in this session ([NoteLockedException] otherwise). Null when the version is gone or unreadable.
+     */
+    suspend fun readVersionText(noteId: String, versionId: Long): VersionText? = withContext(Dispatchers.IO) {
+        val file = versions?.file(checkId(noteId), versionId) ?: return@withContext null
+        try {
+            val doc = readVersionDocument(noteId, file)
+            VersionText(doc.title, doc.body.plainText().take(Limits.VERSION_PREVIEW_CHARS), doc.pages.size)
+        } catch (e: NoteLockedException) {
+            throw e
+        } catch (e: Exception) {
+            log.log(Level.WARNING, "Could not read a version of note $noteId", e)
+            null
+        }
+    }
+
+    /** Parses a version's `document.json`; this is also the check that a version is intact before it replaces a note. */
+    private fun readVersionDocument(noteId: String, file: File): NoteDocument = ZipFile(file).use { zf ->
+        val info = readManifestInfo(zf)
+        if (info.noteId != noteId) throw IOException("Version belongs to another note")
+        val bytes = if (info.locked) {
+            val dek = openKeys[noteId] ?: throw NoteLockedException(noteId)
+            val payload = zf.getEntry(PAYLOAD_FILE) ?: throw IOException("Locked version has no payload")
+            val sealed = zf.getInputStream(payload).use { it.readBytesLimited(file.length(), PAYLOAD_FILE) }
+            ZipInputStream(LockCrypto.openPayload(dek, noteId, sealed).inputStream()).use { zin ->
+                generateSequence { zin.nextEntry }.firstOrNull { it.name == DOCUMENT_FILE }
+                    ?.let { zin.readBytesLimited(entryLimit(DOCUMENT_FILE), DOCUMENT_FILE) }
+                    ?: throw IOException("Version has no document.json")
+            }
+        } else {
+            val entry = zf.getEntry(DOCUMENT_FILE) ?: throw IOException("Version has no document.json")
+            readEntryLimited(zf, entry)
+        }
+        val text = bytes.decodeToString()
+        parseDocument(text, documentVersion(text))
+    }
+
+    /**
+     * Replaces the note's container with version [versionId]. The current state is saved as a version first (forced), so a
+     * restore can be undone; if that copy fails nothing is replaced. A locked note must be open (key in memory): its version
+     * must carry the same wrapped key, and stays encrypted. Afterwards the working copy is dropped (a locked one is
+     * decrypted again from the restored container) so the next read sees the restored content.
+     */
+    suspend fun restoreVersion(noteId: String, versionId: Long) = withContext(Dispatchers.IO) {
+        val store = versions ?: throw IOException("Version history is off")
+        val source = store.file(checkId(noteId), versionId) ?: throw FileNotFoundException("Version not found")
+        val container = containerFile(noteId)
+        if (!container.exists()) throw FileNotFoundException("Note $noteId not found")
+        val locked = isLockedContainer(noteId)
+        if (locked && !openKeys.containsKey(noteId)) throw NoteLockedException(noteId)
+        // The version must be a whole, readable note of this id and the same lock state before anything is touched.
+        readVersionDocument(noteId, source)
+        ZipFile(source).use { vz ->
+            val vi = readManifestInfo(vz)
+            if (vi.locked != locked) throw IOException("Version lock state differs from the note")
+            if (locked) {
+                val current = ZipFile(container).use { readManifestInfo(it).wrappedKey }
+                if (current == null || !current.contentEquals(vi.wrappedKey)) throw IOException("Version was sealed with another key")
+            }
+        }
+        if (File(workingDir(noteId), DOCUMENT_FILE).exists() && !isInSync(noteId)) pack(noteId)
+        // Undo point: a failure here aborts the restore (unlike the quiet snapshots).
+        store.snapshot(
+            noteId, container,
+            meta = { if (locked) VersionMeta(locked = true) else versionMeta(File(workingDir(noteId), DOCUMENT_FILE).takeIf { it.exists() } ?: container) },
+            force = true,
+        )
+        val tmp = File(notesRoot, container.name + TMP_SUFFIX)
+        try {
+            Files.copy(source.toPath(), tmp.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            FileOutputStream(tmp, true).use { it.fd.sync() }
+            Files.move(tmp.toPath(), container.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+            syncDirectory(notesRoot)
+        } catch (e: Throwable) {
+            tmp.delete()
+            throw e
+        }
+        versionDirty -= noteId
+        workingDir(noteId).deleteRecursively()
+        unpacked -= noteId
+        if (locked) unpack(container, noteId)
     }
 
     // ---- working copy lifecycle ------------------------------------------------------------
@@ -1104,7 +1259,7 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
      * Packs the working copy. [newLock] (a wrapped note key) turns the result into a locked container using
      * [dek]; otherwise a locked note keeps the wrapped key of its current container and the key in [openKeys].
      */
-    private fun pack(noteId: String, newLock: ByteArray? = null, dek: ByteArray? = null) {
+    private fun pack(noteId: String, newLock: ByteArray? = null, dek: ByteArray? = null, takeVersion: Boolean = true) {
         val dir = workingDir(noteId)
         val docFile = File(dir, DOCUMENT_FILE)
         if (!docFile.exists()) throw FileNotFoundException("No working copy for $noteId")
@@ -1149,6 +1304,11 @@ class NoteDocumentStore(private val notesRoot: File, private val workingRoot: Fi
         }
         // Equal timestamps mean "in sync": a later autosave makes the working copy strictly newer.
         docFile.setLastModified(container.lastModified())
+        // Locking re-seals the note under a new key: its older versions are deleted there, not copied.
+        if (newLock == null && takeVersion) {
+            versionDirty += noteId
+            snapshotVersion(noteId, force = false, locked = lockKey != null)
+        }
     }
 
     /** Bytes in the working copy (the inner ZIP of a locked note is about this big: sizes the buffer once). */

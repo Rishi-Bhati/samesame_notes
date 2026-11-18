@@ -213,6 +213,48 @@ class ComposerViewModel @AssistedInject constructor(
         }
     }
 
+    // ---- version history -------------------------------------------------------------------
+
+    /** The note's automatic versions, newest first. */
+    suspend fun listVersions(): List<org.samesame.notes.core.data.repository.NoteVersionInfo> = notes.listVersions(id)
+
+    /** The text of one version for the read-only preview, or null when it cannot be read. */
+    suspend fun versionText(versionId: Long): org.samesame.notes.core.data.repository.NoteVersionText? =
+        notes.readVersion(id, versionId)
+
+    /**
+     * Saves and stops the open editor, replaces the note with [versionId], then opens it again on the restored content.
+     * The session is stopped first so no stale autosave can overwrite the restored container; a locked note stays open
+     * (its key is needed). [onResult] is true when the note was restored (a failure leaves it as it was).
+     */
+    fun restoreVersion(versionId: Long, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val open = _session.value?.takeIf { it !== retired }
+            val restored = try {
+                if (open != null) {
+                    if (isLocked.value) open.finishForRestore() else open.finish()
+                }
+                notes.restoreVersion(id, versionId)
+                true
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log.log(Level.WARNING, "Could not restore a version of note ${id.value}", e)
+                false
+            }
+            if (!restored) {
+                // The note is unchanged: reload the saved state so the stopped editor shows the current content.
+                runCatching { openSession(settings.value.autoSaveNotes) }
+                onResult(false)
+                return@launch
+            }
+            runCatching { openSession(settings.value.autoSaveNotes) }.onFailure {
+                log.log(Level.WARNING, "Could not reopen note ${id.value} after a restore", it)
+            }
+            onResult(true)
+        }
+    }
+
     /**
      * Insert PDF (`#53`): renders the pages of [file] (a local copy of the picked PDF), each keeping its own size, and
      * inserts them as page backgrounds right after [afterPageId], as one undo step. Returns the number of pages added.

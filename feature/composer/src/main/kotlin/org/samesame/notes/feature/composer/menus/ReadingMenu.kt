@@ -14,7 +14,7 @@ import androidx.compose.ui.unit.dp
 import org.samesame.notes.core.designsystem.icon.AppIcons
 import org.samesame.notes.feature.composer.R
 
-enum class ReadingAction { PageSorter, PageView, FullScreen, Tags, SaveAsFile, Print, Favourite, Lock, Share, Delete }
+enum class ReadingAction { PageSorter, PageView, FullScreen, Tags, VersionHistory, SaveAsFile, Print, Favourite, Lock, Share, Delete }
 
 /**
  * Reading mode (view mode) overflow: same chrome as the editor overflow, with the entries of the reference's view menu:
@@ -33,6 +33,7 @@ internal fun ReadingOverflowMenu(locked: Boolean, onAction: (ReadingAction) -> U
             Spacer(Modifier.height(9.9.dp))
             PlainActionRow(R.string.feature_composer_ov_full_screen) { onAction(ReadingAction.FullScreen) }
             PlainActionRow(R.string.feature_composer_ov_tags) { onAction(ReadingAction.Tags) }
+            PlainActionRow(R.string.feature_composer_ov_version_history) { onAction(ReadingAction.VersionHistory) }
             PlainActionRow(R.string.feature_composer_ov_save_as_file) { onAction(ReadingAction.SaveAsFile) }
             PlainActionRow(R.string.feature_composer_ov_print) { onAction(ReadingAction.Print) }
             Spacer(Modifier.height(16.3.dp))
