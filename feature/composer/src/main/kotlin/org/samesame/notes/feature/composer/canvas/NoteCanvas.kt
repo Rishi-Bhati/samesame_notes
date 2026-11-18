@@ -1,5 +1,7 @@
 package org.samesame.notes.feature.composer.canvas
 
+import org.samesame.notes.core.model.Limits
+import kotlin.math.roundToInt
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
@@ -131,8 +133,15 @@ fun NoteCanvas(
     pageText: PageTextPainter? = null,
     /** Straight-line highlighter / marker: finished strokes snap to the line between their first and last point. */
     straightLine: Boolean = false,
+    pdfTileCache: org.samesame.notes.feature.composer.pdf.PdfTileCache? = null,
+    pdfTileRenderer: ((String) -> org.samesame.notes.core.data.pdf.PdfTileRenderer?)? = null,
+    pdfSearchMatches: List<org.samesame.notes.core.model.pdf.PdfSearchMatch> = emptyList(),
+    activePdfSearchMatch: org.samesame.notes.core.model.pdf.PdfSearchMatch? = null,
+    pdfSelectionState: org.samesame.notes.feature.composer.pdf.PdfSelectionState? = null,
+    pdfPageTextProvider: ((Int) -> org.samesame.notes.core.model.pdf.PdfPageText?)? = null,
     overlay: @Composable BoxScope.() -> Unit = {},
 ) {
+    val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
     val layout by remember(source) {
         derivedStateOf {
             val d = source.document
@@ -212,6 +221,8 @@ fun NoteCanvas(
     ) {
         Canvas(Modifier.fillMaxSize()) {
             drawRect(surround)
+            @Suppress("UNUSED_VARIABLE")
+            val tileVersion = pdfTileCache?.version
             // Every state read below happens in this draw phase: scrolling re-runs this lambda (layer replays), never composition.
             drawer.drawFrame(
                 scope = this,
@@ -228,6 +239,13 @@ fun NoteCanvas(
                 hidden = hiddenElement(),
                 pageText = pageText,
                 drawPageText = drawPageText,
+                pdfTileCache = pdfTileCache,
+                pdfTileRenderer = pdfTileRenderer,
+                pdfSearchMatches = pdfSearchMatches,
+                activePdfSearchMatch = activePdfSearchMatch,
+                pdfSelectionState = pdfSelectionState,
+                pdfPageTextProvider = pdfPageTextProvider,
+                coroutineScope = coroutineScope,
             )
         }
 
@@ -385,6 +403,13 @@ private class PageDrawer(
         darkTheme: Boolean, darkAdjust: Boolean, objectImage: (String) -> ImageBitmap?, backgroundImage: (String) -> ImageBitmap?,
         objectKey: Any?, live: LiveSelection?, hidden: ElementId?, pageText: PageTextPainter?,
         drawPageText: (DrawScope.(pageIndex: Int) -> Unit)?,
+        pdfTileCache: org.samesame.notes.feature.composer.pdf.PdfTileCache? = null,
+        pdfTileRenderer: ((String) -> org.samesame.notes.core.data.pdf.PdfTileRenderer?)? = null,
+        pdfSearchMatches: List<org.samesame.notes.core.model.pdf.PdfSearchMatch> = emptyList(),
+        activePdfSearchMatch: org.samesame.notes.core.model.pdf.PdfSearchMatch? = null,
+        pdfSelectionState: org.samesame.notes.feature.composer.pdf.PdfSelectionState? = null,
+        pdfPageTextProvider: ((Int) -> org.samesame.notes.core.model.pdf.PdfPageText?)? = null,
+        coroutineScope: kotlinx.coroutines.CoroutineScope? = null,
     ) = with(scope) {
         val tracing = firstFrame
         var traced = false
@@ -413,10 +438,50 @@ private class PageDrawer(
         val recordsBefore = cache.recordCount
 
         // 1. backgrounds + templates (cached layers)
+        frameTileKeys.clear()
         for (i in visible) {
             val r = lay.pageRects[i]
             val layer = backgroundLayer(this, i)
             inPage(r, org, sc) { replay(layer) }
+            val spec = d.pages[i]
+            if (sc > Limits.PDF_TILE_ZOOM_THRESHOLD && spec.pdf != null && pdfTileCache != null) {
+                drawPdfTiles(
+                    scope = this,
+                    spec = spec,
+                    pageRect = r,
+                    viewport = viewport,
+                    cache = pdfTileCache,
+                    rendererProvider = pdfTileRenderer,
+                    coroutineScope = coroutineScope,
+                )
+            }
+            if (spec.textMarkup.isNotEmpty()) drawTextMarkup(this, spec, r, viewport)
+            if (pdfSearchMatches.isNotEmpty()) {
+                val pageMatches = pdfSearchMatches.filter { it.pageIndex == i }
+                if (pageMatches.isNotEmpty()) {
+                    drawPdfSearchHighlights(
+                        scope = this,
+                        spec = spec,
+                        pageRect = r,
+                        viewport = viewport,
+                        matches = pageMatches,
+                        activeMatch = activePdfSearchMatch,
+                    )
+                }
+            }
+            if (pdfSelectionState != null && pdfSelectionState.selectedPage == i && pdfPageTextProvider != null) {
+                val pt = pdfPageTextProvider(i)
+                if (pt != null) {
+                    drawPdfSelectionHighlights(
+                        scope = this,
+                        spec = spec,
+                        pageRect = r,
+                        viewport = viewport,
+                        selectionState = pdfSelectionState,
+                        pageText = pt,
+                    )
+                }
+            }
             if (isPages) {
                 val adjusted = adjustsForDark(d.pages[i], darkAdjust)
                 val pageWidth = r.width
@@ -431,6 +496,7 @@ private class PageDrawer(
                 }
             }
         }
+        if (frameTileKeys.isNotEmpty() || pdfTileCache != null) pdfTileCache?.cancelStale(frameTileKeys)
         // 1b. objects set to "wrap text behind" sit under the body text
         for (i in visible) {
             val spec = d.pages[i]
@@ -617,6 +683,153 @@ private class PageDrawer(
             return true
         }
         return false
+    }
+
+    private fun drawPdfTiles(
+        scope: DrawScope,
+        spec: PageSpec,
+        pageRect: Rect,
+        viewport: Viewport,
+        cache: org.samesame.notes.feature.composer.pdf.PdfTileCache,
+        rendererProvider: ((String) -> org.samesame.notes.core.data.pdf.PdfTileRenderer?)?,
+        coroutineScope: kotlinx.coroutines.CoroutineScope?,
+    ) = with(scope) {
+        val pdfBg = spec.pdf ?: return
+        val renderer = rendererProvider?.invoke(pdfBg.media)
+        val widthPt = spec.size?.widthPt ?: 595f
+        // Tiles render at a quantised scale (half steps), so one lod always means one pixel grid.
+        val lod = (viewport.scale * 2f).roundToInt().coerceAtLeast(1)
+        val sc = lod / 2f
+        val tileSize = Limits.PDF_TILE_SIZE_PX
+
+        val visibleDoc = pageRect.intersect(viewport.visibleDoc)
+        if (visibleDoc.isEmpty) return
+
+        val minPuX = (visibleDoc.left - pageRect.left).coerceAtLeast(0f)
+        val minPuY = (visibleDoc.top - pageRect.top).coerceAtLeast(0f)
+        val maxPuX = (visibleDoc.right - pageRect.left).coerceAtMost(pageRect.width)
+        val maxPuY = (visibleDoc.bottom - pageRect.top).coerceAtMost(pageRect.height)
+
+        val minPxX = minPuX * sc
+        val minPxY = minPuY * sc
+        val maxPxX = maxPuX * sc
+        val maxPxY = maxPuY * sc
+
+        val colStart = kotlin.math.floor(minPxX / tileSize).toInt().coerceAtLeast(0)
+        val colEnd = kotlin.math.floor(maxPxX / tileSize).toInt()
+        val rowStart = kotlin.math.floor(minPxY / tileSize).toInt().coerceAtLeast(0)
+        val rowEnd = kotlin.math.floor(maxPxY / tileSize).toInt()
+
+        val visibleKeys = frameTileKeys
+
+        inPage(pageRect, viewport.origin, viewport.scale) {
+            clipRect(0f, 0f, pageRect.width, pageRect.height) {
+                for (c in colStart..colEnd) {
+                    for (row in rowStart..rowEnd) {
+                        val key = org.samesame.notes.feature.composer.pdf.PdfTileKey(pdfBg.media, pdfBg.pageIndex, lod, c, row)
+                        visibleKeys.add(key)
+                        val tileBmp = cache.get(key)
+                        val tileLeftPu = c * tileSize.toFloat() / sc
+                        val tileTopPu = row * tileSize.toFloat() / sc
+                        val tileWPu = tileSize.toFloat() / sc
+                        val tileHPu = tileSize.toFloat() / sc
+
+                        if (tileBmp != null) {
+                            drawIntoCanvas { canvas ->
+                                canvas.nativeCanvas.drawBitmap(
+                                    tileBmp,
+                                    null,
+                                    android.graphics.RectF(tileLeftPu, tileTopPu, tileLeftPu + tileWPu, tileTopPu + tileHPu),
+                                    null,
+                                )
+                            }
+                        } else if (renderer != null && coroutineScope != null) {
+                            cache.requestTile(coroutineScope, renderer, key, sc, widthPt, tileSize)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private val frameTileKeys = HashSet<org.samesame.notes.feature.composer.pdf.PdfTileKey>()
+
+    /** Highlights (translucent fill), underlines and strike-throughs of a PDF page, quads in unrotated page units. */
+    private fun drawTextMarkup(scope: DrawScope, spec: PageSpec, pageRect: Rect, viewport: Viewport) = with(scope) {
+        inPage(pageRect, viewport.origin, viewport.scale) {
+            for (m in spec.textMarkup) {
+                val argb = m.color.toInt()
+                val base = Color(argb)
+                for (q in m.quads) {
+                    val b = q.bounds
+                    when (m.kind) {
+                        org.samesame.notes.core.model.document.PdfMarkupKind.Highlight ->
+                            drawRect(
+                                if (base.alpha >= 0.99f) base.copy(alpha = 0.4f) else base,
+                                Offset(b.left, b.top), Size(b.right - b.left, b.bottom - b.top),
+                            )
+                        org.samesame.notes.core.model.document.PdfMarkupKind.Underline ->
+                            drawLine(base.copy(alpha = 1f), Offset(b.left, b.bottom), Offset(b.right, b.bottom), strokeWidth = 2f)
+                        org.samesame.notes.core.model.document.PdfMarkupKind.Strike -> {
+                            val y = (b.top + b.bottom) / 2f
+                            drawLine(base.copy(alpha = 1f), Offset(b.left, y), Offset(b.right, y), strokeWidth = 2f)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun drawPdfSearchHighlights(
+        scope: DrawScope,
+        spec: PageSpec,
+        pageRect: Rect,
+        viewport: Viewport,
+        matches: List<org.samesame.notes.core.model.pdf.PdfSearchMatch>,
+        activeMatch: org.samesame.notes.core.model.pdf.PdfSearchMatch?,
+    ) = with(scope) {
+        val widthPt = spec.size?.widthPt ?: 595f
+        inPage(pageRect, viewport.origin, viewport.scale) {
+            clipRect(0f, 0f, pageRect.width, pageRect.height) {
+                for (m in matches) {
+                    val isActive = activeMatch != null && activeMatch.pageIndex == m.pageIndex &&
+                        activeMatch.start == m.start && activeMatch.endExclusive == m.endExclusive
+                    val color = if (isActive) Color(0xB3FF9800) else Color(0x80FFEB3B)
+                    for (rectPt in m.rectsPt) {
+                        val puRect = org.samesame.notes.core.data.pdf.PdfCoordinates.ptToPagePu(rectPt, widthPt)
+                        drawRect(
+                            color = color,
+                            topLeft = Offset(puRect.left, puRect.top),
+                            size = Size(puRect.width, puRect.height),
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private fun drawPdfSelectionHighlights(
+        scope: DrawScope,
+        spec: PageSpec,
+        pageRect: Rect,
+        viewport: Viewport,
+        selectionState: org.samesame.notes.feature.composer.pdf.PdfSelectionState,
+        pageText: org.samesame.notes.core.model.pdf.PdfPageText,
+    ) = with(scope) {
+        val widthPt = spec.size?.widthPt ?: 595f
+        val rects = selectionState.selectionRectsPt(pageText)
+        inPage(pageRect, viewport.origin, viewport.scale) {
+            clipRect(0f, 0f, pageRect.width, pageRect.height) {
+                for (rectPt in rects) {
+                    val puRect = org.samesame.notes.core.data.pdf.PdfCoordinates.ptToPagePu(rectPt, widthPt)
+                    drawRect(
+                        color = Color(0x401976D2),
+                        topLeft = Offset(puRect.left, puRect.top),
+                        size = Size(puRect.width, puRect.height),
+                    )
+                }
+            }
+        }
     }
 
     private companion object {

@@ -322,7 +322,7 @@ class InputRouter(
         val o = pressed.firstOrNull { it.id == cur.owner } ?: return RouteDecision(GestureKind.TextTouch)
         if (!cur.slopPassed) {
             if ((o.position - cur.startPos).getDistance() < s.touchSlopPx) return RouteDecision(GestureKind.TextTouch)
-            if (s.mode == InputMode.Text && startsTextInteraction(cur.startPos)) return RouteDecision(GestureKind.TextTouch)
+            if ((s.mode == InputMode.Text || s.mode == InputMode.Reading) && startsTextInteraction(cur.startPos)) return RouteDecision(GestureKind.TextTouch)
             cur.slopPassed = true
             cur.kind = GestureKind.Pan
             // Baseline at the slop crossing, so the content does not jump.

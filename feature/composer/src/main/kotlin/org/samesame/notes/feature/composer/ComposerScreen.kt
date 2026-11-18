@@ -488,6 +488,12 @@ internal fun ComposerEditor(
     }
     val latestLayout by rememberUpdatedState(layout)
     val viewport = remember(session) { Viewport() }
+    // PDF engine: tiles, text layer and selection of the PDF pages of this note (nothing runs without a PDF page).
+    val pdfAppContext = LocalContext.current.applicationContext
+    val pdfHost = remember(session) { org.samesame.notes.feature.composer.pdf.PdfEngineHost(pdfAppContext, scope, voiceFile) }
+    DisposableEffect(pdfHost) { onDispose { pdfHost.close() } }
+    var pdfSearchMatches by remember { mutableStateOf(emptyList<org.samesame.notes.core.model.pdf.PdfSearchMatch>()) }
+    var pdfActiveMatch by remember { mutableStateOf<org.samesame.notes.core.model.pdf.PdfSearchMatch?>(null) }
     val source = remember(session) { SessionPageSource(session) }
     val handlers = remember(session) {
         SessionToolHandlers(
@@ -1266,13 +1272,29 @@ internal fun ComposerEditor(
     // ---- in-note search (R1): a debounced search over the body text; hits painted by the text layer
     val searchNav = remember(session) { SearchNavigator() }
     var searchTick by remember { mutableIntStateOf(0) } // bumps when the cursor / hit list changed
-    fun showHit(hit: IntRange?) {
+    fun showHit(hit: org.samesame.notes.feature.composer.search.SearchHit?) {
         textState.searchMatches = searchNav.matches
-        textState.searchCurrent = searchNav.current
+        textState.searchCurrent = if (hit is org.samesame.notes.feature.composer.search.SearchHit.Body) searchNav.current else -1
+        pdfSearchMatches = searchNav.pdfMatches
+        pdfActiveMatch = (hit as? org.samesame.notes.feature.composer.search.SearchHit.Pdf)?.match
         searchTick++
-        if (hit == null) return
+        if (hit is org.samesame.notes.feature.composer.search.SearchHit.Pdf) {
+            // Bring the PDF hit into view the same way: a third from the top.
+            val m = hit.match
+            val page = latestLayout.pageRects.getOrNull(m.pageIndex)
+            val first = m.rectsPt.firstOrNull()
+            if (page != null && first != null) {
+                val wPt = doc.pages.getOrNull(m.pageIndex)?.size?.widthPt ?: 595f
+                val pu = org.samesame.notes.core.data.pdf.PdfCoordinates.ptToPagePu(first, wPt)
+                val v = viewport.visibleDoc
+                if (latestLayout.horizontal) viewport.scrollTo(Offset(page.left + pu.left - v.width / 2f, viewport.scroll.y))
+                else viewport.scrollTo(Offset(viewport.scroll.x, page.top + pu.top - v.height / 3f))
+            }
+            return
+        }
+        val range = (hit as? org.samesame.notes.feature.composer.search.SearchHit.Body)?.range ?: return
         // Bring the hit into view: vertical notes put it a third from the top, horizontal ones centre it.
-        val c = textState.engine.caret(hit.first)
+        val c = textState.engine.caret(range.first)
         val v = viewport.visibleDoc
         val margin = 48f
         if (latestLayout.horizontal) {
@@ -1284,13 +1306,27 @@ internal fun ComposerEditor(
     var searchPending by remember { mutableStateOf(false) }
     fun runSearch() {
         searchPending = false
-        showHit(searchNav.search(body.editable, searchQuery))
+        val q = searchQuery
+        val pdfPages = doc.pages.mapIndexedNotNull { i, p -> p.pdf?.let { i to it } }
+        if (pdfPages.isEmpty() || q.isEmpty()) {
+            searchNav.search(body.editable, q)
+            showHit(searchNav.currentHit())
+        } else scope.launch {
+            // The text layers come off the main thread (cached per page); the hit list is built once they are in.
+            val texts = pdfHost.textForSearch(pdfPages)
+            if (searchOpen && searchQuery == q) {
+                searchNav.search(body.editable, q, texts)
+                showHit(searchNav.currentHit())
+            }
+        }
     }
     LaunchedEffect(searchOpen, searchQuery) {
         if (!searchOpen) {
             searchNav.clear()
             textState.searchMatches = emptyList()
             textState.searchCurrent = -1
+            pdfSearchMatches = emptyList()
+            pdfActiveMatch = null
             searchPending = false
             return@LaunchedEffect
         }
@@ -2111,9 +2147,9 @@ internal fun ComposerEditor(
                     onQueryChange = { searchQuery = it },
                     canForward = searchNav.canForward.also { searchTick },
                     canBackward = searchNav.canBackward.also { searchTick },
-                    onForward = { showHit(searchNav.forward()) },
-                    onBackward = { showHit(searchNav.backward()) },
-                    onSubmit = { if (searchPending) runSearch() else showHit(searchNav.forward()) },
+                    onForward = { searchNav.forwardHit(); showHit(searchNav.currentHit()) },
+                    onBackward = { searchNav.backwardHit(); showHit(searchNav.currentHit()) },
+                    onSubmit = { if (searchPending) runSearch() else { searchNav.forwardHit(); showHit(searchNav.currentHit()) } },
                     onClose = { searchOpen = false; searchQuery = "" },
                 )
             } else if (!tb.fullScreen) {
@@ -2175,14 +2211,34 @@ internal fun ComposerEditor(
                     if (b != canvasBounds.value) canvasBounds.value = b
                 },
             ) {
+                val pdfInteraction = org.samesame.notes.feature.composer.pdf.rememberPdfInteraction(
+                    host = pdfHost,
+                    pages = doc.pages,
+                    layout = layout,
+                    viewport = viewport,
+                    enabled = tb.mode != EditorMode.Pen && latestEditor == null && cropPage == null,
+                    onExternalLink = { uri ->
+                        val u = android.net.Uri.parse(uri)
+                        if (u.scheme?.lowercase() in setOf("http", "https", "mailto", "tel")) {
+                            openLinkIntent(android.content.Intent(android.content.Intent.ACTION_VIEW, u))
+                        }
+                    },
+                    onMarkup = { pageIndex, kind, color, quads, text ->
+                        doc.pages.getOrNull(pageIndex)?.let { session.addTextMarkup(it.id, kind, color, quads, text) }
+                    },
+                )
                 NoteCanvas(
                     source = source,
                     viewport = viewport,
                     brush = brush,
                     inputSettings = inputSettings,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().then(pdfInteraction.pressModifier),
                     darkTheme = dark,
                     toolHandler = handlers::forTool,
+                    pdfTileCache = pdfHost.tileCache,
+                    pdfTileRenderer = pdfHost::renderer,
+                    pdfSearchMatches = pdfSearchMatches,
+                    activePdfSearchMatch = pdfActiveMatch,
                     onStylusSeen = { if (!prefs.stylusSeen) session.toolController.updatePrefs { it.withStylusSeen() } },
                     startsTextInteraction = { p -> textState.handleAt(p) != null },
                     pullToAddPage = {
@@ -2217,6 +2273,7 @@ internal fun ComposerEditor(
                     pageText = textState.pagePainter,
                     overlay = {
                         ToolOverlayLayer(handlers, selectionState, doc.pages.map { it.id }, layout, viewport, dark)
+                        pdfInteraction.Overlay()
                         if (tb.mode == EditorMode.Reading && tb.viewMode) {
                             // View state (an opened note): a voice object plays; long press selects a word with handles and
                             // Copy / Select all but stays in view; every other tap goes to `viewTap` (link, checkbox, or

@@ -16,6 +16,8 @@ dependencies {
     implementation(libs.androidx.media3.session)
     implementation(libs.kotlinx.coroutines.core)
 
+    testImplementation(libs.robolectric)
+
     // Compose UI tests need a newer Espresso than ui-test pulls in (the old one calls InputManager.getInstance, gone on API 37).
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.test.espresso.core)
