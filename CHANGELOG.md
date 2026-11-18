@@ -5,6 +5,57 @@ All notable user-facing changes to SameSame notes are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses
 pre-release alpha versions.
 
+## 0.3.1-alpha (2026-11-18)
+
+Typing shortcuts for arrows and files, smarter totals, checklist progress, tap-to-act for addresses, deleting pages, and a font size and style page. It installs over 0.3.0-alpha with the same signing key and keeps your notes.
+
+### Typing
+
+- Arrows: '->', '<-', '<->', '=>' and '<=>' become →, ←, ↔, ⇒ and ⇔ as you type. Backspace right after brings the typed characters back.
+- Turn arrows off with "Replace arrows as you type" in Settings. '--' is not changed.
+- Type '///' in a note to pick a file from Files. Type to filter, then tap or press Enter to insert it, as Insert > From Files does. One Undo removes it.
+- Turn off with "Insert files with ///" in Settings.
+
+### Calculate as you type
+
+- Type 'Total', 'Sum', 'Subtotal', 'Grand total', 'Average' or 'Avg', 'Count', 'Max' or 'Min' on its own line under a list of labelled amounts, and the result appears. No '=' needed.
+- Works with lines like 'Milk 60', 'Rent: ₹12,000', '2k', '1.5L', 'Eggs 2 x 72' and 'Refund -200'.
+- Keeps the currency and comma style. Counted amounts are lightly underlined.
+- Enter accepts the result on these keyword lines. Enter after an ordinary '=' expression still makes a new line.
+- Blank lines, headings, lines ending in ':' and earlier totals end a list.
+- Dates, times and phone numbers are skipped. Mixed currencies show nothing.
+
+### Checklists
+
+- Ticked items move below unticked ones. Turn it off with "Move checked items to the bottom" in Settings. One Undo restores the order.
+- Note cards show progress such as 3/7. Not shown for locked notes. Existing notes show it after their next save.
+- Enter on an empty item ends the list.
+
+### Links
+
+- Tapping a phone number offers Call, Send message and Copy.
+- Tapping an email offers Send email and Copy.
+- Tapping a street address (new) offers Open in Maps and Copy.
+
+### Pages
+
+- ⋮ > Delete page removes the current page. It asks first unless the page is empty. Typed text is kept and moves to the next pages.
+- Backspacing from an empty new page back to the previous page removes that page.
+- A new page is never removed on its own. Undo brings a deleted page back.
+
+### Font size and style
+
+- Settings > Font size and style sets one size for the whole app (85-150%), and separate sizes for the Notes list, the Editor (size of new text), Toolbars and menus, Files and the Drawer.
+- Fonts: System default, Atkinson Hyperlegible, IBM Plex Serif (both bundled, open font licence), or your own .ttf or .otf up to 10 MB.
+- A missing custom font falls back to the system font. Saved notes are never changed.
+- Widgets follow the phone's font size.
+- A changed font applies to an open note the next time it is opened.
+
+### Upgrading
+
+- Installs over 0.3.0-alpha with the same signing key and keeps your notes.
+- The database gets two new columns for checklist counts. They are added automatically.
+
 ## 0.3.0-alpha (2026-11-17)
 
 Widgets, calculate as you type, more Files tools, and opening text, photos and audio as notes. It installs over 0.2.1-alpha with the same signing key and keeps your notes.
