@@ -45,6 +45,12 @@ interface InputHost {
         get() = org.samesame.notes.core.richtext.edit.math.GhostSelectionJudge()
     val ghostDoubleSpace: org.samesame.notes.core.richtext.edit.math.GhostDoubleSpace
         get() = org.samesame.notes.core.richtext.edit.math.GhostDoubleSpace()
+
+    /** Current caret page index (0-based) in document space. */
+    fun currentCaretPage(): Int = 0
+
+    /** Called when the user deletes backwards with Backspace / IME delete. */
+    fun onUserBackspace(pageBefore: Int, caretBefore: Int, caretAfter: Int) = Unit
 }
 
 /**
@@ -145,19 +151,30 @@ class RichTextInputConnection(
 
     override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean = edit("deleteSurroundingText", "$beforeLength,$afterLength") {
         val sel = body.selection
+        val caretBefore = sel.max
+        val pageBefore = host.currentCaretPage()
         host.ghostDoubleSpace.onDelete(SystemClock.uptimeMillis())
-        if (beforeLength == 1 && afterLength == 0 && sel.collapsed && body.composition == null) {
+        val ok = if (beforeLength == 1 && afterLength == 0 && sel.collapsed && body.composition == null) {
             body.deleteBackward()
             true
         } else {
             super.deleteSurroundingText(beforeLength, afterLength)
         }
+        val caretAfter = body.selection.start
+        if (beforeLength > 0 && caretAfter < caretBefore) host.onUserBackspace(pageBefore, caretBefore, caretAfter)
+        ok
     }
 
     override fun deleteSurroundingTextInCodePoints(beforeLength: Int, afterLength: Int): Boolean =
         edit("deleteSurroundingTextInCodePoints", "$beforeLength,$afterLength") {
+            val sel = body.selection
+            val caretBefore = sel.max
+            val pageBefore = host.currentCaretPage()
             host.ghostDoubleSpace.onDelete(SystemClock.uptimeMillis())
-            super.deleteSurroundingTextInCodePoints(beforeLength, afterLength)
+            val ok = super.deleteSurroundingTextInCodePoints(beforeLength, afterLength)
+            val caretAfter = body.selection.start
+            if (beforeLength > 0 && caretAfter < caretBefore) host.onUserBackspace(pageBefore, caretBefore, caretAfter)
+            ok
         }
 
     override fun sendKeyEvent(event: KeyEvent): Boolean = edit("sendKeyEvent", "action=${event.action} key=${KeyEvent.keyCodeToString(event.keyCode)} meta=${event.metaState}") {
@@ -165,8 +182,12 @@ class RichTextInputConnection(
         val sel = body.selection
         when (event.keyCode) {
             KeyEvent.KEYCODE_DEL -> {
+                val caretBefore = sel.max
+                val pageBefore = host.currentCaretPage()
                 host.ghostDoubleSpace.onDelete(SystemClock.uptimeMillis())
                 body.deleteBackward()
+                val caretAfter = body.selection.start
+                if (caretAfter < caretBefore) host.onUserBackspace(pageBefore, caretBefore, caretAfter)
             }
             KeyEvent.KEYCODE_FORWARD_DEL -> body.deleteForward()
             KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
