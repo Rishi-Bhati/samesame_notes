@@ -79,6 +79,7 @@ class FilesViewModelTest {
         override suspend fun setDescription(id: FileId, description: String) { descriptions += id to description }
         override suspend fun setTags(id: FileId, tags: List<String>) { tagEdits += id to tags }
         override suspend fun updateMetadata(id: FileId, width: Int?, height: Int?, durationMs: Long?, pageCount: Int?) = Unit
+        override suspend fun updateContent(id: FileId, open: () -> java.io.InputStream): LibraryFile = error("unused")
         override fun observeTrash(): Flow<FilesTrash> = flowOf(FilesTrash(emptyList(), emptyList()))
         override suspend fun trash(fileIds: List<FileId>, folderIds: List<FileFolderId>) { trashed += fileIds to folderIds }
         override suspend fun restore(fileIds: List<FileId>, folderIds: List<FileFolderId>) = Unit

@@ -129,6 +129,12 @@ interface FilesRepository {
     /** Records lazily read metadata (viewers, thumbnails). Null leaves a value unchanged. */
     suspend fun updateMetadata(id: FileId, width: Int? = null, height: Int? = null, durationMs: Long? = null, pageCount: Int? = null)
 
+    /**
+     * Replaces a live file's content with the stream [open] returns and returns the updated row. Used by the text
+     * editor for Files entries; the old content is deleted when no other file uses it.
+     */
+    suspend fun updateContent(id: FileId, open: () -> InputStream): LibraryFile
+
     // ---- Recycle bin ----
 
     /** The Files Recycle bin, newest first. */
