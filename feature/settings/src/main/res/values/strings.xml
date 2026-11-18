@@ -20,6 +20,7 @@
     <string name="feature_settings_auto_save">Auto save notes</string>
     <string name="feature_settings_show_links">Show links in notes</string>
     <string name="feature_settings_calculate_as_you_type">Calculate as you type</string>
+    <string name="feature_settings_insert_files_with_slashes">Insert files with ///</string>
     <string name="feature_settings_web_previews">Show web previews</string>
     <string name="feature_settings_web_previews_summary">Preview websites added from other apps.</string>
     <string name="feature_settings_hide_scroll_bar">Hide scroll bar when editing</string>

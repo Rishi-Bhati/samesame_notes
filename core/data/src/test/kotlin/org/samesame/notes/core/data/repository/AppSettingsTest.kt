@@ -21,6 +21,7 @@ class AppSettingsTest {
         assertThat(s.showWebPreviews).isFalse()
         assertThat(s.hideScrollBar).isFalse()
         assertThat(s.blockBackKey).isFalse()
+        assertThat(s.insertFilesWithSlashes).isTrue()
         assertThat(s.newNote.pageMode).isEqualTo(PageMode.Pages)
         assertThat(s.newNote.backgroundColor).isNull()
         assertThat(s.newNote.pdfPageSize).isEqualTo(PdfPageSize.Original)
@@ -58,6 +59,7 @@ class AppSettingsTest {
         val changed = AppSettings(
             autoSaveNotes = false, showLinks = false, showWebPreviews = true, hideScrollBar = true, blockBackKey = true,
             toolbarChangeStyle = false, toolbarEasyWritingPad = false, toolbarZoomLock = false, adjustColourInDarkMode = false,
+            insertFilesWithSlashes = false,
             newNote = NewNoteStyle(
                 PageMode.Infinite, PageRatio.Long, PageTemplate.GridWide, 0xFFFFEC94, PdfPageSize.FitToNote,
             ),
