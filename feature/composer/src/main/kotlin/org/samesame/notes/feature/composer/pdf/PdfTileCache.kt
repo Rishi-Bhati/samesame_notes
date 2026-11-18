@@ -27,7 +27,7 @@ data class PdfTileKey(
 )
 
 /**
- * High-performance 48 MiB LRU cache and bitmap pool for 512x512 PDF render tiles.
+ * Bounded LRU cache with a pool only for destinations that never reached the canvas.
  *
  * Implements the no-flash policy: base 2160px PNG sits underneath; at zoom > 1.25x high-res tiles
  * render asynchronously and paint on top. Stale tile render jobs cancel on scroll.
@@ -45,17 +45,6 @@ class PdfTileCache(
     private val lru = object : LruCache<PdfTileKey, Bitmap>(maxBytes) {
         override fun sizeOf(key: PdfTileKey, value: Bitmap): Int = value.byteCount
 
-        override fun entryRemoved(
-            evicted: Boolean,
-            key: PdfTileKey,
-            oldValue: Bitmap,
-            newValue: Bitmap?,
-        ) {
-            super.entryRemoved(evicted, key, oldValue, newValue)
-            if (evicted && !oldValue.isRecycled) {
-                pool.offer(oldValue)
-            }
-        }
     }
 
     val byteCount: Int get() = lru.size()
@@ -69,6 +58,7 @@ class PdfTileCache(
 
     fun get(key: PdfTileKey): Bitmap? = lru.get(key)
 
+    /** Publishing transfers ownership to the canvas; eviction must let GC reclaim it. */
     fun put(key: PdfTileKey, bitmap: Bitmap) {
         lru.put(key, bitmap)
     }

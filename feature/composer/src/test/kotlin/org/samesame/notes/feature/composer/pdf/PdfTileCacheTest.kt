@@ -13,7 +13,7 @@ import org.samesame.notes.core.model.Limits
 class PdfTileCacheTest {
 
     @Test
-    fun lruEvictionAt48MiBOffersBitmapsToPool() {
+    fun lruEvictionDoesNotPoolPublishedBitmaps() {
         val cache = PdfTileCache(maxBytes = Limits.PDF_TILE_CACHE_MAX_BYTES.toInt())
         val tileSize = Limits.PDF_TILE_SIZE_PX // 512
 
@@ -27,7 +27,7 @@ class PdfTileCacheTest {
 
         // 50 inserted, 48 max capacity -> 2 evictions
         assertThat(cache.evictionCount).isEqualTo(2)
-        assertThat(cache.poolSize).isEqualTo(2)
+        assertThat(cache.poolSize).isEqualTo(0)
 
         // Oldest keys (0 and 1) should be evicted
         val key0 = PdfTileKey("media/doc.pdf", pageIndex = 0, lod = 1, col = 0, row = 0)
@@ -40,22 +40,20 @@ class PdfTileCacheTest {
     }
 
     @Test
-    fun obtainBitmapReusesBitmapsFromPool() {
-        val cache = PdfTileCache(maxBytes = Limits.PDF_TILE_CACHE_MAX_BYTES.toInt())
-        val tileSize = Limits.PDF_TILE_SIZE_PX
-
-        // Insert 49 tiles to trigger 1 eviction into pool
-        for (i in 0 until 49) {
-            val key = PdfTileKey("media/doc.pdf", pageIndex = 0, lod = 1, col = i, row = 0)
-            cache.put(key, Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888))
-        }
-
-        assertThat(cache.poolSize).isEqualTo(1)
-
-        val recycledBitmap = cache.obtainBitmap(tileSize)
-        assertThat(recycledBitmap).isNotNull()
-        assertThat(recycledBitmap.width).isEqualTo(tileSize)
-        assertThat(recycledBitmap.height).isEqualTo(tileSize)
+    fun evictedAndClearedBitmapRemainsSafeForCanvas() {
+        val cache = PdfTileCache(maxBytes = 512 * 512 * 4)
+        val key = PdfTileKey("media/doc.pdf", 0, 1, 0, 0)
+        val published = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888)
+        published.eraseColor(android.graphics.Color.RED)
+        cache.put(key, published)
+        val canvasReference = cache.get(key)!!
+        cache.put(key.copy(col = 1), Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888))
+        val destination = cache.obtainBitmap()
+        destination.eraseColor(android.graphics.Color.BLUE)
+        cache.clear()
+        assertThat(destination).isNotSameInstanceAs(canvasReference)
+        assertThat(canvasReference.isRecycled).isFalse()
+        assertThat(canvasReference.getPixel(0, 0)).isEqualTo(android.graphics.Color.RED)
         assertThat(cache.poolSize).isEqualTo(0)
     }
 
@@ -69,7 +67,7 @@ class PdfTileCacheTest {
             cache.put(key, Bitmap.createBitmap(tileSize, tileSize, Bitmap.Config.ARGB_8888))
         }
 
-        assertThat(cache.poolSize).isEqualTo(2)
+        assertThat(cache.poolSize).isEqualTo(0)
 
         cache.clear()
         assertThat(cache.byteCount).isEqualTo(0)
