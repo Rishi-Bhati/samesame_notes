@@ -28,6 +28,7 @@ data class Note(
     /** Ticked / total checkbox paragraphs, cached from the body at save time. Zero for locked notes. */
     val checklistDone: Int = 0,
     val checklistTotal: Int = 0,
+    val kind: NoteKind = NoteKind.Text,
 ) {
     val isInTrash: Boolean get() = trashedAt != null
 
@@ -42,6 +43,9 @@ data class Note(
         const val DAY_MILLIS = 24L * 60 * 60 * 1000
     }
 }
+
+/** What a note is: the rich-text/handwriting document, or a Markdown source file. Stored by name in the catalog. */
+enum class NoteKind { Text, Markdown }
 
 /** Infinite scrolling page vs individual fixed-ratio pages. */
 @Serializable

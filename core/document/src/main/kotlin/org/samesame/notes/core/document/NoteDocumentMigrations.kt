@@ -26,6 +26,9 @@ object NoteDocumentMigrations {
     fun legacyViewState(text: String): ViewState? =
         runCatching { NoteJson.decodeFromString(LegacyDocumentViewState.serializer(), text).viewState }.getOrNull()
 
+    /** v9 -> v10 only adds the defaulted [NoteDocument.markdown] (null for a rich-text note), so every v9 note is the same value. */
+    fun v9ToV10(v9: NoteDocument): NoteDocument = v9.copy(formatVersion = NOTE_DOCUMENT_FORMAT_VERSION)
+
     /**
      * v8 -> v9 split the checkbox out of the paragraph list kind ([org.samesame.notes.core.model.richtext.ParagraphStyle.checkbox]).
      * A v8 checklist paragraph (`list = "Checklist"`) is read as `list = None, checkbox = true` by `ParagraphStyleSerializer`, wherever
