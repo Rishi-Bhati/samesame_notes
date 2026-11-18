@@ -177,6 +177,8 @@ object Limits {
     const val MAX_QUADS_PER_MARKUP = 1_000
     /** Characters of selected text stored with one markup. */
     const val MAX_MARKUP_TEXT_LENGTH = 10_000
+    /** Heap portion of each PdfBox scratch store; larger streams spill to disk. */
+    const val PDF_SCRATCH_MEMORY_BYTES = 8L * 1024 * 1024
     /** Vector PDF export gives up after this long. */
     const val PDF_VECTOR_EXPORT_TIMEOUT_MS = 60_000L
 }

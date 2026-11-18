@@ -180,6 +180,9 @@ class PdfExportTest {
                 cs.endText()
             }
             val parent = page.cosObject.getDictionaryObject(COSName.PARENT) as com.tom_roush.pdfbox.cos.COSDictionary
+            val probe = d.document.createCOSStream()
+            probe.createOutputStream().use { it.write("resource stream".toByteArray()) }
+            page.resources.cosObject.setItem(COSName.getPDFName("Probe"), probe)
             parent.setItem(COSName.RESOURCES, page.resources)
             page.cosObject.removeItem(COSName.RESOURCES)
             ByteArrayOutputStream().also { d.save(it) }.toByteArray()
@@ -188,6 +191,8 @@ class PdfExportTest {
         PDDocument.load(export(doc, mapOf("media/src.pdf" to bytes))).use { out ->
             assertThat(PDFTextStripper().getText(out)).contains("INHERITED FONT")
             assertThat(out.getPage(0).cosObject.containsKey(COSName.RESOURCES)).isTrue()
+            val probe = out.getPage(0).resources.cosObject.getDictionaryObject(COSName.getPDFName("Probe")) as com.tom_roush.pdfbox.cos.COSStream
+            assertThat(probe.createInputStream().use { it.readBytes().toString(Charsets.UTF_8) }).isEqualTo("resource stream")
         }
     }
 

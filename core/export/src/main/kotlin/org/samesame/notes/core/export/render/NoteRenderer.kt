@@ -27,6 +27,8 @@ import org.samesame.notes.core.model.document.PaintingObject
 import org.samesame.notes.core.model.document.VoiceObject
 import org.samesame.notes.core.model.document.TextWrap
 import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.IOException
 
 /** Which layers of a page to draw. */
 internal data class Layers(
@@ -39,12 +41,16 @@ internal data class Layers(
     val textBoxes: Boolean = true,
 )
 
-/** A fully loaded note: document, page layers and media bytes. */
+/** Loaded drawing layers and images; PDF sources stay on disk. */
 internal class LoadedNote(
     val doc: NoteDocument,
     val pages: Map<String, PageContent>,
     val media: Map<String, ByteArray>,
-)
+    val pdfMedia: Map<String, File> = emptyMap(),
+    private val ownedFiles: List<File> = emptyList(),
+) : AutoCloseable {
+    override fun close() { ownedFiles.forEach { it.delete() } }
+}
 
 /** [includePdfMedia]: also load the original PDFs behind imported pages (only PDF export needs them; they can be large). */
 internal suspend fun loadNote(source: ExportSource, includePdfMedia: Boolean = false): LoadedNote {
@@ -52,18 +58,34 @@ internal suspend fun loadNote(source: ExportSource, includePdfMedia: Boolean = f
     val pages = LinkedHashMap<String, PageContent>()
     val paths = LinkedHashSet<String>()
     doc.inlineObjects.filterIsInstance<ImageObject>().forEach { paths += it.media }
+    val pdfPaths = LinkedHashSet<String>()
     for (spec in doc.pages) {
         val content = source.page(spec.id)
         pages[spec.id] = content
         (spec.template as? TemplateRef.Image)?.let { paths += it.media }
-        if (includePdfMedia) spec.pdf?.let { paths += it.media }
+        if (includePdfMedia) spec.pdf?.let { pdfPaths += it.media }
         for (e in content.elements) {
             if (e is ObjectElement) parseFloating(e)?.obj?.bitmapMedia?.let { paths += it }
         }
     }
     val media = LinkedHashMap<String, ByteArray>()
     for (p in paths) source.media(p)?.let { media[p] = it }
-    return LoadedNote(doc, pages, media)
+    val pdfMedia = LinkedHashMap<String, File>()
+    val owned = ArrayList<File>()
+    try {
+        for (path in pdfPaths) {
+            pdfMedia[path] = source.mediaFile(path) ?: run {
+                val file = File.createTempFile("pdf-media", ".pdf").also { owned += it }
+                val input = source.openMedia(path) ?: throw IOException("Missing PDF source: $path")
+                input.use { stream -> file.outputStream().use { stream.copyTo(it) } }
+                file
+            }
+        }
+        return LoadedNote(doc, pages, media, pdfMedia, owned)
+    } catch (e: Throwable) {
+        owned.forEach { it.delete() }
+        throw e
+    }
 }
 
 internal fun parseFloating(e: ObjectElement): FloatingObject? = runCatching { FloatingObject.fromJson(e.json) }.getOrNull()

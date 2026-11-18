@@ -165,15 +165,8 @@ internal object PdfExport {
         private val open = HashMap<String, Source?>()
 
         fun open(media: String): Source = open.getOrPut(media) {
-            val bytes = renderer.note.media[media] ?: throw IOException("Missing PDF source: $media")
-            val file = File.createTempFile("pdf-export", ".pdf")
-            try {
-                file.writeBytes(bytes)
-                Source(file)
-            } catch (e: Exception) {
-                file.delete()
-                throw IOException("Cannot render PDF source: $media", e)
-            }
+            val file = renderer.note.pdfMedia[media] ?: throw IOException("Missing PDF source: $media")
+            try { Source(file) } catch (e: Exception) { throw IOException("Cannot render PDF source: $media", e) }
         }!!
 
         override fun close() {
@@ -205,7 +198,6 @@ internal object PdfExport {
         override fun close() {
             runCatching { renderer.close() }
             runCatching { fd.close() }
-            file.delete()
         }
     }
 }
