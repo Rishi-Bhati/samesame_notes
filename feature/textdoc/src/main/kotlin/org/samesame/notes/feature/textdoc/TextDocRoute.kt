@@ -117,6 +117,7 @@ fun TextDocRoute(
             if (viewModel.saveInPlace(context)) {
                 Toast.makeText(context, R.string.feature_textdoc_toast_saved, Toast.LENGTH_SHORT).show()
             } else {
+                Toast.makeText(context, R.string.feature_textdoc_toast_cant_save_here, Toast.LENGTH_SHORT).show()
                 saveAs.launch(saveAsName)
             }
         }
