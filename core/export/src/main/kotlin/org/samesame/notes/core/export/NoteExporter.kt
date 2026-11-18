@@ -8,7 +8,7 @@ import org.samesame.notes.core.export.ooxml.MarkdownDocxExport
 import org.samesame.notes.core.export.ooxml.PptxExport
 import org.samesame.notes.core.export.render.AndroidAssets
 import org.samesame.notes.core.export.render.ImageExport
-import org.samesame.notes.core.export.render.MarkdownPdfExport
+import org.samesame.notes.core.export.render.LoadedNote
 import org.samesame.notes.core.export.render.NoteRenderer
 import org.samesame.notes.core.export.render.PdfExport
 import org.samesame.notes.core.export.render.loadNote
@@ -17,7 +17,9 @@ import org.samesame.notes.core.export.text.MarkdownConverter
 import org.samesame.notes.core.export.text.MarkdownExport
 import org.samesame.notes.core.export.text.MarkdownHtmlExport
 import org.samesame.notes.core.export.text.TextExport
+import org.samesame.notes.core.ink.page.PageContent
 import org.samesame.notes.core.model.PageMode
+import org.samesame.notes.core.model.document.PageSpec
 import org.samesame.notes.core.model.files.ZipEntryNames
 import java.io.OutputStream
 
@@ -77,9 +79,13 @@ class NoteExporter(private val context: Context? = null) {
                         } else out.write(html.toByteArray(Charsets.UTF_8))
                     }
                     ExportFormat.PDF -> {
-                        val html = MarkdownHtmlExport.render(md, doc.title)
-                        val ctx = checkNotNull(context) { "Context is required for Markdown PDF export" }
-                        MarkdownPdfExport.write(ctx, html, doc.title, out)
+                        val richText = MarkdownConverter.markdownToRichText(md)
+                        val pages = doc.pages.ifEmpty { listOf(PageSpec("p1")) }
+                        val convertedDoc = doc.copy(body = richText, pages = pages, markdown = null)
+                        val convertedPages = if (loaded.pages.isEmpty()) mapOf(pages.first().id to PageContent(pages.first().id, emptyList(), 0)) else loaded.pages
+                        val convertedLoaded = LoadedNote(convertedDoc, convertedPages, loaded.media)
+                        val renderer = NoteRenderer(convertedLoaded)
+                        PdfExport.write(renderer, out)
                     }
                     ExportFormat.DOCX -> {
                         MarkdownDocxExport.write(md, doc.title, out)
