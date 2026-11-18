@@ -120,4 +120,31 @@ class TextBoxEditTest {
         s.deleteElement("p1", id)
         assertThat(s.finishTextBoxEdit("p1", id, RichText.of("x"), heightPu = 96f, fresh = true)).isEqualTo(TextBoxEditResult.Unchanged)
     }
+
+    @Test fun fontMetricsCannotResizeUnchangedTextOrCreateAnUndoStep() = runTest {
+        val (s, id) = fresh()
+        val text = RichText.of("saved text")
+        s.finishTextBoxEdit("p1", id, text, heightPu = 96f, fresh = true)
+        s.saveNow()
+        val before = s.content("p1")
+        for (height in listOf(400f, 48f)) {
+            assertThat(s.finishTextBoxEdit("p1", id, text, height, fresh = false, fitHeight = true))
+                .isEqualTo(TextBoxEditResult.Unchanged)
+            assertThat(s.content("p1")).isSameInstanceAs(before)
+            assertThat(s.hasUnsavedChanges()).isFalse()
+        }
+        // The next undo is still the real text edit, not an appearance-only resize.
+        assertThat(s.undo()).isTrue()
+        assertThat((s.box().obj as TextBoxObject).text.length).isEqualTo(0)
+    }
+
+    @Test fun unchangedTextCannotResizeThroughTheDirectSetter() = runTest {
+        val (s, id) = fresh()
+        val text = RichText.of("saved text")
+        s.finishTextBoxEdit("p1", id, text, heightPu = 96f, fresh = true)
+        assertThat(s.setTextBoxText("p1", id, text, minHeightPu = 400f)).isFalse()
+        assertThat(s.box().rect.height).isEqualTo(96f)
+        assertThat(s.setTextBoxText("p1", id, RichText.of("edited text"), minHeightPu = 400f)).isTrue()
+        assertThat(s.box().rect.height).isEqualTo(400f)
+    }
 }
