@@ -224,6 +224,7 @@ internal fun PageSorterScreen(
                                             },
                                             onToggleBookmark = { onToggleBookmark(spec.id) },
                                             onDelete = { onDelete(spec.id) },
+                                            canDelete = pages.size > 1,
                                             onSize = { tileSize = it },
                                             modifier = Modifier.fillMaxWidth(),
                                             number = index + 1,
@@ -408,6 +409,7 @@ private fun PageThumb(
     onOpen: () -> Unit,
     onToggleBookmark: () -> Unit,
     onDelete: () -> Unit,
+    canDelete: Boolean = true,
     onSize: (IntSize) -> Unit,
     modifier: Modifier = Modifier,
     number: Int = 0,
@@ -454,7 +456,11 @@ private fun PageThumb(
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(text = { Text(stringResource(R.string.feature_composer_bookmark)) }, onClick = { menu = false; onToggleBookmark() })
                     if (canPaste()) DropdownMenuItem(text = { Text(stringResource(R.string.feature_composer_sel_paste)) }, onClick = { menu = false; onPaste() })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.feature_composer_delete_page)) }, onClick = { menu = false; onDelete() })
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.feature_composer_delete_page)) },
+                        onClick = { menu = false; onDelete() },
+                        enabled = canDelete,
+                    )
                 }
             }
             if (elevated) Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.15f)))

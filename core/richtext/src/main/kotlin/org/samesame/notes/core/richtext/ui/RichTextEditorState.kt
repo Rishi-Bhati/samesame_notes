@@ -190,6 +190,9 @@ class RichTextEditorState(
      */
     var onPasteFileLinks: ((List<org.samesame.notes.core.model.files.FileLinks.Target>) -> Unit)? = null
 
+    /** Called when the user backspaces in the editor: (caretPageBefore, caretOffsetBefore, caretOffsetAfter). */
+    var onUserBackspace: ((pageBefore: Int, caretBefore: Int, caretAfter: Int) -> Unit)? = null
+
     /** The stored link the selection lies in (a caret inside one, or a selection within one), or null. */
     fun linkInSelection(): TextLink? = body.selection.let { engine.storedLinkCovering(it.min, it.max) }
 
@@ -271,6 +274,13 @@ class RichTextEditorState(
 
         override val ghostJudge get() = this@RichTextEditorState.ghostJudge
         override val ghostDoubleSpace get() = this@RichTextEditorState.ghostDoubleSpace
+
+        override fun currentCaretPage(): Int =
+            if (body.length == 0) 0 else engine.caret(body.selection.max).pageIndex
+
+        override fun onUserBackspace(pageBefore: Int, caretBefore: Int, caretAfter: Int) {
+            this@RichTextEditorState.onUserBackspace?.invoke(pageBefore, caretBefore, caretAfter)
+        }
 
         override fun acceptMathGhostFromIme(reason: String): Boolean = this@RichTextEditorState.acceptMathGhost("ime:$reason")
     }

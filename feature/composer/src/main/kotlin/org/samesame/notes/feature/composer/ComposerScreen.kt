@@ -233,6 +233,8 @@ import org.samesame.notes.feature.composer.menus.OverflowMenu
 import org.samesame.notes.feature.composer.menus.ReadingAction
 import org.samesame.notes.feature.composer.menus.ReadingOverflowMenu
 import org.samesame.notes.feature.composer.menus.PageSettingsPopup
+import org.samesame.notes.feature.composer.pages.PageFacts
+import org.samesame.notes.feature.composer.pages.pagesToRemoveAfterBackspace
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -448,6 +450,7 @@ internal fun ComposerEditor(
     var unlockConfirm by rememberSaveable { mutableStateOf(false) }
     var lockFlow by rememberSaveable { mutableStateOf(false) }
     var trashConfirm by rememberSaveable { mutableStateOf(false) }
+    var deletePageConfirmId by rememberSaveable { mutableStateOf<String?>(null) }
     val chrome by session.chrome.collectAsStateWithLifecycle()
     val tools by session.tools.collectAsStateWithLifecycle()
     val doc by session.document.collectAsStateWithLifecycle()
@@ -503,6 +506,31 @@ internal fun ComposerEditor(
     val preparedText = remember(session) { (session.body as? BodyTextBinding)?.prepared }
     val textState = rememberRichTextEditorState(body, layout, preparedText)
     textState.sensitive = locked
+
+    fun requestDeletePage(pageId: String) {
+        scope.launch {
+            val pages = session.holder.current.pages
+            if (pages.size <= 1) return@launch
+            if (doc.layout.mode == PageMode.Infinite) return@launch
+            val index = pages.indexOfFirst { it.id == pageId }
+            if (index < 0) return@launch
+            val page = pages[index]
+            val content = session.pages.await(pageId)
+            val lastTextPage = if (body.length == 0) -1 else textState.engine.caret(body.length).pageIndex
+            val facts = PageFacts(
+                id = page.id,
+                hasElements = content == null || content.elements.isNotEmpty(),
+                hasPdf = page.pdf != null,
+                hasImageTemplate = page.template is TemplateRef.Image,
+                bookmarked = page.isBookmarked,
+            )
+            if (facts.isEmpty && index > lastTextPage) {
+                session.deletePages(setOf(pageId))
+            } else {
+                deletePageConfirmId = pageId
+            }
+        }
+    }
     val snackbar = remember { SnackbarHostState() }
     // ---- Files links (F-3): paste hook, chooser, link taps and menus, Insert > From Files
     val fileLinkScope = rememberCoroutineScope()
@@ -605,6 +633,34 @@ internal fun ComposerEditor(
     SideEffect {
         textState.showLinks = settings.showLinks
         textState.calculateAsYouType = settings.calculateAsYouType
+        textState.onUserBackspace = { caretPageBefore, _, _ ->
+            if (doc.layout.mode != PageMode.Infinite) {
+                scope.launch {
+                    androidx.compose.runtime.withFrameNanos { }
+                    val caretPageAfter = textState.engine.caret(textState.body.selection.start).pageIndex
+                    if (caretPageAfter < caretPageBefore) {
+                        val lastTextPage = if (body.length == 0) -1 else textState.engine.caret(body.length).pageIndex
+                        val currentPages = session.holder.current.pages
+                        if (currentPages.size > 1) {
+                            val facts = currentPages.map { p ->
+                                val content = session.pages.await(p.id)
+                                PageFacts(
+                                    id = p.id,
+                                    hasElements = content == null || content.elements.isNotEmpty(),
+                                    hasPdf = p.pdf != null,
+                                    hasImageTemplate = p.template is TemplateRef.Image,
+                                    bookmarked = p.isBookmarked,
+                                )
+                            }
+                            val toRemove = pagesToRemoveAfterBackspace(facts, caretPageBefore, caretPageAfter, lastTextPage)
+                            if (toRemove.isNotEmpty()) {
+                                session.deletePages(toRemove.toSet())
+                            }
+                        }
+                    }
+                }
+            }
+        }
         textState.onPasteFileLinks = fileLinkController?.let { c -> { targets -> c.paste(targets) } }
         fileLinkController?.let { c ->
             c.pasteMode = settings.filePasteMode
@@ -2468,6 +2524,7 @@ internal fun ComposerEditor(
                 OverflowMenu(
                     penMode = tb.mode == EditorMode.Pen,
                     favorite = favorite,
+                    showDeletePage = doc.layout.mode != PageMode.Infinite && doc.pages.size > 1,
                     onAction = { action ->
                         closeMenu()
                         when (action) {
@@ -2483,6 +2540,10 @@ internal fun ComposerEditor(
                             OverflowAction.FullScreen -> session.dispatch(ToolbarIntent.SetFullScreen(true))
                             OverflowAction.Tags -> tagsOpen = true
                             OverflowAction.SaveAsFile -> if (locked) lockedSaveNotice = true else saveAsOpen = true
+                            OverflowAction.DeletePage -> {
+                                val pageId = doc.pages.getOrNull(currentPage)?.id
+                                if (pageId != null) requestDeletePage(pageId)
+                            }
                             OverflowAction.Share -> if (locked) lockedSaveNotice = true else shareMenuOpen = true
                             OverflowAction.Favourite -> onToggleFavorite()
                             OverflowAction.Delete -> trashConfirm = true
@@ -2580,7 +2641,7 @@ internal fun ComposerEditor(
                 onReorder = { from, to -> reorder(from, to) },
                 onAddPage = { addBlankPage() },
                 onToggleBookmark = { id -> session.updatePageSpec(id) { it.copy(isBookmarked = !it.isBookmarked) } },
-                onDelete = { id -> scope.launch { session.deletePages(setOf(id)) } },
+                onDelete = { id -> requestDeletePage(id) },
                 onOpenPage = { i ->
                     pageScreen = null
                     val r = layout.pageRects.getOrNull(i)
@@ -2647,6 +2708,28 @@ internal fun ComposerEditor(
                 androidx.compose.material3.Text(
                     androidx.compose.ui.res.pluralStringResource(R.plurals.feature_composer_trash_title, 1, 1),
                     color = SameSameTheme.colors.textPrimary, fontSize = 16.sp,
+                )
+            }
+        }
+        if (deletePageConfirmId != null) {
+            org.samesame.notes.core.designsystem.component.AppDialog(
+                onDismissRequest = { deletePageConfirmId = null },
+                dismissLabel = stringResource(android.R.string.cancel),
+                confirmLabel = stringResource(R.string.feature_composer_delete),
+                onConfirm = {
+                    val id = deletePageConfirmId
+                    deletePageConfirmId = null
+                    if (id != null) {
+                        scope.launch { session.deletePages(setOf(id)) }
+                    }
+                },
+                atBottom = true,
+                title = stringResource(R.string.feature_composer_delete_page_title),
+            ) {
+                androidx.compose.material3.Text(
+                    stringResource(R.string.feature_composer_delete_page_message),
+                    color = SameSameTheme.colors.textPrimary,
+                    fontSize = 16.sp,
                 )
             }
         }
