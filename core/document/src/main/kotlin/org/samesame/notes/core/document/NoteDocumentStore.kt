@@ -263,7 +263,7 @@ class NoteDocumentStore(
     private fun documentVersion(text: String): Int =
         (Json.parseToJsonElement(text) as JsonObject)["formatVersion"]?.jsonPrimitive?.int ?: 1
 
-    /** Reads a document of the current version or of v2-v9 (upgraded in memory); anything else is refused. */
+    /** Reads a document of the current version or of v2-v10 (upgraded in memory); anything else is refused. */
     private fun parseDocument(text: String, version: Int): NoteDocument {
         if (version == NOTE_DOCUMENT_FORMAT_VERSION) return NoteDocument.fromJson(text)
         if (version !in 2 until NOTE_DOCUMENT_FORMAT_VERSION) throw IOException("Unsupported note format version $version")
@@ -276,7 +276,8 @@ class NoteDocumentStore(
         if (version <= 6) doc = NoteDocumentMigrations.v6ToV7(doc)
         doc = NoteDocumentMigrations.v7ToV8(doc)
         doc = NoteDocumentMigrations.v8ToV9(doc)
-        return NoteDocumentMigrations.v9ToV10(doc)
+        doc = NoteDocumentMigrations.v9ToV10(doc)
+        return NoteDocumentMigrations.v10ToV11(doc)
     }
 
     suspend fun writeDocument(document: NoteDocument) = withContext(Dispatchers.IO) {

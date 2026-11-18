@@ -1,5 +1,7 @@
 package org.samesame.notes.core.model.document
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -22,9 +24,11 @@ import org.samesame.notes.core.model.richtext.RichText
  * note"), both defaulted to null, so a v7 document reads as the same v8 value (NoteDocumentMigrations.v7ToV8); v9 made the
  * checkbox a flag of its own ([org.samesame.notes.core.model.richtext.ParagraphStyle.checkbox]) so it can show together with a
  * bullet or number; a v8 checklist reads as `list = None, checkbox = true` (NoteDocumentMigrations.v8ToV9); v10 added the
- * defaulted [NoteDocument.markdown] (null for every rich-text note, so a v9 note reads as the same value, v9ToV10).
+ * defaulted [NoteDocument.markdown] (null for every rich-text note, so a v9 note reads as the same value, v9ToV10); v11 added
+ * the defaulted [PageSpec.textMarkup] and [PageSpec.rotation], both left out of the JSON while empty/0, so a v10 note reads
+ * as the same value and a note without PDF features is v10 text apart from the version (v10ToV11).
  */
-const val NOTE_DOCUMENT_FORMAT_VERSION = 10
+const val NOTE_DOCUMENT_FORMAT_VERSION = 11
 
 /** Shared JSON configuration for document structures (defaults are written, unknown keys ignored). */
 val NoteJson: Json = Json {
@@ -176,6 +180,7 @@ data class PageSize(val widthPt: Float, val heightPt: Float) {
     }
 }
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class PageSpec(
     val id: String,
@@ -186,10 +191,28 @@ data class PageSpec(
     val pdf: PdfBackground? = null,
     /** Own page size (v6); null = the note's [PageLayout.ratio], which is how every page before v6 is read. */
     val size: PageSize? = null,
+    /**
+     * Highlights, underlines and strike-throughs over this page's PDF text (v11), in unrotated page units. Not written
+     * to the JSON while empty, so notes without markup stay byte-identical to v10.
+     */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val textMarkup: List<PdfTextMarkup> = emptyList(),
+    /**
+     * Clockwise display rotation in degrees: 0, 90, 180 or 270 (v11). Virtual: the PDF, the ink and the markup keep their
+     * own coordinates and the whole page layer is turned when drawn and exported. Not written while 0.
+     */
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val rotation: Int = 0,
 ) {
-    /** Height over width of this page as laid out in [layout]. */
-    fun heightOverWidth(layout: PageLayout): Float =
-        size?.takeIf { it.isValid }?.heightOverWidth ?: layout.ratio.heightOverWidth
+    /** [rotation] folded into 0, 90, 180 or 270 (a damaged file may hold any number). */
+    val normalizedRotation: Int get() = (((rotation / 90) % 4) + 4) % 4 * 90
+
+    /** True when 90 or 270: width and height swap on screen. */
+    val isSideways: Boolean get() = normalizedRotation % 180 != 0
+
+    /** Height over width of this page as laid out in [layout], after [rotation]. */
+    fun heightOverWidth(layout: PageLayout): Float {
+        val base = size?.takeIf { it.isValid }?.heightOverWidth ?: layout.ratio.heightOverWidth
+        return if (isSideways) PageSize.clampHeightOverWidth(1f / base) else base
+    }
 
     /**
      * The spec of a new page added after this one (Add page, a page appended by overflowing text or an infinite note):
@@ -200,6 +223,7 @@ data class PageSpec(
         id = newId,
         isBookmarked = false,
         pdf = null,
+        textMarkup = emptyList(),
         template = if (pdf != null && template is TemplateRef.Image) TemplateRef.Builtin(PageTemplate.Blank) else template,
     )
 }

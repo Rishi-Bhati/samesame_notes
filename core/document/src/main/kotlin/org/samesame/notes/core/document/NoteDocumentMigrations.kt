@@ -26,6 +26,9 @@ object NoteDocumentMigrations {
     fun legacyViewState(text: String): ViewState? =
         runCatching { NoteJson.decodeFromString(LegacyDocumentViewState.serializer(), text).viewState }.getOrNull()
 
+    /** v10 -> v11 only adds the defaulted [org.samesame.notes.core.model.document.PageSpec.textMarkup] (empty) and `rotation` (0). */
+    fun v10ToV11(v10: NoteDocument): NoteDocument = v10.copy(formatVersion = NOTE_DOCUMENT_FORMAT_VERSION)
+
     /** v9 -> v10 only adds the defaulted [NoteDocument.markdown] (null for a rich-text note), so every v9 note is the same value. */
     fun v9ToV10(v9: NoteDocument): NoteDocument = v9.copy(formatVersion = NOTE_DOCUMENT_FORMAT_VERSION)
 
