@@ -625,7 +625,7 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
 
     /** Style of the character before [offset] (after it at 0); `RichTextOps.styleBefore`. */
     private fun styleBefore(offset: Int): CharStyle =
-        if (length == 0) CharStyle() else RichTextBridge.charStyleAt(editable, if (offset <= 0) 0 else minOf(offset, length) - 1)
+        if (length == 0) CharStyle(fontSize = env.newTextFontSize) else RichTextBridge.charStyleAt(editable, if (offset <= 0) 0 else minOf(offset, length) - 1)
 
     /** [styleBefore] with the link rule (`RichTextOps.typingStyle`): text typed at [offset] doesn't extend a link it ends. */
     private fun typingStyleAt(offset: Int): CharStyle {

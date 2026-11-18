@@ -104,7 +104,7 @@ class CaptureActivity : ComponentActivity() {
         val dictateFirst = mode == CaptureMode.Dictate && savedInstanceState == null
         setContent {
             val settings by settingsFlow.collectAsStateWithLifecycle(initialValue = AppSettings())
-            SameSameTheme(darkTheme = settings.themeMode.isDark(isSystemInDarkTheme())) {
+            SameSameTheme(darkTheme = settings.themeMode.isDark(isSystemInDarkTheme()), font = settings.font) {
                 CaptureSheet(
                     draft = draft,
                     onDraft = { draft = it },

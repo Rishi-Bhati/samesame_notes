@@ -42,7 +42,7 @@ class FileViewerActivity : FragmentActivity() {
             val dark = isDarkTheme(settings.themeMode)
             var darkChrome by remember { mutableStateOf(false) }
             SystemBarAppearance(dark || darkChrome)
-            SameSameTheme(darkTheme = dark) {
+            SameSameTheme(darkTheme = dark, font = settings.font) {
                 FileViewerRoute(
                     fileId = fileId,
                     onClose = { finish() },

@@ -11,6 +11,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
 import org.samesame.notes.core.data.repository.AppSettingsRepository
 import org.samesame.notes.core.data.repository.ThemeModeCache
+import org.samesame.notes.core.designsystem.theme.FontSectionScope
+import org.samesame.notes.core.model.FontSection
 import org.samesame.notes.core.designsystem.theme.SameSameTheme
 import org.samesame.notes.core.model.AppSettings
 import org.samesame.notes.feature.composer.ComposerRoute
@@ -37,9 +39,11 @@ class ComposerActivity : FragmentActivity() {
             val settings by appSettings.settings.collectAsStateWithLifecycle(initialValue = AppSettings(themeMode = launchTheme))
             val dark = isDarkTheme(settings.themeMode)
             SystemBarAppearance(dark)
-            SameSameTheme(darkTheme = dark) {
+            SameSameTheme(darkTheme = dark, font = settings.font) {
+              FontSectionScope(FontSection.Chrome) {
                 // The editor lives in this activity, outside the navigation host, so it gets the Files entry points here.
                 ProvideLibraryFiles { ComposerRoute(noteId = noteId, onBack = { finish() }, startAction = startAction) }
+              }
             }
         }
     }

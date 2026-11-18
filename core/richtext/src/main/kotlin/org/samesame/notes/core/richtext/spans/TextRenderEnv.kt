@@ -48,7 +48,11 @@ class TextRenderEnv {
 
     var objectProvider: InlineObjectProvider = PlaceholderObjectProvider
 
-    var typeface: Typeface = Typeface.DEFAULT
+    /** The font of text with no font of its own: the app-wide default (Settings > Font) unless set for this body. */
+    var typeface: Typeface = defaultTypeface
+
+    /** Size given to text typed into an EMPTY body (Settings > Font > Editor); null = the normal default. Saved text is never touched. */
+    var newTextFontSize: Float? = defaultNewTextFontSize
 
     /** Inline objects wider than this are scaled down (the text column width). */
     var maxObjectWidth: Float = BodyTextMetrics.COLUMN_WIDTH
@@ -68,5 +72,14 @@ class TextRenderEnv {
             else -> Typeface.NORMAL
         }
         return typefaces[style] ?: Typeface.create(typeface, style).also { typefaces[style] = it }
+    }
+
+    companion object {
+        /** Set when the editor opens, from the font settings; every body created afterwards starts with these. */
+        @Volatile
+        var defaultTypeface: Typeface = Typeface.DEFAULT
+
+        @Volatile
+        var defaultNewTextFontSize: Float? = null
     }
 }

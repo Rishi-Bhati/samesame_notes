@@ -83,6 +83,7 @@ internal fun Preferences.toAppSettings(): AppSettings {
         themeMode = enumOrDefault(this[SettingsKeys.themeMode], d.themeMode),
         filePasteMode = enumOrDefault(this[SettingsKeys.filePasteMode], d.filePasteMode),
         calculateAsYouType = this[SettingsKeys.calculateAsYouType] ?: d.calculateAsYouType,
+        font = toFontSettings(),
         newNote = NewNoteStyle(
             pageMode = enumOrDefault(this[SettingsKeys.newPageMode], d.newNote.pageMode),
             ratio = enumOrDefault(this[SettingsKeys.newRatio], d.newNote.ratio),
@@ -106,6 +107,7 @@ internal fun MutablePreferences.writeAppSettings(s: AppSettings) {
     this[SettingsKeys.themeMode] = s.themeMode.name
     this[SettingsKeys.filePasteMode] = s.filePasteMode.name
     this[SettingsKeys.calculateAsYouType] = s.calculateAsYouType
+    writeFontSettings(s.font)
     this[SettingsKeys.newPageMode] = s.newNote.pageMode.name
     this[SettingsKeys.newRatio] = s.newNote.ratio.name
     this[SettingsKeys.newTemplate] = s.newNote.template.name

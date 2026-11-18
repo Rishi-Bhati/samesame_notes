@@ -1,5 +1,7 @@
 package org.samesame.notes.core.designsystem.component
 
+import org.samesame.notes.core.designsystem.theme.FontSectionScope
+import org.samesame.notes.core.model.FontSection
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -100,7 +102,9 @@ fun AppDropdownMenu(
                 tonalElevation = 0.dp,
                 shadowElevation = 6.dp,
             ) {
-                Column(Modifier.width(IntrinsicSize.Max).widthIn(min = 112.dp)) { content() }
+                FontSectionScope(FontSection.Chrome) {
+                    Column(Modifier.width(IntrinsicSize.Max).widthIn(min = 112.dp)) { content() }
+                }
             }
         }
     }

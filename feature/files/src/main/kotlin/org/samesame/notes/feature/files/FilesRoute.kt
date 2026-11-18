@@ -38,6 +38,16 @@ fun FilesRoute(
     onOpenNote: (NoteId) -> Unit,
     initialTarget: FilesTarget? = null,
     viewModel: FilesViewModel = hiltViewModel(),
+) = org.samesame.notes.core.designsystem.theme.FontSectionScope(org.samesame.notes.core.model.FontSection.Files) {
+    FilesRouteContent(onBack, onOpenNote, initialTarget, viewModel)
+}
+
+@Composable
+private fun FilesRouteContent(
+    onBack: () -> Unit,
+    onOpenNote: (NoteId) -> Unit,
+    initialTarget: FilesTarget?,
+    viewModel: FilesViewModel,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val importUi by viewModel.importUi.collectAsStateWithLifecycle()

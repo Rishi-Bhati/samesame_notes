@@ -401,6 +401,7 @@ class BodyTextEngine(
         fun sizeAt(i: Int): Float? =
             if (i in 0 until ed.length && ed[i] != org.samesame.notes.core.model.richtext.OBJECT_CHAR) RichTextBridge.charStyleAt(ed, i).fontSize else null
         val size = sizeAt(offset - 1) ?: sizeAt(offset) ?: body.typingStyle?.fontSize
+            ?: if (ed.isEmpty()) body.env.newTextFontSize else null
         caretPaint.set(paint)
         caretPaint.textSize = fontSizePu(size)
         val fm = caretPaint.fontMetrics
