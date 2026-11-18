@@ -24,6 +24,7 @@ class FontSettingsStoreTest {
             sectionPercent = mapOf(FontSection.Notes to 90, FontSection.Editor to 150),
             choice = FontChoice(FontKind.Bundled, BundledFonts.PLEX_SERIF),
             customFontName = "My font",
+            customFontFileName = "font-12345678-1234-1234-1234-123456789abc.ttf",
         )
         val prefs = mutablePreferencesOf()
         prefs.writeAppSettings(AppSettings(font = font))
