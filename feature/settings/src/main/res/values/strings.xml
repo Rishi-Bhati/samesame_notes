@@ -151,4 +151,38 @@
     <string name="feature_settings_file_paste_ask">Ask</string>
     <string name="feature_settings_file_paste_link">Always paste as link</string>
     <string name="feature_settings_file_paste_show">Always show in note</string>
+
+    <!-- Backup -->
+    <string name="feature_settings_backup">Backup</string>
+    <string name="feature_settings_backup_folder">Backup folder</string>
+    <string name="feature_settings_backup_folder_none">None</string>
+    <string name="feature_settings_backup_now">Back up now</string>
+    <string name="feature_settings_backup_automatic">Automatic backup</string>
+    <string name="feature_settings_backup_schedule_off">Off</string>
+    <string name="feature_settings_backup_schedule_daily">Daily</string>
+    <string name="feature_settings_backup_schedule_weekly">Weekly</string>
+    <string name="feature_settings_backup_only_charging">Only while charging</string>
+    <string name="feature_settings_backup_keep_last">Keep last</string>
+    <plurals name="feature_settings_backup_keep_count">
+        <item quantity="one">%d backup</item>
+        <item quantity="other">%d backups</item>
+    </plurals>
+    <string name="feature_settings_backup_last_never">Last backup: never</string>
+    <string name="feature_settings_backup_last_ok">Last backup: %1$s (%2$d notes)</string>
+    <string name="feature_settings_backup_last_error">Last backup: %1$s</string>
+    <string name="feature_settings_backup_folder_unavailable">Folder not available — choose it again</string>
+    <string name="feature_settings_backup_restore">Restore from backup</string>
+    <string name="feature_settings_backup_restore_pick">Choose backup</string>
+    <string name="feature_settings_backup_restore_none">No backups found</string>
+    <string name="feature_settings_backup_restore_confirm_title">Restore from backup?</string>
+    <string name="feature_settings_backup_restore_confirm_message">This will add notes from the backup. Existing notes will not be overwritten or deleted.</string>
+    <string name="feature_settings_backup_restore_action">Restore</string>
+    <string name="feature_settings_backup_restore_progress">Restoring…</string>
+    <string name="feature_settings_backup_progress">Backing up…</string>
+    <plurals name="feature_settings_backup_restore_result">
+        <item quantity="one">Restored %1$d note, skipped %2$d.</item>
+        <item quantity="other">Restored %1$d notes, skipped %2$d.</item>
+    </plurals>
+    <string name="feature_settings_backup_restore_result_detail">Restored %1$d notes, skipped %2$d.</string>
+    <string name="feature_settings_backup_choose_folder">Choose folder</string>
 </resources>

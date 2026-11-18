@@ -865,6 +865,82 @@ class NoteDocumentStore(
         out.flush()
     }
 
+    /** Basic manifest fields of a `.ssnote` container, read without unpacking its content. */
+    data class ContainerInfo(val noteId: String, val locked: Boolean, val containerVersion: Int)
+
+    /** Reads [file]'s manifest without unpacking its content. */
+    fun readContainerInfo(file: File): ContainerInfo = ZipFile(file).use { zf ->
+        val info = readManifestInfo(zf)
+        ContainerInfo(info.noteId, info.locked, info.containerVersion)
+    }
+
+    /** Flushes an open working copy when it holds newer edits, so the container is up to date. */
+    suspend fun prepareForBackup(noteId: String) = withContext(Dispatchers.IO) {
+        val dir = workingDir(noteId)
+        if (!File(dir, DOCUMENT_FILE).exists()) return@withContext
+        if (!isInSync(noteId)) pack(noteId)
+    }
+
+    /** Streams the note's container bytes (locked notes included) after flushing open edits. */
+    suspend fun exportContainerForBackup(noteId: String, out: OutputStream) = withContext(Dispatchers.IO) {
+        prepareForBackup(noteId)
+        val container = containerFile(noteId)
+        if (!container.exists()) throw FileNotFoundException("Note $noteId not found")
+        container.inputStream().use { it.copyTo(out) }
+        out.flush()
+    }
+
+    /** Copies the note's container to [dest] after flushing open edits (locked notes included). */
+    suspend fun copyContainerForBackup(noteId: String, dest: File) = withContext(Dispatchers.IO) {
+        prepareForBackup(noteId)
+        val container = containerFile(noteId)
+        if (!container.exists()) throw FileNotFoundException("Note $noteId not found")
+        dest.parentFile?.mkdirs()
+        container.inputStream().use { input -> dest.outputStream().use { input.copyTo(it) } }
+    }
+
+    /**
+     * Installs a validated backup container for [noteId]. When [rewriteNoteId] is true the manifest and document id are
+     * rewritten to [noteId] (only for unlocked containers); otherwise the container is stored as-is (required for locked
+     * containers whose payload is bound to their id). Returns the locked flag and, for unlocked containers, the document.
+     */
+    suspend fun installBackupContainer(file: File, noteId: String, rewriteNoteId: Boolean): Pair<Boolean, NoteDocument?> =
+        withContext(Dispatchers.IO) {
+            checkId(noteId)
+            val info = ZipFile(file).use { zf ->
+                val info = readManifestInfo(zf)
+                checkEntrySizes(zf, file.length())
+                // Ensure document is readable and supported when we need to rewrite/unpack later.
+                if (!info.locked || rewriteNoteId) {
+                    val text = readEntryLimited(zf, zf.getEntry(DOCUMENT_FILE) ?: throw IOException("No document.json")).decodeToString()
+                    parseDocument(text, documentVersion(text))
+                }
+                info
+            }
+            if (info.locked && rewriteNoteId) throw IOException("Locked notes can't be copied to a new id")
+            workingDir(noteId).deleteRecursively()
+            openKeys.remove(noteId)?.fill(0)
+            lockedCache.remove(noteId)
+            val dest = containerFile(noteId)
+            if (!rewriteNoteId && info.noteId == noteId) {
+                notesRoot.mkdirs()
+                val tmp = File(notesRoot, dest.name + TMP_SUFFIX)
+                try {
+                    file.copyTo(tmp, overwrite = true)
+                    Files.move(tmp.toPath(), dest.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+                    syncDirectory(notesRoot)
+                } catch (e: Throwable) {
+                    tmp.delete()
+                    throw e
+                }
+                return@withContext if (info.locked) true to null else false to readDocument(noteId)
+            }
+            if (info.locked) throw IOException("Locked container id does not match")
+            rewriteContainer(file, dest, noteId)
+            val doc = readDocument(noteId)
+            info.locked to doc
+        }
+
     /**
      * Streams the packed container as a v3 container that also bundles [files] (`files/files.json` + `files/<sha256>`,
      * one entry per distinct content). With no files this is exactly [export]. Locked notes are refused.
