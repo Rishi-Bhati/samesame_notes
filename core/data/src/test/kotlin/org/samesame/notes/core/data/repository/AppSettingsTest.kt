@@ -25,6 +25,7 @@ class AppSettingsTest {
         assertThat(s.newNote.backgroundColor).isNull()
         assertThat(s.newNote.pdfPageSize).isEqualTo(PdfPageSize.Original)
         assertThat(s.themeMode).isEqualTo(ThemeMode.System)
+        assertThat(s.replaceArrows).isTrue()
     }
 
     @Test
@@ -58,6 +59,7 @@ class AppSettingsTest {
         val changed = AppSettings(
             autoSaveNotes = false, showLinks = false, showWebPreviews = true, hideScrollBar = true, blockBackKey = true,
             toolbarChangeStyle = false, toolbarEasyWritingPad = false, toolbarZoomLock = false, adjustColourInDarkMode = false,
+            calculateAsYouType = false, replaceArrows = false,
             newNote = NewNoteStyle(
                 PageMode.Infinite, PageRatio.Long, PageTemplate.GridWide, 0xFFFFEC94, PdfPageSize.FitToNote,
             ),

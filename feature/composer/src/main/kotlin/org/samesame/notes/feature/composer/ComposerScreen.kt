@@ -554,6 +554,7 @@ internal fun ComposerEditor(
         editor = TextBoxEditor(pageId, id, fresh, box.text, f.rect, editorContext, pageDark).also {
             it.state.sensitive = locked
             it.state.calculateAsYouType = settings.calculateAsYouType
+            it.state.replaceArrows = settings.replaceArrows
         }
         textState.hideKeyboard()
         if (session.chrome.value.toolbar.mode == EditorMode.Pen) session.dispatch(ToolbarIntent.ToggleHandwriting)
@@ -579,7 +580,10 @@ internal fun ComposerEditor(
         return handlers.selection.grabs(viewport.viewToDoc(view) - latestLayout.pageOrigin(index))
     }
     SideEffect { handlers.selection.allowLasso = { session.chrome.value.toolbar.mode == EditorMode.Pen } }
-    SideEffect { editor?.state?.calculateAsYouType = settings.calculateAsYouType }
+    SideEffect {
+        editor?.state?.calculateAsYouType = settings.calculateAsYouType
+        editor?.state?.replaceArrows = settings.replaceArrows
+    }
     LaunchedEffect(editor) {
         val e = editor ?: return@LaunchedEffect
         androidx.compose.runtime.withFrameNanos { }
@@ -605,6 +609,7 @@ internal fun ComposerEditor(
     SideEffect {
         textState.showLinks = settings.showLinks
         textState.calculateAsYouType = settings.calculateAsYouType
+        textState.replaceArrows = settings.replaceArrows
         textState.onPasteFileLinks = fileLinkController?.let { c -> { targets -> c.paste(targets) } }
         fileLinkController?.let { c ->
             c.pasteMode = settings.filePasteMode

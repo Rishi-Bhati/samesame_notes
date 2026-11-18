@@ -22,6 +22,8 @@ data class AppSettings(
     val filePasteMode: FilePasteMode = FilePasteMode.Ask,
     /** "Calculate as you type": show an inline result after a typed `=` that can be accepted. */
     val calculateAsYouType: Boolean = true,
+    /** "Replace arrows as you type": `->` becomes `→`, `<-` `←`, `<->` `↔`, `=>` `⇒`, `<=>` `⇔`. */
+    val replaceArrows: Boolean = true,
 )
 
 /** Settings > "When pasting a file link" (Files). Only links to pictures ask; other files always paste as links. */
