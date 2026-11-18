@@ -374,7 +374,7 @@ class PdfTextExtractor(context: Context? = null) {
                 val endExclusive = idx + q.length
 
                 // Compute bounding rects per line touched
-                val hitGlyphs = pageText.glyphs.subList(idx, minOf(endExclusive, pageText.glyphs.size))
+                val hitGlyphs = pageText.glyphs.subList(minOf(idx, pageText.glyphs.size), minOf(endExclusive, pageText.glyphs.size))
                     .filter { it.boundsPt.width > 0f && it.boundsPt.height > 0f }
 
                 val lineRects = mutableListOf<RectPt>()

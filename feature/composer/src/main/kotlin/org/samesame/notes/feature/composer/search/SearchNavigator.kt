@@ -1,6 +1,7 @@
 package org.samesame.notes.feature.composer.search
 
 import org.samesame.notes.core.data.pdf.PdfTextExtractor
+import org.samesame.notes.core.model.Limits
 import org.samesame.notes.core.model.pdf.PdfPageText
 import org.samesame.notes.core.model.pdf.PdfSearchMatch
 import org.samesame.notes.core.richtext.TextSearch
@@ -36,34 +37,24 @@ class SearchNavigator {
     val canForward: Boolean get() = count > 0 && current < count - 1
     val canBackward: Boolean get() = count > 0 && current > 0
 
-    /** Runs a search over [text] and [pdfPages], and jumps to the first hit. Returns the focused hit range, or null. */
+    /** Runs a bounded search and jumps to the first hit. */
     fun search(text: CharSequence, query: String, pdfPages: List<PdfPageText> = emptyList()): IntRange? {
-        this.query = query.take(TextSearch.MAX_QUERY_LENGTH)
-        val bodyMatches = if (this.query.isNotEmpty() && text.isNotEmpty()) {
-            TextSearch.find(text, this.query)
-        } else {
-            emptyList()
+        val result = bodyResult(text.toString(), query)
+        val hits = ArrayList<PdfSearchMatch>()
+        for (page in pdfPages) {
+            val remaining = Limits.PDF_SEARCH_MAX_MATCHES - result.body.size - hits.size
+            if (remaining <= 0) break
+            hits += PdfTextExtractor.search(page, result.query, remaining)
         }
-
-        val pdfHits = if (this.query.isNotEmpty()) {
-            pdfPages.flatMap { page -> PdfTextExtractor.search(page, this.query) }
-        } else {
-            emptyList()
-        }
-
-        return publishSearch(bodyMatches, pdfHits)
+        return publish(result.copy(pdf = hits))
     }
 
-    fun searchWithPdfHits(text: CharSequence, query: String, hits: List<PdfSearchMatch>): IntRange? {
-        this.query = query.take(TextSearch.MAX_QUERY_LENGTH)
-        val body = TextSearch.find(text, this.query)
-        return publishSearch(body, hits.take(org.samesame.notes.core.model.Limits.PDF_SEARCH_MAX_MATCHES - minOf(body.size, org.samesame.notes.core.model.Limits.PDF_SEARCH_MAX_MATCHES)))
-    }
-
-    private fun publishSearch(bodyMatches: List<IntRange>, pdfHits: List<PdfSearchMatch>): IntRange? {
-        matches = bodyMatches
-        pdfMatches = pdfHits
-        allHits = bodyMatches.map { SearchHit.Body(it) } + pdfHits.map { SearchHit.Pdf(it) }
+    /** Only publication mutates the navigator; computation can run on a worker dispatcher. */
+    fun publish(result: SearchResult): IntRange? {
+        query = result.query
+        matches = result.body.take(Limits.PDF_SEARCH_MAX_MATCHES)
+        pdfMatches = result.pdf.take(Limits.PDF_SEARCH_MAX_MATCHES - matches.size)
+        allHits = matches.map { SearchHit.Body(it) } + pdfMatches.map { SearchHit.Pdf(it) }
         current = -1
         return forward()
     }
@@ -106,7 +97,25 @@ class SearchNavigator {
         }
     }
 
+    data class SearchResult(val query: String, val body: List<IntRange>, val pdf: List<PdfSearchMatch> = emptyList())
+
     companion object {
+        fun bodyResult(text: String, query: String, checkActive: () -> Unit = {}): SearchResult {
+            val q = query.take(TextSearch.MAX_QUERY_LENGTH)
+            val matches = ArrayList<IntRange>()
+            if (q.isNotEmpty()) {
+                var start = 0
+                while (start <= text.length - q.length && matches.size < Limits.PDF_SEARCH_MAX_MATCHES) {
+                    checkActive()
+                    val index = text.indexOf(q, start, ignoreCase = true)
+                    if (index < 0) break
+                    matches += index until index + q.length
+                    start = index + q.length
+                }
+            }
+            return SearchResult(q, matches)
+        }
+
         /**
          * Pages (0-based, ascending, distinct) that hold at least one of [matches]; [pageOf] maps a body offset to its
          * page. Used by the page sorter's search, which lists those pages.
