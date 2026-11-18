@@ -30,24 +30,33 @@ internal object PdfExport {
     /** Pixel cap of one original-page raster (about 48 MB while drawn); A4 at 300 dpi is 8.7 MP. */
     const val MAX_RASTER_PIXELS = 12_000_000L
 
-    /** Vector export first; if it throws for any reason the note is written with the proven raster path instead. */
-    fun write(renderer: NoteRenderer, out: OutputStream) {
-        val vector = File.createTempFile("pdf-vector", ".pdf")
+    /** Choose a complete staged PDF before touching the caller's output. */
+    fun write(renderer: NoteRenderer, out: OutputStream) = writeStaged(
+        out,
+        vector = { PdfVectorExport.write(renderer, it) },
+        fallback = { file -> file.outputStream().use { writeRaster(renderer, it) } },
+    )
+
+    internal fun writeStaged(out: OutputStream, vector: (File) -> Unit, fallback: (File) -> Unit) {
+        val staged = File.createTempFile("pdf-export", ".pdf")
         try {
-            PdfVectorExport.write(renderer, vector)
-            vector.inputStream().use { it.copyTo(out) }
+            try {
+                vector(staged)
+            } catch (e: Exception) {
+                Log.w("PdfExport", "vector export failed, using the raster fallback", e)
+                fallback(staged)
+            } catch (e: OutOfMemoryError) {
+                Log.w("PdfExport", "vector export ran out of memory, using the raster fallback", e)
+                fallback(staged)
+            } catch (e: LinkageError) {
+                Log.w("PdfExport", "vector export unavailable, using the raster fallback", e)
+                fallback(staged)
+            }
+            staged.inputStream().use { it.copyTo(out) }
             out.flush()
-            return
-        } catch (e: Exception) {
-            Log.w("PdfExport", "vector export failed, using the raster fallback", e)
-        } catch (e: OutOfMemoryError) {
-            Log.w("PdfExport", "vector export ran out of memory, using the raster fallback", e)
-        } catch (e: LinkageError) {
-            Log.w("PdfExport", "vector export unavailable, using the raster fallback", e)
         } finally {
-            vector.delete()
+            staged.delete()
         }
-        writeRaster(renderer, out)
     }
 
     /** The 0.4 export: original pages as 300 dpi pictures under vector ink. Kept as the fallback. */
