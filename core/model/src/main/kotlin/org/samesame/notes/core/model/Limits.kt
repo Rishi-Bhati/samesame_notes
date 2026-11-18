@@ -83,8 +83,10 @@ object Limits {
     const val MATH_MAX_RESULT_DIGITS = 40
     /** Decimal places a result is rounded to before trailing zeros are stripped. */
     const val MATH_MAX_DECIMALS = 10
-    /** Lines above the caret that `sum` / `avg` read. */
-    const val MATH_MAX_AGGREGATE_LINES = 200
+    /** Item-block lines inspected for a keyword total, including skipped labels. */
+    const val MATH_BLOCK_MAX_LINES = 200
+    /** Line cap for the plain-number aggregate API. */
+    const val MATH_MAX_AGGREGATE_LINES = MATH_BLOCK_MAX_LINES
 
     // Files library (0.2.0, docs/architecture/files-feature.md 1.2). Files in the Recycle bin reuse TRASH_RETENTION_DAYS.
     /** Size of one file imported into Files. */
