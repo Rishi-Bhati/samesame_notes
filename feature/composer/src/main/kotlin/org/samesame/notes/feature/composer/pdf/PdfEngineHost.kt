@@ -17,6 +17,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.samesame.notes.core.data.pdf.PdfTextExtractor
+import org.samesame.notes.core.data.pdf.PdfCoordinates
+import org.samesame.notes.core.model.document.PageSpec
 import org.samesame.notes.core.data.pdf.PdfTextSource
 import org.samesame.notes.core.data.pdf.PdfTileRenderer
 import org.samesame.notes.core.model.Limits
@@ -46,6 +48,7 @@ class PdfEngineHost(
     var version: Int by mutableIntStateOf(0)
         private set
 
+    private val sourceSizes = ConcurrentHashMap<String, Pair<Float, Float>>()
     private val renderers = ConcurrentHashMap<String, PdfTileRenderer>()
     private val opening = ConcurrentHashMap.newKeySet<String>()
     private val failed = ConcurrentHashMap.newKeySet<String>()
@@ -86,6 +89,14 @@ class PdfEngineHost(
     }
 
     private fun key(pdf: PdfBackground) = "${pdf.media}#${pdf.pageIndex}"
+
+    /** Effective import fit; a legacy page's source size comes from PDF metadata, never an A4 guess. */
+    fun pageFit(spec: PageSpec, heightPu: Float): Pair<Float, PdfCoordinates.PageTransform>? {
+        val pdf = spec.pdf ?: return null
+        val size = spec.size?.takeIf { it.isValid }?.let { it.widthPt to it.heightPt }
+            ?: sourceSizes[key(pdf)] ?: renderer(pdf.media)?.pageSize(pdf.pageIndex) ?: return null
+        return size.first to PdfCoordinates.fit(size.first, size.second, heightPu)
+    }
 
     /** Text layer of one PDF page, raw (its pageIndex is the PDF's). Null until extracted off the main thread. */
     fun rawText(pdf: PdfBackground): PdfPageText? {
@@ -131,6 +142,7 @@ class PdfEngineHost(
                 if (closed.get()) return null
                 PdfTextSource(f, extractor).also { docs[pdf.media] = it }
             }
+            sourceSizes[key(pdf)] = doc.pageSize(pdf.pageIndex)
             doc.page(pdf.pageIndex)
         } catch (e: CancellationException) {
             throw e
@@ -149,6 +161,7 @@ class PdfEngineHost(
                 withContext(NonCancellable) {
                     renderers.values.forEach { it.close() }
                     renderers.clear()
+                    sourceSizes.clear()
                     withContext(extractThread) {
                         docs.values.forEach { it.close() }
                         docs.clear()

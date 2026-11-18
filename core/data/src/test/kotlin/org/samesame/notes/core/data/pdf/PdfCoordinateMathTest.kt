@@ -145,4 +145,24 @@ class PdfCoordinateMathTest {
         assertThat(dstEndPoints[0]).isWithin(0.001f).of(512f)
         assertThat(dstEndPoints[1]).isWithin(0.001f).of(512f)
     }
+    @Test fun legacyLandscapeFitMapsSelectionMarkupAndTileGrid() {
+        val fit = PdfCoordinates.fit(800f, 400f, 1600f)
+        assertThat(fit.scale).isWithin(0.001f).of(1.35f)
+        assertThat(fit.dy).isWithin(0.001f).of(530f)
+        val rect = RectPt(20f, 40f, 100f, 80f)
+        val pu = PdfCoordinates.ptToPagePu(rect, 800f, fit)
+        assertThat(pu.top).isWithin(0.001f).of(584f)
+        val back = PdfCoordinates.pagePuToPt(pu, 800f, fit)
+        assertThat(back.left).isWithin(0.001f).of(rect.left)
+        assertThat(back.top).isWithin(0.001f).of(rect.top)
+        val view = PdfCoordinates.ptToView(rect.left, rect.top, 800f, 10f, 200f, 50f, -30f, 2f, fit)
+        val pt = PdfCoordinates.viewToPt(view.first, view.second, 50f, -30f, 2f, 10f, 200f, 800f, fit)
+        assertThat(pt.first).isWithin(0.001f).of(rect.left)
+        assertThat(pt.second).isWithin(0.001f).of(rect.top)
+        val point = floatArrayOf(rect.left, rect.top)
+        PdfCoordinates.tileMatrix(0, 2, 2f, 800f, 512, fit).mapPoints(point)
+        assertThat(point[0]).isWithin(0.001f).of(pu.left * 2f)
+        assertThat(point[1]).isWithin(0.001f).of(pu.top * 2f - 1024f)
+    }
+
 }

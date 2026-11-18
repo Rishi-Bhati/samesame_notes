@@ -50,13 +50,14 @@ class PdfTileRenderer private constructor(
         widthPt: Float,
         tileSize: Int = Limits.PDF_TILE_SIZE_PX,
         destination: Bitmap,
+        transform: PdfCoordinates.PageTransform = PdfCoordinates.PageTransform(PdfCoordinates.puPerPt(widthPt)),
     ): Boolean = withContext(dispatcher) {
         if (closed || destination.isRecycled || scale <= 0f || widthPt <= 0f) return@withContext false
         if (pageIndex < 0 || pageIndex >= pageCount) return@withContext false
 
         try {
             renderer.openPage(pageIndex).use { page ->
-                val matrix = PdfCoordinates.tileMatrix(col, row, scale, widthPt, tileSize)
+                val matrix = PdfCoordinates.tileMatrix(col, row, scale, widthPt, tileSize, transform)
                 destination.eraseColor(Color.WHITE)
                 page.render(destination, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                 true

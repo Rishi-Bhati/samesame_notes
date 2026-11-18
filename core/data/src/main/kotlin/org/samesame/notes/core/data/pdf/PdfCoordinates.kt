@@ -14,27 +14,35 @@ import org.samesame.notes.core.model.pdf.RectPt
  * 4. PDF Points pt: Native 72 dpi PDF points with top-left origin.
  */
 object PdfCoordinates {
+    data class PageTransform(val scale: Float, val dx: Float = 0f, val dy: Float = 0f)
+
+    /** Legacy pages fit the displayed source into the note's existing aspect, with centred letterboxing. */
+    fun fit(widthPt: Float, heightPt: Float, pageHeightPu: Float): PageTransform {
+        val scale = minOf(Limits.PAGE_WIDTH_PU / widthPt, pageHeightPu / heightPt)
+        return PageTransform(scale, (Limits.PAGE_WIDTH_PU - widthPt * scale) / 2f, (pageHeightPu - heightPt * scale) / 2f)
+    }
+
     fun puPerPt(widthPt: Float): Float = Limits.PAGE_WIDTH_PU / widthPt
     fun ptPerPu(widthPt: Float): Float = widthPt / Limits.PAGE_WIDTH_PU
 
-    fun ptToPagePu(ptX: Float, ptY: Float, widthPt: Float): Pair<Float, Float> {
-        val k = puPerPt(widthPt)
-        return ptX * k to ptY * k
+    fun ptToPagePu(ptX: Float, ptY: Float, widthPt: Float, transform: PageTransform = PageTransform(puPerPt(widthPt))): Pair<Float, Float> {
+        return ptX * transform.scale + transform.dx to ptY * transform.scale + transform.dy
     }
 
-    fun pagePuToPt(puX: Float, puY: Float, widthPt: Float): Pair<Float, Float> {
-        val k = ptPerPu(widthPt)
-        return puX * k to puY * k
+    fun pagePuToPt(puX: Float, puY: Float, widthPt: Float, transform: PageTransform = PageTransform(puPerPt(widthPt))): Pair<Float, Float> {
+        return (puX - transform.dx) / transform.scale to (puY - transform.dy) / transform.scale
     }
 
-    fun ptToPagePu(rect: RectPt, widthPt: Float): RectPt {
-        val k = puPerPt(widthPt)
-        return RectPt(rect.left * k, rect.top * k, rect.right * k, rect.bottom * k)
+    fun ptToPagePu(rect: RectPt, widthPt: Float, transform: PageTransform = PageTransform(puPerPt(widthPt))): RectPt {
+        val (left, top) = ptToPagePu(rect.left, rect.top, widthPt, transform)
+        val (right, bottom) = ptToPagePu(rect.right, rect.bottom, widthPt, transform)
+        return RectPt(left, top, right, bottom)
     }
 
-    fun pagePuToPt(rect: RectPt, widthPt: Float): RectPt {
-        val k = ptPerPu(widthPt)
-        return RectPt(rect.left * k, rect.top * k, rect.right * k, rect.bottom * k)
+    fun pagePuToPt(rect: RectPt, widthPt: Float, transform: PageTransform = PageTransform(puPerPt(widthPt))): RectPt {
+        val (left, top) = pagePuToPt(rect.left, rect.top, widthPt, transform)
+        val (right, bottom) = pagePuToPt(rect.right, rect.bottom, widthPt, transform)
+        return RectPt(left, top, right, bottom)
     }
 
     fun pagePuToDoc(puX: Float, puY: Float, pageOriginX: Float, pageOriginY: Float): Pair<Float, Float> =
@@ -58,10 +66,11 @@ object PdfCoordinates {
         pageOriginX: Float,
         pageOriginY: Float,
         widthPt: Float,
+        transform: PageTransform = PageTransform(puPerPt(widthPt)),
     ): Pair<Float, Float> {
         val (docX, docY) = viewToDoc(viewX, viewY, originX, originY, scale)
         val (puX, puY) = docToPagePu(docX, docY, pageOriginX, pageOriginY)
-        return pagePuToPt(puX, puY, widthPt)
+        return pagePuToPt(puX, puY, widthPt, transform)
     }
 
     fun ptToView(
@@ -73,8 +82,9 @@ object PdfCoordinates {
         originX: Float,
         originY: Float,
         scale: Float,
+        transform: PageTransform = PageTransform(puPerPt(widthPt)),
     ): Pair<Float, Float> {
-        val (puX, puY) = ptToPagePu(ptX, ptY, widthPt)
+        val (puX, puY) = ptToPagePu(ptX, ptY, widthPt, transform)
         val (docX, docY) = pagePuToDoc(puX, puY, pageOriginX, pageOriginY)
         return docToView(docX, docY, originX, originY, scale)
     }
@@ -85,11 +95,12 @@ object PdfCoordinates {
         scale: Float,
         widthPt: Float,
         tileSize: Int = Limits.PDF_TILE_SIZE_PX,
+        transform: PageTransform = PageTransform(puPerPt(widthPt)),
     ): Matrix {
-        val s = scale * puPerPt(widthPt)
+        val s = scale * transform.scale
         return Matrix().apply {
             setScale(s, s)
-            postTranslate(-col * tileSize.toFloat(), -row * tileSize.toFloat())
+            postTranslate(transform.dx * scale - col * tileSize, transform.dy * scale - row * tileSize)
         }
     }
 }

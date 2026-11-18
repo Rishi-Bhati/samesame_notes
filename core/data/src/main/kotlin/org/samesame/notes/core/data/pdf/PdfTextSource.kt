@@ -13,6 +13,12 @@ class PdfTextSource(file: File, private val extractor: PdfTextExtractor) : Close
 
     val pageCount: Int get() = document.numberOfPages
 
+    fun pageSize(index: Int): Pair<Float, Float> {
+        val page = document.getPage(index)
+        val crop = page.cropBox
+        return if (page.rotation % 180 != 0) crop.height to crop.width else crop.width to crop.height
+    }
+
     fun page(index: Int): PdfPageText = extractor.extractPage(document, index)
 
     override fun close() {

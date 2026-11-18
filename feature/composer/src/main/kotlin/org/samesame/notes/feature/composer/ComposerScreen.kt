@@ -1284,8 +1284,9 @@ internal fun ComposerEditor(
             val page = latestLayout.pageRects.getOrNull(m.pageIndex)
             val first = m.rectsPt.firstOrNull()
             if (page != null && first != null) {
-                val wPt = doc.pages.getOrNull(m.pageIndex)?.size?.widthPt ?: 595f
-                val pu = org.samesame.notes.core.data.pdf.PdfCoordinates.ptToPagePu(first, wPt)
+                val spec = doc.pages.getOrNull(m.pageIndex) ?: return
+                val (wPt, transform) = pdfHost.pageFit(spec, page.height) ?: return
+                val pu = org.samesame.notes.core.data.pdf.PdfCoordinates.ptToPagePu(first, wPt, transform)
                 val v = viewport.visibleDoc
                 if (latestLayout.horizontal) viewport.scrollTo(Offset(page.left + pu.left - v.width / 2f, viewport.scroll.y))
                 else viewport.scrollTo(Offset(viewport.scroll.x, page.top + pu.top - v.height / 3f))

@@ -60,7 +60,7 @@ private const val HANDLE_TOUCH_RADIUS_DP = 28f
 fun PdfSelectionOverlay(
     selectionState: PdfSelectionState,
     pageTextProvider: (Int) -> PdfPageText?,
-    pageWidthPtProvider: (Int) -> Float,
+    pageFitProvider: (Int) -> Pair<Float, PdfCoordinates.PageTransform>?,
     layout: DocumentLayout,
     viewport: Viewport,
     modifier: Modifier = Modifier,
@@ -71,7 +71,7 @@ fun PdfSelectionOverlay(
     val pageText = pageTextProvider(selectedPageIndex) ?: return
     if (!selectionState.hasSelection) return
 
-    val widthPt = pageWidthPtProvider(selectedPageIndex)
+    val (widthPt, transform) = pageFitProvider(selectedPageIndex) ?: return
     if (widthPt <= 0f) return
 
     val pageRect = layout.pageRects.getOrNull(selectedPageIndex) ?: return
@@ -96,6 +96,7 @@ fun PdfSelectionOverlay(
             originX = viewport.origin.x,
             originY = viewport.origin.y,
             scale = viewport.scale,
+            transform = transform,
         )
         Offset(vx, vy)
     }
@@ -110,6 +111,7 @@ fun PdfSelectionOverlay(
             originX = viewport.origin.x,
             originY = viewport.origin.y,
             scale = viewport.scale,
+            transform = transform,
         )
         Offset(vx, vy)
     }
@@ -147,6 +149,7 @@ fun PdfSelectionOverlay(
                             pageOriginX = pageOrigin.x,
                             pageOriginY = pageOrigin.y,
                             widthPt = widthPt,
+                            transform = transform,
                         )
                         selectionState.updateDrag(pageText, ptX, ptY)
                     }
@@ -160,11 +163,11 @@ fun PdfSelectionOverlay(
             for (r in selectionRectsPt) {
                 val (vx1, vy1) = PdfCoordinates.ptToView(
                     r.left, r.top, widthPt, pageOrigin.x, pageOrigin.y,
-                    viewport.origin.x, viewport.origin.y, viewport.scale,
+                    viewport.origin.x, viewport.origin.y, viewport.scale, transform,
                 )
                 val (vx2, vy2) = PdfCoordinates.ptToView(
                     r.right, r.bottom, widthPt, pageOrigin.x, pageOrigin.y,
-                    viewport.origin.x, viewport.origin.y, viewport.scale,
+                    viewport.origin.x, viewport.origin.y, viewport.scale, transform,
                 )
                 drawRect(
                     color = HighlightColor,

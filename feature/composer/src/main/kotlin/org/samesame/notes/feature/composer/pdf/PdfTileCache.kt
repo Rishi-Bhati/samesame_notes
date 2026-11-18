@@ -14,6 +14,7 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.samesame.notes.core.data.pdf.PdfTileRenderer
+import org.samesame.notes.core.data.pdf.PdfCoordinates
 import org.samesame.notes.core.model.Limits
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -28,6 +29,7 @@ data class PdfTileKey(
     val lod: Int,
     val col: Int,
     val row: Int,
+    val transform: PdfCoordinates.PageTransform? = null,
 )
 
 /**
@@ -101,7 +103,8 @@ class PdfTileCache(
         onRendered: () -> Unit = {},
     ) {
         requestTile(scope, key, tileSize, onRendered) { bitmap ->
-            renderer.renderTile(key.pageIndex, key.col, key.row, scale, widthPt, tileSize, bitmap)
+            renderer.renderTile(key.pageIndex, key.col, key.row, scale, widthPt, tileSize, bitmap,
+                key.transform ?: PdfCoordinates.PageTransform(PdfCoordinates.puPerPt(widthPt)))
         }
     }
 
