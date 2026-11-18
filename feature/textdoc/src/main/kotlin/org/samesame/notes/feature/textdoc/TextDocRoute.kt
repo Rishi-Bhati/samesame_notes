@@ -127,8 +127,12 @@ fun TextDocRoute(
         if (noteId != null) {
             if (state.isModified) {
                 scope.launch {
-                    viewModel.saveInPlace(context)
-                    onBack()
+                    val saved = viewModel.saveInPlace(context)
+                    if (saved) {
+                        onBack()
+                    } else {
+                        Toast.makeText(context, R.string.feature_textdoc_toast_save_failed, Toast.LENGTH_SHORT).show()
+                    }
                 }
             } else {
                 onBack()
