@@ -51,4 +51,24 @@ internal object PdfPageGeometry {
 
     /** Points per page unit for a page box [widthPt] wide (pages are [Limits.PAGE_WIDTH_PU] wide). */
     fun pointsPerPu(widthPt: Int): Float = widthPt / Limits.PAGE_WIDTH_PU
+
+    /**
+     * Matrix `[a b c d e f]` taking a point of the DISPLAYED page (origin bottom-left, y up, size of the crop box turned by the
+     * page's own /Rotate [rotation]) to default user space of the unrotated crop box at [cropX],[cropY] ([cropW] x [cropH]).
+     */
+    fun displayedToUser(rotation: Int, cropX: Float, cropY: Float, cropW: Float, cropH: Float): FloatArray {
+        val m = when (((rotation % 360) + 360) % 360) {
+            90 -> floatArrayOf(0f, 1f, -1f, 0f, cropW, 0f)
+            180 -> floatArrayOf(-1f, 0f, 0f, -1f, cropW, cropH)
+            270 -> floatArrayOf(0f, -1f, 1f, 0f, 0f, cropH)
+            else -> floatArrayOf(1f, 0f, 0f, 1f, 0f, 0f)
+        }
+        m[4] += cropX
+        m[5] += cropY
+        return m
+    }
+
+    /** Applies a `[a b c d e f]` matrix to (u, v). */
+    fun apply(m: FloatArray, u: Float, v: Float): Pair<Float, Float> =
+        (m[0] * u + m[2] * v + m[4]) to (m[1] * u + m[3] * v + m[5])
 }

@@ -62,4 +62,15 @@ class PdfPageGeometryTest {
         assertThat(w.toLong() * h).isAtMost(12_010_000L)
         assertThat(w).isEqualTo(h)
     }
+
+    @Test
+    fun displayedPointsMapBackToUserSpaceForEveryPageRotation() {
+        // Unrotated crop box 200 x 300 at (10, 20). Displayed bottom-left (0,0) is the origin of the turned page.
+        fun at(rot: Int, u: Float, v: Float) = PdfPageGeometry.apply(PdfPageGeometry.displayedToUser(rot, 10f, 20f, 200f, 300f), u, v)
+        assertThat(at(0, 5f, 7f)).isEqualTo(15f to 27f)
+        assertThat(at(90, 0f, 0f)).isEqualTo(210f to 20f) // unrotated bottom-right is the displayed bottom-left
+        assertThat(at(180, 0f, 0f)).isEqualTo(210f to 320f)
+        assertThat(at(270, 0f, 0f)).isEqualTo(10f to 320f)
+        assertThat(at(-90, 0f, 0f)).isEqualTo(10f to 320f)
+    }
 }
