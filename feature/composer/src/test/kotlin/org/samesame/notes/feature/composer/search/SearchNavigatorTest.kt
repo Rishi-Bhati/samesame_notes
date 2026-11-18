@@ -108,7 +108,7 @@ class SearchNavigatorTest {
 
         val n = SearchNavigator()
         val firstHit = n.search(body, "Hello", listOf(pdfPage))
-        assertThat(firstHit).isEqualTo(0..5)
+        assertThat(firstHit).isEqualTo(0..4)
         assertThat(n.count).isEqualTo(2)
         assertThat(n.currentHit()).isInstanceOf(SearchHit.Body::class.java)
 
