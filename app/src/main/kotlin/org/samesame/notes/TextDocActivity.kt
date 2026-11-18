@@ -31,7 +31,8 @@ class TextDocActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         val uri = intent.data
         val libraryFileId = intent.getStringExtra(EXTRA_LIBRARY_FILE_ID)
-        if (uri == null && libraryFileId.isNullOrBlank()) {
+        val noteId = intent.getStringExtra(EXTRA_NOTE_ID)
+        if (uri == null && libraryFileId.isNullOrBlank() && noteId.isNullOrBlank()) {
             finish()
             return
         }
@@ -52,6 +53,7 @@ class TextDocActivity : FragmentActivity() {
                     libraryFileId = libraryFileId,
                     displayName = displayName,
                     writable = writable,
+                    noteId = noteId,
                     onBack = { finish() },
                 )
             }
@@ -61,7 +63,14 @@ class TextDocActivity : FragmentActivity() {
     companion object {
         private const val EXTRA_DISPLAY_NAME = "org.samesame.notes.extra.TEXTDOC_NAME"
         private const val EXTRA_LIBRARY_FILE_ID = "org.samesame.notes.extra.TEXTDOC_FILE_ID"
+        private const val EXTRA_NOTE_ID = "org.samesame.notes.extra.TEXTDOC_NOTE_ID"
         private const val EXTRA_WRITABLE = "org.samesame.notes.extra.TEXTDOC_WRITABLE"
+
+        /** Opens a Markdown note by id; the editor loads and saves it through the note store. */
+        fun noteIntent(context: Context, noteId: String): Intent =
+            Intent(context, TextDocActivity::class.java)
+                .putExtra(EXTRA_NOTE_ID, noteId)
+                .putExtra(EXTRA_WRITABLE, true)
 
         /** Opens [uri] from inside the app. The flags are forwarded so the editor may write the document. */
         fun intent(context: Context, uri: Uri, displayName: String?, writable: Boolean): Intent =

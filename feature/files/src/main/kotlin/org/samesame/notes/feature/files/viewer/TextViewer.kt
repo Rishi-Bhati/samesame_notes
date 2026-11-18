@@ -26,6 +26,7 @@ internal fun TextViewer(
             uri = uri,
             libraryFileId = file.id.value,
             displayName = file.displayName,
+            mimeType = file.mimeType,
             writable = true,
             showTopBar = false,
             modifier = Modifier.fillMaxSize(),

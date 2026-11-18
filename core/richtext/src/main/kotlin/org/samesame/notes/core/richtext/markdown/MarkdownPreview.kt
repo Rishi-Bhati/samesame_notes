@@ -19,6 +19,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,6 +41,8 @@ import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.commonmark.ext.gfm.strikethrough.Strikethrough
 import org.commonmark.ext.gfm.tables.TableBlock
 import org.commonmark.ext.gfm.tables.TableBody
@@ -86,13 +90,16 @@ fun MarkdownPreview(
     onTaskCheckedChange: ((charOffset: Int, isChecked: Boolean) -> Unit)? = null,
     onLinkClick: ((url: String) -> Unit)? = null,
 ) {
-    val document = remember(markdown) { MarkdownParser.parse(markdown) } ?: return
+    val document by produceState<Node?>(initialValue = null, key1 = markdown) {
+        value = withContext(Dispatchers.Default) { MarkdownParser.parse(markdown) }
+    }
+    val currentDoc = document ?: return
     val colors = SameSameTheme.colors
     val ctx = remember(markdown, colors, onTaskCheckedChange, onLinkClick) {
         RenderContext(markdown, colors, onTaskCheckedChange, onLinkClick)
     }
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Blocks(document, ctx)
+        Blocks(currentDoc, ctx)
     }
 }
 

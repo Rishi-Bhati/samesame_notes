@@ -145,6 +145,8 @@ internal class DefaultNoteRepository @Inject constructor(
 
     override fun observeNote(id: NoteId): Flow<Note?> = noteDao.observe(id.value).map { it?.asExternalModel() }
 
+    override suspend fun getNote(id: NoteId): Note? = noteDao.get(id.value)?.asExternalModel()
+
     override suspend fun renderPreview(id: NoteId, targetWidthPx: Int, darkTheme: Boolean): ByteArray? =
         lockFor(id.value).withLock {
             val row = noteDao.get(id.value) ?: return@withLock null
@@ -706,9 +708,13 @@ internal class DefaultNoteRepository @Inject constructor(
     override suspend fun loadMedia(id: NoteId, path: String): ByteArray? = documents.readMedia(id.value, path)
 
     override suspend fun saveContent(id: NoteId, snapshot: NoteSnapshot) = lockFor(id.value).withLock {
+        saveContentLocked(id, snapshot)
+    }
+
+    private suspend fun saveContentLocked(id: NoteId, snapshot: NoteSnapshot) {
         // A queued autosave of a note that was deleted meanwhile (empty note closed, real deletion) must not
         // write the bundle back: the catalog row is the first thing removed, so it is the tombstone here.
-        val row = noteDao.get(id.value) ?: return@withLock
+        val row = noteDao.get(id.value) ?: return
         documents.commit(id.value, snapshot)
         val doc = snapshot.document
         // Backlinks for Files (locked notes too: they can only change while unlocked, and list by their visible title).
@@ -726,7 +732,7 @@ internal class DefaultNoteRepository @Inject constructor(
                 log.log(Level.WARNING, "File backlinks not updated", it)
             }
         }
-        val plain = doc.body.plainText()
+        val plain = doc.markdown?.content ?: doc.body.plainText()
         val now = clock.now()
         if (row.isLocked) {
             // Owner decision: a locked note's title stays in the catalog and is visible; only the body preview and the
@@ -734,7 +740,7 @@ internal class DefaultNoteRepository @Inject constructor(
             if (row.title != doc.title) noteDao.updateTitle(id.value, doc.title, now)
             noteDao.updatePreview(id.value, "", 0, 0, now)
             searchDao.replace(NoteSearchEntity(noteId = id.value, title = doc.title, body = "", inkText = ""))
-            return@withLock
+            return
         }
         if (row.title != doc.title) noteDao.updateTitle(id.value, doc.title, now)
         val (done, total) = checklistCounts(doc.body)
@@ -742,6 +748,22 @@ internal class DefaultNoteRepository @Inject constructor(
         searchDao.replace(
             NoteSearchEntity(noteId = id.value, title = doc.title, body = plain, inkText = ""),
         )
+    }
+
+    override suspend fun readMarkdown(id: NoteId): String? = lockFor(id.value).withLock {
+        val row = noteDao.get(id.value) ?: return@withLock null
+        if (row.isLocked || documents.isLocked(id.value)) return@withLock null
+        val doc = documents.readDocument(id.value, titleFromDb = row.title)
+        doc.markdown?.content
+    }
+
+    override suspend fun writeMarkdown(id: NoteId, text: String) = lockFor(id.value).withLock {
+        val row = noteDao.get(id.value) ?: return@withLock
+        if (row.isLocked || documents.isLocked(id.value)) return@withLock
+        val doc = documents.readDocument(id.value, titleFromDb = row.title)
+        val updated = doc.copy(markdown = MarkdownBody(content = text))
+        saveContentLocked(id, NoteSnapshot(document = updated, dirtyPages = emptyList()))
+        documents.flush(id.value, false)
     }
 
     /** The bundle document with the catalog's title (the catalog is authoritative for renames). */

@@ -10,6 +10,9 @@ import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.samesame.notes.core.data.repository.FilesRepository
+import org.samesame.notes.core.data.repository.NoteRepository
+import org.samesame.notes.core.model.Note
+import org.samesame.notes.core.model.NoteId
 import org.samesame.notes.core.model.files.FileId
 import org.samesame.notes.core.model.files.LibraryFile
 import java.io.FileNotFoundException
@@ -30,6 +33,13 @@ interface TextDocFileStore {
 interface TextDocUriStore {
     suspend fun read(uri: Uri): InputStream
     suspend fun write(uri: Uri, bytes: ByteArray)
+}
+
+/** Reading and writing a Markdown note through the notes repository. */
+interface TextDocNoteStore {
+    suspend fun readMarkdown(noteId: String): String?
+    suspend fun writeMarkdown(noteId: String, text: String)
+    suspend fun getNote(noteId: String): Note? = null
 }
 
 @Singleton
@@ -56,9 +66,17 @@ internal class DefaultTextDocUriStore @Inject constructor(@param:ApplicationCont
     }
 }
 
+@Singleton
+internal class DefaultTextDocNoteStore @Inject constructor(private val notes: NoteRepository) : TextDocNoteStore {
+    override suspend fun readMarkdown(noteId: String): String? = notes.readMarkdown(NoteId(noteId))
+    override suspend fun writeMarkdown(noteId: String, text: String) = notes.writeMarkdown(NoteId(noteId), text)
+    override suspend fun getNote(noteId: String): Note? = notes.getNote(NoteId(noteId))
+}
+
 @Module
 @InstallIn(SingletonComponent::class)
 internal abstract class TextDocModule {
     @Binds abstract fun fileStore(impl: DefaultTextDocFileStore): TextDocFileStore
     @Binds abstract fun uriStore(impl: DefaultTextDocUriStore): TextDocUriStore
+    @Binds abstract fun noteStore(impl: DefaultTextDocNoteStore): TextDocNoteStore
 }

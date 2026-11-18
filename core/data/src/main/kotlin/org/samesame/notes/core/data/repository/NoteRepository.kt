@@ -2,6 +2,7 @@ package org.samesame.notes.core.data.repository
 
 import androidx.ink.strokes.Stroke
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
 import org.samesame.notes.core.document.NoteDocument as NoteDocumentV1View
 import org.samesame.notes.core.document.NoteSnapshot
@@ -19,6 +20,18 @@ import org.samesame.notes.core.model.SortOrder
 interface NoteRepository {
     fun observeNotes(filter: NoteFilter, sort: SortOrder): Flow<List<Note>>
     fun observeNote(id: NoteId): Flow<Note?>
+
+    /** Returns the catalog note, or null if it does not exist. */
+    suspend fun getNote(id: NoteId): Note? = observeNote(id).firstOrNull()
+
+    /** Reads the Markdown text of a [NoteKind.Markdown] note, or null if the note is missing or locked. */
+    suspend fun readMarkdown(id: NoteId): String? = null
+
+    /**
+     * Writes [text] as the note's Markdown body, updates the catalog preview text (first 300 chars) and modified time,
+     * updates the search index, and flushes to the container.
+     */
+    suspend fun writeMarkdown(id: NoteId, text: String) {}
 
     /**
      * Renders the note's first page to a PNG for the home-card previews (text, ink, images and objects),

@@ -510,6 +510,10 @@ internal fun NotesScreen(
                                 AppMenuItem(stringResource(label), { viewModel.setViewMode(m); menu = MenuState.None }, checked = m == mode)
                             }
                         } else {
+                            AppMenuItem(stringResource(R.string.feature_notes_new_markdown_note), {
+                                menu = MenuState.None
+                                scope.launch { onOpenNote(viewModel.createMarkdownNote()) }
+                            })
                             AppMenuItem(stringResource(R.string.feature_notes_menu_edit), { menu = MenuState.None; viewModel.startSelecting() })
                             AppMenuItem(stringResource(R.string.feature_notes_menu_view), { menu = MenuState.View })
                             AppMenuItem(

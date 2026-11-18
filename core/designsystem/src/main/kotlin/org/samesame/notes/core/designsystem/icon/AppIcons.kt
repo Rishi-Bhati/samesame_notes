@@ -276,6 +276,12 @@ object AppIcons {
     val Eyedropper: ImageVector
         @Composable get() = ImageVector.vectorResource(R.drawable.ic_oui_spoid_outline)
 
+    val Eye: ImageVector
+        @Composable get() = ImageVector.vectorResource(R.drawable.ic_oui_eyes)
+
+    val Preview: ImageVector
+        @Composable get() = Eye
+
     val ExpandMore: ImageVector
         @Composable get() = ImageVector.vectorResource(R.drawable.ic_oui_keyboard_arrow_down)
 

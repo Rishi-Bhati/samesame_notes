@@ -6,6 +6,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -30,6 +32,9 @@ data class TextDocUiState(
     val isMonospace: Boolean = false,
     val isWrap: Boolean = true,
     val isHtmlPreview: Boolean = false,
+    val isMarkdownPreview: Boolean = false,
+    val isMarkdown: Boolean = false,
+    val isLockedNote: Boolean = false,
     val findQuery: String = "",
     val replaceQuery: String = "",
     val activeMatchIndex: Int = -1,
@@ -52,6 +57,7 @@ data class TextDocUiState(
 class TextDocViewModel @Inject constructor(
     private val files: TextDocFileStore,
     private val uris: TextDocUriStore,
+    private val notes: TextDocNoteStore,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(TextDocUiState())
@@ -60,18 +66,66 @@ class TextDocViewModel @Inject constructor(
     private val undoRedo = UndoRedoState(Limits.MAX_UNDO_STEPS)
     private var documentUri: Uri? = null
     private var libraryFileId: FileId? = null
+    private var currentNoteId: String? = null
+    private var autosaveJob: Job? = null
     private var writable = true
     private var savedText = ""
     private var matches: List<IntRange> = emptyList()
 
-    /** Loads [uri], or the Files entry [libraryFileId], or an empty untitled document when both are null. */
-    fun load(uri: Uri?, libraryFileId: String?, writable: Boolean = true, displayName: String? = null) {
+    /** Loads [uri], or the Files entry [libraryFileId], or the note [noteId], or an empty untitled document when all are null. */
+    fun load(
+        uri: Uri? = null,
+        libraryFileId: String? = null,
+        writable: Boolean = true,
+        displayName: String? = null,
+        noteId: String? = null,
+        mimeType: String? = null,
+    ) {
+        autosaveJob?.cancel()
         viewModelScope.launch {
+            currentNoteId = noteId
+            this@TextDocViewModel.writable = writable
+            _uiState.update { it.copy(isLoading = true, loadFailed = false) }
+
+            if (noteId != null) {
+                this@TextDocViewModel.libraryFileId = null
+                documentUri = null
+                try {
+                    val note = notes.getNote(noteId)
+                    if (note == null) {
+                        _uiState.update { it.copy(isLoading = false, loadFailed = true) }
+                        return@launch
+                    }
+                    val isLocked = note.isLocked
+                    val text = if (isLocked) "" else (notes.readMarkdown(noteId) ?: "")
+                    savedText = text
+                    undoRedo.reset(text)
+                    matches = emptyList()
+                    _uiState.value = TextDocUiState(
+                        text = text,
+                        encoding = TextEncoding.Utf8,
+                        lineEnding = LineEnding.Lf,
+                        hasBom = false,
+                        isReadOnly = isLocked || !writable,
+                        isModified = false,
+                        activeMatchIndex = -1,
+                        matchCount = 0,
+                        isLoading = false,
+                        title = note.title.ifBlank { displayName },
+                        isMarkdown = true,
+                        isLockedNote = isLocked,
+                    )
+                } catch (c: CancellationException) {
+                    throw c
+                } catch (_: Exception) {
+                    _uiState.update { it.copy(isLoading = false, loadFailed = true) }
+                }
+                return@launch
+            }
+
             val id = libraryFileId?.let(::FileId)?.takeIf { it.isWellFormed }
             this@TextDocViewModel.libraryFileId = id
-            this@TextDocViewModel.writable = writable
             documentUri = uri
-            _uiState.update { it.copy(isLoading = true, loadFailed = false) }
             try {
                 val file = id?.let { files.get(it) }
                 val target = uri ?: file?.let(files::contentUri)
@@ -85,6 +139,7 @@ class TextDocViewModel @Inject constructor(
                 savedText = doc.text
                 undoRedo.reset(doc.text)
                 matches = emptyList()
+                val isMd = MarkdownDetection.isMarkdown(name, mimeType)
                 _uiState.value = TextDocUiState(
                     text = doc.text,
                     encoding = doc.encoding,
@@ -96,6 +151,7 @@ class TextDocViewModel @Inject constructor(
                     matchCount = 0,
                     isLoading = false,
                     title = name,
+                    isMarkdown = isMd,
                 )
             } catch (c: CancellationException) {
                 throw c
@@ -126,11 +182,28 @@ class TextDocViewModel @Inject constructor(
     fun setMonospace(value: Boolean) = _uiState.update { it.copy(isMonospace = value) }
     fun setWrap(value: Boolean) = _uiState.update { it.copy(isWrap = value) }
     fun setHtmlPreview(value: Boolean) = _uiState.update { it.copy(isHtmlPreview = value) }
+    fun setMarkdownPreview(value: Boolean) = _uiState.update { it.copy(isMarkdownPreview = value) }
 
     /** @return true when the file was written; false means the caller should offer Save as. */
     suspend fun saveInPlace(context: Context? = null): Boolean {
         val state = _uiState.value
         if (state.isReadOnly) return false
+        val noteId = currentNoteId
+        if (noteId != null) {
+            autosaveJob?.cancel()
+            return try {
+                _uiState.update { it.copy(isSaving = true) }
+                notes.writeMarkdown(noteId, state.text)
+                savedText = state.text
+                _uiState.update { it.copy(isModified = false, isSaving = false) }
+                true
+            } catch (c: CancellationException) {
+                throw c
+            } catch (_: Exception) {
+                _uiState.update { it.copy(isSaving = false) }
+                false
+            }
+        }
         val bytes = bytes(state)
         return try {
             _uiState.update { it.copy(isSaving = true) }
@@ -162,6 +235,7 @@ class TextDocViewModel @Inject constructor(
             uris.write(targetUri, bytes(state))
             documentUri = targetUri
             libraryFileId = null
+            currentNoteId = null
             savedText = state.text
             _uiState.update { it.copy(isModified = false, isSaving = false, isReadOnly = false) }
             true
@@ -214,10 +288,11 @@ class TextDocViewModel @Inject constructor(
     /** Applies a text change (typing, undo, replace) and refreshes the find hits. */
     private fun applyText(text: String, keepIndex: Int = _uiState.value.activeMatchIndex) {
         matches = FindReplace.matches(text, _uiState.value.findQuery)
+        val modified = text != savedText
         _uiState.update {
             it.copy(
                 text = text,
-                isModified = text != savedText,
+                isModified = modified,
                 matchCount = matches.size,
                 activeMatchIndex = when {
                     matches.isEmpty() -> -1
@@ -228,6 +303,24 @@ class TextDocViewModel @Inject constructor(
                 canRedo = undoRedo.canRedo,
             )
         }
+        if (modified) scheduleAutosave()
+    }
+
+    private fun scheduleAutosave() {
+        val noteId = currentNoteId ?: return
+        if (_uiState.value.isReadOnly) return
+        autosaveJob?.cancel()
+        autosaveJob = viewModelScope.launch {
+            delay(1000)
+            if (currentNoteId == noteId && _uiState.value.isModified) {
+                saveInPlace()
+            }
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        autosaveJob?.cancel()
     }
 
     private fun bytes(state: TextDocUiState): ByteArray =
