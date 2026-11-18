@@ -5,6 +5,7 @@
   Cloud backup only runs when it is end-to-end encrypted (the device has a screen lock).
   Files library (files/library/): left out of cloud backup on purpose (Auto Backup's 25 MB quota stops the whole app's
   backup once exceeded); its stored copies (library/blobs/) go with device-to-device transfer. tmp/ is never copied.
+  The automatic version history (files/versions/) stays out too: it is outside the included notes/ tree.
 -->
 <data-extraction-rules>
     <cloud-backup disableIfNoEncryptionCapabilities="true">
