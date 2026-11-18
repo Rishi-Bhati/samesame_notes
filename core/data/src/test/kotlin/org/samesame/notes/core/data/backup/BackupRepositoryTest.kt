@@ -396,6 +396,54 @@ class BackupRepositoryTest {
         assertThat(again.restoredLibraryFiles).isEqualTo(0)
     }
 
+    @Test
+    fun `pre-existing truncated blob is replaced on restore`() = runBlocking<Unit> {
+        val now = clock.now()
+        val content = "full-length-blob-content-12345"
+        val sha = writeBlob(content)
+        val fileId = UUID.randomUUID().toString()
+        db.libraryDao().insertFile(
+            LibraryFileEntity(
+                id = fileId,
+                folderId = null,
+                displayName = "doc",
+                ext = "txt",
+                mimeType = "text/plain",
+                category = FileCategory.Document,
+                sizeBytes = content.length.toLong(),
+                sha256 = sha,
+                width = null,
+                height = null,
+                durationMs = null,
+                pageCount = null,
+                sourceApp = null,
+                createdAt = now,
+                modifiedAt = now,
+                sortIndex = 1L,
+                isFavorite = false,
+                trashedAt = null,
+                description = "",
+            ),
+        )
+
+        val backup = (repo.runBackup(folder) as BackupRunResult.Success).folderName
+
+        // Simulate interrupted prior restore: destination exists with non-zero truncated content
+        val destFile = blobStore.file(sha)
+        destFile.writeBytes("truncated-prefix".toByteArray())
+        assertThat(destFile.length()).isGreaterThan(0L)
+        assertThat(destFile.length()).isLessThan(content.length.toLong())
+
+        // Clear file record from DB so restore attempts to restore it
+        db.libraryDao().deleteFiles(listOf(fileId))
+
+        val result = repo.restoreFromFolder(folder, backup)
+        assertThat(result.restoredLibraryFiles).isEqualTo(1)
+
+        // Truncated blob must have been replaced with full content
+        assertThat(blobStore.file(sha).readText()).isEqualTo(content)
+    }
+
     private fun createNote(
         title: String,
         body: String,

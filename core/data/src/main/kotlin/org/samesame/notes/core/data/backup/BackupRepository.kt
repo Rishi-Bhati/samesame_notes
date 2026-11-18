@@ -24,9 +24,14 @@ import org.samesame.notes.core.document.NoteDocumentStore
 import org.samesame.notes.core.files.BlobStore
 import org.samesame.notes.core.model.BackupSchedule
 import java.io.File
+import java.io.IOException
 import java.io.OutputStream
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.security.DigestOutputStream
 import java.security.MessageDigest
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -595,9 +600,46 @@ class BackupRepository @Inject constructor(
 
     private fun ensureBlob(folder: BackupFolder, blobPath: String, sha256: String) {
         val dest = blobStore.file(sha256)
-        if (dest.isFile && dest.length() > 0) return
-        dest.parentFile?.mkdirs()
-        folder.openInput(blobPath).use { input -> dest.outputStream().use { input.copyTo(it) } }
+        if (dest.isFile && fileSha256(dest) == sha256) return
+        val parent = dest.parentFile ?: throw IOException("No parent directory for $dest")
+        parent.mkdirs()
+        val tmp = File(parent, "${dest.name}.${UUID.randomUUID()}.tmp")
+        try {
+            val digest = MessageDigest.getInstance("SHA-256")
+            tmp.outputStream().use { raw ->
+                val out = DigestOutputStream(raw, digest)
+                folder.openInput(blobPath).use { input -> input.copyTo(out) }
+                out.flush()
+            }
+            val writtenSha = digest.digest().joinToString("") { "%02x".format(it) }
+            if (writtenSha != sha256) {
+                tmp.delete()
+                throw IOException("Corrupt blob for $blobPath: expected $sha256 but got $writtenSha")
+            }
+            try {
+                Files.move(tmp.toPath(), dest.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+            } catch (_: AtomicMoveNotSupportedException) {
+                Files.move(tmp.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            }
+        } catch (t: Throwable) {
+            tmp.delete()
+            throw t
+        }
+    }
+
+    private fun fileSha256(file: File): String? = try {
+        val md = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buf = ByteArray(8192)
+            while (true) {
+                val n = input.read(buf)
+                if (n < 0) break
+                md.update(buf, 0, n)
+            }
+        }
+        md.digest().joinToString("") { "%02x".format(it) }
+    } catch (_: Throwable) {
+        null
     }
 
     private fun hashOf(folder: BackupFolder, path: String): String? = try {
