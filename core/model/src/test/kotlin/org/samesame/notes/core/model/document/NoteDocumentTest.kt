@@ -35,9 +35,9 @@ class NoteDocumentTest {
         assertThat(NoteDocument.fromJson(doc.toJson())).isEqualTo(doc)
     }
 
-    @Test fun `defaults are written and version is 10`() {
+    @Test fun `defaults are written and version is 11`() {
         val json = NoteDocument(id = "n", pages = listOf(PageSpec("p"))).toJson()
-        assertThat(json).contains("\"formatVersion\":10")
+        assertThat(json).contains("\"formatVersion\":11")
         // A rich-text note never writes the markdown key (its JSON stays what v9 wrote).
         assertThat(json).doesNotContain("markdown")
         assertThat(json).contains("\"size\":null")

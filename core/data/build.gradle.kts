@@ -15,6 +15,7 @@ dependencies {
     implementation(projects.core.database)
     implementation(projects.core.files)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.pdfbox.android)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.biometric)
     implementation(libs.androidx.work.runtime)

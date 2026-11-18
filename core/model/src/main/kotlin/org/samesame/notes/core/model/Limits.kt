@@ -151,4 +151,32 @@ object Limits {
     const val MAX_VERSION_BYTES_TOTAL = 500L * 1024 * 1024
     /** Characters of body text shown in the read-only version preview. */
     const val VERSION_PREVIEW_CHARS = 20_000
+
+    // PDF engine, markup and page tools (0.5.0)
+    /** Pages one imported PDF may add to a note (same cap the importer already uses). */
+    const val PDF_MAX_PAGES = 300
+    /** Largest PDF the app opens, imports or unlocks. */
+    const val PDF_MAX_FILE_BYTES = 256L * 1024 * 1024
+    /** Edge of one square render tile, in px. */
+    const val PDF_TILE_SIZE_PX = 512
+    /** Tile bitmap memory kept by the LRU cache (48 tiles of 512x512 ARGB_8888). */
+    const val PDF_TILE_CACHE_MAX_BYTES = 48L * 1024 * 1024
+    /** Tiles are drawn only above this zoom; at or below it the base page bitmap is enough. */
+    const val PDF_TILE_ZOOM_THRESHOLD = 1.25f
+    /** Pages of extracted text kept in memory per open PDF. */
+    const val PDF_TEXT_CACHE_MAX_PAGES = 100
+    /** Outline levels read; deeper entries are dropped so a hostile file cannot blow the stack. */
+    const val PDF_MAX_OUTLINE_DEPTH = 10
+    /** Wrong-password tries in the unlock dialog before it closes. */
+    const val PDF_PASSWORD_MAX_ATTEMPTS = 5
+    /** In-note PDF search stops after this many hits. */
+    const val PDF_SEARCH_MAX_MATCHES = 1000
+    /** Text markups (highlight, underline, strike) one page keeps. */
+    const val MAX_MARKUPS_PER_PAGE = 5_000
+    /** Quads (one per text line) one markup keeps. */
+    const val MAX_QUADS_PER_MARKUP = 1_000
+    /** Characters of selected text stored with one markup. */
+    const val MAX_MARKUP_TEXT_LENGTH = 10_000
+    /** Vector PDF export gives up after this long. */
+    const val PDF_VECTOR_EXPORT_TIMEOUT_MS = 60_000L
 }

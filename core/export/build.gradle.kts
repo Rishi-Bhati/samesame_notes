@@ -10,6 +10,7 @@ dependencies {
     api(projects.core.model)
     api(projects.core.ink)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.pdfbox.android)
 
     // Markdown (CommonMark + GFM tables, strikethrough, autolinks, task lists)
     implementation(libs.commonmark.core)
