@@ -51,9 +51,11 @@ object MathDetector {
     fun suggest(text: CharSequence, caret: Int, config: MathConfig = MathConfig.default()): MathSuggestion? {
         val end = caret.coerceIn(0, text.length)
         var lineStart = end
-        while (lineStart > 0 && text[lineStart - 1] != '\n') lineStart--
+        while (lineStart > 0 && text[lineStart - 1] != '\n') {
+            lineStart--
+            if (end - lineStart > Limits.MATH_MAX_EXPRESSION_LENGTH) return null
+        }
         val prefix = text.subSequence(lineStart, end).toString()
-        if (prefix.length > Limits.MATH_MAX_EXPRESSION_LENGTH) return null
 
         val trimmed = prefix.trimEnd(' ', '\t')
         val keywordMatch = keyword.matchEntire(prefix)
@@ -134,7 +136,6 @@ object MathDetector {
         while (end >= 0) {
             var start = end
             while (start > 0 && text[start - 1] != '\n') start--
-            if (end - start > Limits.MATH_MAX_EXPRESSION_LENGTH) return null
             val line = text.subSequence(start, end).toString()
             val trimmed = line.trim()
             val standalone = keyword.matchEntire(line)

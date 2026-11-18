@@ -74,9 +74,11 @@ object LineAmount {
         val text = line.substring(base)
         if (excluded.any { it.containsMatchIn(text) } ||
             datePair.findAll(text).any {
-                val day = it.groupValues[1].toInt()
-                val month = it.groupValues[2].toInt()
-                (day in 1..31 || day in 1000..9999) && month in 1..12
+                val first = it.groupValues[1].toInt()
+                val second = it.groupValues[2].toInt()
+                (first in 1000..9999 && second in 1..12) ||
+                    (first in 1..31 && second in 1..12) ||
+                    (first in 1..12 && second in 1..31)
             } || groupedPhone.findAll(text).any { it.value.count(Char::isDigit) >= 8 }
         ) return Read.Skipped
         val tokens = ArrayList<Token>()

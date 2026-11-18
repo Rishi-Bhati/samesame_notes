@@ -103,10 +103,11 @@ object MathEvaluator {
             })
             if (kind == AggregateKind.Count) return MathResult(formatNumber(value), 1)
             if (unit?.dimension == MathDimension.Time) return MathResult(formatDuration(unit.toBase(value)), 1)
-            val number = groupedNumber(value, amounts.maxOf { it.grouping })
+            val sign = if (value.signum() < 0) "-" else ""
+            val unsigned = groupedNumber(value.abs(), amounts.maxOf { it.grouping })
             val currency = currencies.firstOrNull().orEmpty()
             val suffix = first.unitDisplay ?: unit?.symbol
-            MathResult(currency + number + if (suffix == null) "" else " $suffix", 1)
+            MathResult(sign + currency + unsigned + if (suffix == null) "" else " $suffix", 1)
         } catch (_: Failure) {
             null
         } catch (_: ArithmeticException) {
