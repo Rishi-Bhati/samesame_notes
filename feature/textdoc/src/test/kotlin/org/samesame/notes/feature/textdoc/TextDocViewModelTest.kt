@@ -183,6 +183,45 @@ class TextDocViewModelTest {
     }
 
     @Test
+    fun reloadWhenSameDocumentAlreadyLoadedReturnsEarlyAndPreservesEdits() = runTest {
+        val note = sampleNote(id = "md-note", title = "Note")
+        noteStore.note = note
+        noteStore.text = "disk content"
+
+        val vm = TextDocViewModel(files, uris, noteStore)
+        vm.load(noteId = "md-note", writable = true)
+        assertThat(vm.uiState.value.text).isEqualTo("disk content")
+
+        vm.updateText("unsaved user edits")
+        assertThat(vm.uiState.value.isModified).isTrue()
+
+        // Simulate config change reload with same noteId
+        vm.load(noteId = "md-note", writable = true)
+
+        // Must not wipe unsaved edits
+        assertThat(vm.uiState.value.text).isEqualTo("unsaved user edits")
+        assertThat(vm.uiState.value.isModified).isTrue()
+    }
+
+    @Test
+    fun reloadWithDifferentDocumentDoesReload() = runTest {
+        val note1 = sampleNote(id = "note-1", title = "Note 1")
+        noteStore.note = note1
+        noteStore.text = "content 1"
+
+        val vm = TextDocViewModel(files, uris, noteStore)
+        vm.load(noteId = "note-1", writable = true)
+        assertThat(vm.uiState.value.text).isEqualTo("content 1")
+
+        val note2 = sampleNote(id = "note-2", title = "Note 2")
+        noteStore.note = note2
+        noteStore.text = "content 2"
+
+        vm.load(noteId = "note-2", writable = true)
+        assertThat(vm.uiState.value.text).isEqualTo("content 2")
+    }
+
+    @Test
     fun lockedMarkdownNoteOpensReadOnlyWithNotice() = runTest {
         val note = sampleNote(id = "locked-md", title = "Secret note", isLocked = true)
         noteStore.note = note

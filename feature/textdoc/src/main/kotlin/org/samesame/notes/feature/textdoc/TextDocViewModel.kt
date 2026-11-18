@@ -81,6 +81,7 @@ class TextDocViewModel @Inject constructor(
         noteId: String? = null,
         mimeType: String? = null,
     ) {
+        if (isSameDocumentLoaded(uri, libraryFileId, noteId)) return
         autosaveJob?.cancel()
         viewModelScope.launch {
             currentNoteId = noteId
@@ -336,4 +337,13 @@ class TextDocViewModel @Inject constructor(
 
     private fun bytes(state: TextDocUiState): ByteArray =
         TextDocumentCodec.roundTripBytes(state.text, state.encoding, state.lineEnding, state.hasBom)
+
+    private fun isSameDocumentLoaded(uri: Uri?, libraryFileId: String?, noteId: String?): Boolean {
+        if (_uiState.value.isLoading || _uiState.value.loadFailed) return false
+        if (noteId != null) return noteId == currentNoteId
+        val id = libraryFileId?.let(::FileId)?.takeIf { it.isWellFormed }
+        if (id != null) return id == this.libraryFileId
+        if (uri != null) return uri == this.documentUri
+        return currentNoteId == null && this.libraryFileId == null && this.documentUri == null
+    }
 }
