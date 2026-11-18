@@ -1115,10 +1115,13 @@ class NoteDocumentStore(
         }
     }
 
+    private fun versionMeta(doc: NoteDocument): VersionMeta =
+        VersionMeta(doc.title, doc.body.plainText().trim().take(Limits.VERSION_PREVIEW_CHARS), doc.pages.size)
+
     private fun versionMeta(docFile: File): VersionMeta = try {
         val text = docFile.readBytes().decodeToString()
         val doc = parseDocument(text, documentVersion(text))
-        VersionMeta(doc.title, doc.body.plainText().trim().take(200), doc.pages.size)
+        versionMeta(doc)
     } catch (e: Exception) {
         VersionMeta()
     }
@@ -1215,7 +1218,17 @@ class NoteDocumentStore(
         // Undo point: a failure here aborts the restore (unlike the quiet snapshots).
         store.snapshot(
             noteId, container,
-            meta = { if (locked) VersionMeta(locked = true) else versionMeta(File(workingDir(noteId), DOCUMENT_FILE).takeIf { it.exists() } ?: container) },
+            meta = {
+                if (locked) VersionMeta(locked = true)
+                else {
+                    val workingDoc = File(workingDir(noteId), DOCUMENT_FILE)
+                    if (workingDoc.exists()) versionMeta(workingDoc)
+                    else runCatching {
+                        val doc = readVersionDocument(noteId, container)
+                        versionMeta(doc)
+                    }.getOrDefault(VersionMeta())
+                }
+            },
             force = true,
         )
         val tmp = File(notesRoot, "${container.name}.${UUID.randomUUID()}$TMP_SUFFIX")
