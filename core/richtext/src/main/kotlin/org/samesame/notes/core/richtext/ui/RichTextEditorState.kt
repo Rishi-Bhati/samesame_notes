@@ -161,7 +161,7 @@ class RichTextEditorState(
     /** "Show links in notes": underline links and open them on tap. */
     var showLinks by mutableStateOf(true)
 
-    /** "Calculate as you type": show an inline result after a typed `=` that can be accepted. */
+    /** "Calculate as you type": show an inline result for expressions and total keywords. */
     var calculateAsYouType: Boolean
         get() = calculateAsYouTypeState
         set(value) {
@@ -209,6 +209,7 @@ class RichTextEditorState(
         hint = if (isFocused) null else hint,
         mathGhostText = mathGhost?.text,
         mathGhostAnchor = mathGhost?.anchor ?: -1,
+        mathCountedRanges = mathGhost?.countedRanges.orEmpty(),
     )
 
     /**

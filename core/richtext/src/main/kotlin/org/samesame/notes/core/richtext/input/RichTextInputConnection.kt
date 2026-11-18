@@ -100,7 +100,7 @@ class RichTextInputConnection(
         ) {
             true
         } else if (t == "\n" && body.composition == null) {
-            body.insertNewline()
+            enter()
             true
         } else if (body.composition == null && t.length > MIN_LINK_LENGTH && host.pasteText(t)) {
             true
@@ -166,7 +166,7 @@ class RichTextInputConnection(
                 body.deleteBackward()
             }
             KeyEvent.KEYCODE_FORWARD_DEL -> body.deleteForward()
-            KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> body.insertNewline()
+            KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> enter()
             KeyEvent.KEYCODE_TAB -> {
                 val ghost = host.mathGhostAtCaret()
                 if (ghost != null) {
@@ -209,8 +209,15 @@ class RichTextInputConnection(
     }
 
     override fun performEditorAction(actionCode: Int): Boolean = edit("performEditorAction", "$actionCode") {
-        body.insertNewline()
+        enter()
         true
+    }
+
+    private fun enter() {
+        if (body.composition == null && MathGhostInput.enterAccepts(host.mathGhostAtCaret()) &&
+            host.acceptMathGhostFromIme("enter")
+        ) return
+        body.insertNewline()
     }
 
     override fun getTextBeforeCursor(n: Int, flags: Int): CharSequence? {
