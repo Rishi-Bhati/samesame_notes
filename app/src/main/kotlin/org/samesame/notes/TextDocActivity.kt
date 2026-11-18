@@ -18,9 +18,9 @@ import org.samesame.notes.feature.textdoc.TextDocRoute
 import javax.inject.Inject
 
 /**
- * The text document editor. It is exported for ACTION_EDIT and ACTION_VIEW of text files, and started by the app for
- * a Files entry. A URI is editable only when the intent carries a write grant (or explicitly asks for it); otherwise
- * the editor opens read-only and offers Save as.
+ * The text document editor for external files. It is exported for ACTION_EDIT and ACTION_VIEW of text files
+ * from other apps. It strictly accepts foreign content:// URIs; internal note and library IDs, file:// URIs,
+ * and app-private URIs are rejected.
  */
 @AndroidEntryPoint
 class TextDocActivity : FragmentActivity() {
@@ -30,9 +30,7 @@ class TextDocActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val uri = intent.data
-        val libraryFileId = intent.getStringExtra(EXTRA_LIBRARY_FILE_ID)
-        val noteId = intent.getStringExtra(EXTRA_NOTE_ID)
-        if (uri == null && libraryFileId.isNullOrBlank() && noteId.isNullOrBlank()) {
+        if (!isValidIntent(intent, packageName)) {
             finish()
             return
         }
@@ -50,10 +48,10 @@ class TextDocActivity : FragmentActivity() {
             SameSameTheme(darkTheme = dark, font = settings.font) {
                 TextDocRoute(
                     uri = uri,
-                    libraryFileId = libraryFileId,
+                    libraryFileId = null,
                     displayName = displayName,
                     writable = writable,
-                    noteId = noteId,
+                    noteId = null,
                     onBack = { finish() },
                 )
             }
@@ -61,31 +59,25 @@ class TextDocActivity : FragmentActivity() {
     }
 
     companion object {
-        private const val EXTRA_DISPLAY_NAME = "org.samesame.notes.extra.TEXTDOC_NAME"
-        private const val EXTRA_LIBRARY_FILE_ID = "org.samesame.notes.extra.TEXTDOC_FILE_ID"
-        private const val EXTRA_NOTE_ID = "org.samesame.notes.extra.TEXTDOC_NOTE_ID"
-        private const val EXTRA_WRITABLE = "org.samesame.notes.extra.TEXTDOC_WRITABLE"
+        const val EXTRA_DISPLAY_NAME = "org.samesame.notes.extra.TEXTDOC_NAME"
+        const val EXTRA_WRITABLE = "org.samesame.notes.extra.TEXTDOC_WRITABLE"
+        const val EXTRA_LIBRARY_FILE_ID = "org.samesame.notes.extra.TEXTDOC_FILE_ID"
+        const val EXTRA_NOTE_ID = "org.samesame.notes.extra.TEXTDOC_NOTE_ID"
 
-        /** Opens a Markdown note by id; the editor loads and saves it through the note store. */
-        fun noteIntent(context: Context, noteId: String): Intent =
-            Intent(context, TextDocActivity::class.java)
-                .putExtra(EXTRA_NOTE_ID, noteId)
-                .putExtra(EXTRA_WRITABLE, true)
+        /** Returns true only if the intent points to a valid external content URI and carries no internal IDs. */
+        fun isValidIntent(intent: Intent, ownPackage: String): Boolean {
+            if (intent.hasExtra(EXTRA_NOTE_ID) || intent.hasExtra(EXTRA_LIBRARY_FILE_ID)) return false
+            val uri = intent.data ?: return false
+            return IncomingFileResolver.isForeignContent(uri, ownPackage)
+        }
 
-        /** Opens [uri] from inside the app. The flags are forwarded so the editor may write the document. */
+        /** Opens [uri] from inside/outside the app. The flags are forwarded so the editor may write the document. */
         fun intent(context: Context, uri: Uri, displayName: String?, writable: Boolean): Intent =
             Intent(context, TextDocActivity::class.java)
                 .setAction(if (writable) Intent.ACTION_EDIT else Intent.ACTION_VIEW)
                 .setData(uri)
                 .putExtra(EXTRA_DISPLAY_NAME, displayName)
                 .putExtra(EXTRA_WRITABLE, writable)
-                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
-
-        /** Opens a Files entry by id; the editor loads and saves it through the repository. */
-        fun intent(context: Context, libraryFileId: String): Intent =
-            Intent(context, TextDocActivity::class.java)
-                .putExtra(EXTRA_LIBRARY_FILE_ID, libraryFileId)
-                .putExtra(EXTRA_WRITABLE, true)
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
     }
 }

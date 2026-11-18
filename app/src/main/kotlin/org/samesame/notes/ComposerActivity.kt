@@ -44,7 +44,7 @@ class ComposerActivity : FragmentActivity() {
                 noteRepository.getNote(NoteId(noteId))
             }
             if (note?.kind == NoteKind.Markdown) {
-                startActivity(TextDocActivity.noteIntent(this@ComposerActivity, noteId))
+                startActivity(NoteTextDocActivity.noteIntent(this@ComposerActivity, noteId))
                 finish()
                 return@launch
             }

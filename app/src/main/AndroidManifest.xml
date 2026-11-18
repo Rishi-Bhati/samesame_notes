@@ -113,6 +113,14 @@
             </intent-filter>
         </activity>
 
+        <!-- The markdown notes and library files editor: started only internally, never exported. -->
+        <activity
+            android:name=".NoteTextDocActivity"
+            android:exported="false"
+            android:theme="@style/Theme.SameSame"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation"
+            android:windowSoftInputMode="adjustResize" />
+
         <!-- The viewers of library files: started by class name through openLibraryFile, never from outside. -->
         <activity
             android:name=".FileViewerActivity"
