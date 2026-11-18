@@ -2,7 +2,8 @@ package org.samesame.notes.feature.composer.pdf
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -29,7 +30,11 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.stringResource
+import org.samesame.notes.core.model.document.PdfMarkupKind
+import org.samesame.notes.feature.composer.R
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
@@ -59,6 +64,8 @@ fun PdfSelectionOverlay(
     layout: DocumentLayout,
     viewport: Viewport,
     modifier: Modifier = Modifier,
+    /** Highlight / underline / strike the selection (null hides the three buttons). The caller clears the selection. */
+    onMarkup: ((PdfMarkupKind) -> Unit)? = null,
 ) {
     val selectedPageIndex = selectionState.selectedPage ?: return
     val pageText = pageTextProvider(selectedPageIndex) ?: return
@@ -116,41 +123,35 @@ fun PdfSelectionOverlay(
             .fillMaxSize()
             .pointerInput(startTipView, endTipView, viewport.scale, viewport.origin) {
                 if (startTipView == null || endTipView == null) return@pointerInput
-                detectDragGestures(
-                    onDragStart = { pos ->
-                        val handle = selectionState.hitTestHandle(pos, startTipView, endTipView, touchRadiusPx)
-                        if (handle != null) {
-                            selectionState.isDraggingHandle = true
-                            selectionState.isStartHandle = handle
-                            selectionState.dragPositionPx = pos
-                        }
-                    },
-                    onDrag = { change, dragAmount ->
-                        if (selectionState.isDraggingHandle) {
-                            change.consume()
-                            val newPos = selectionState.dragPositionPx + dragAmount
-                            selectionState.dragPositionPx = newPos
-
-                            val (ptX, ptY) = PdfCoordinates.viewToPt(
-                                viewX = newPos.x,
-                                viewY = newPos.y,
-                                originX = viewport.origin.x,
-                                originY = viewport.origin.y,
-                                scale = viewport.scale,
-                                pageOriginX = pageOrigin.x,
-                                pageOriginY = pageOrigin.y,
-                                widthPt = widthPt,
-                            )
-                            selectionState.updateDrag(pageText, ptX, ptY)
-                        }
-                    },
-                    onDragEnd = {
-                        selectionState.isDraggingHandle = false
-                    },
-                    onDragCancel = {
-                        selectionState.isDraggingHandle = false
-                    },
-                )
+                // Only a press on a handle is ours; every other touch passes through so the page still pans.
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    val handle = selectionState.hitTestHandle(down.position, startTipView, endTipView, touchRadiusPx)
+                        ?: return@awaitEachGesture
+                    down.consume()
+                    selectionState.isDraggingHandle = true
+                    selectionState.isStartHandle = handle
+                    selectionState.dragPositionPx = down.position
+                    while (true) {
+                        val ev = awaitPointerEvent(PointerEventPass.Initial)
+                        val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
+                        if (!ch.pressed) break
+                        ch.consume()
+                        selectionState.dragPositionPx = ch.position
+                        val (ptX, ptY) = PdfCoordinates.viewToPt(
+                            viewX = ch.position.x,
+                            viewY = ch.position.y,
+                            originX = viewport.origin.x,
+                            originY = viewport.origin.y,
+                            scale = viewport.scale,
+                            pageOriginX = pageOrigin.x,
+                            pageOriginY = pageOrigin.y,
+                            widthPt = widthPt,
+                        )
+                        selectionState.updateDrag(pageText, ptX, ptY)
+                    }
+                    selectionState.isDraggingHandle = false
+                }
             },
     ) {
         // Draw highlight and teardrop handles
@@ -248,6 +249,11 @@ fun PdfSelectionOverlay(
                             fontSize = 14.sp,
                             modifier = Modifier.padding(start = 6.dp),
                         )
+                    }
+                    if (onMarkup != null) {
+                        TextButton(onClick = { onMarkup(PdfMarkupKind.Highlight) }) { Text(stringResource(R.string.feature_composer_pdf_highlight), fontSize = 14.sp) }
+                        TextButton(onClick = { onMarkup(PdfMarkupKind.Underline) }) { Text(stringResource(R.string.feature_composer_pdf_underline), fontSize = 14.sp) }
+                        TextButton(onClick = { onMarkup(PdfMarkupKind.Strike) }) { Text(stringResource(R.string.feature_composer_pdf_strike), fontSize = 14.sp) }
                     }
                 }
             }

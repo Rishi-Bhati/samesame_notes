@@ -329,6 +329,9 @@
     <string name="feature_composer_link_send_email">Send email</string>
     <string name="feature_composer_link_open_maps">Open in Maps</string>
     <string name="feature_composer_link_copy">Copy</string>
+    <string name="feature_composer_pdf_highlight">Highlight</string>
+    <string name="feature_composer_pdf_underline">Underline</string>
+    <string name="feature_composer_pdf_strike">Strike</string>
     <string name="feature_composer_link_copied">Copied</string>
     <string name="feature_composer_link_no_app">No app can open this</string>
     <string name="feature_composer_files_slash_no_files">No files yet</string>
