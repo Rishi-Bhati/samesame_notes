@@ -44,9 +44,9 @@ class ShareReceiveActivity : FragmentActivity() {
             val items = receivedItems(intent)
             val first = items.firstOrNull()
             if (intent.action == Intent.ACTION_VIEW && first != null && first.kind == ReceiveKind.Text) {
+                val hasWrite = (intent.flags and Intent.FLAG_GRANT_WRITE_URI_PERMISSION) != 0
                 startActivity(
-                    TextDocActivity.intent(this, first.uri, first.name, writable = true)
-                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                    TextDocActivity.intent(this, first.uri, first.name, writable = hasWrite)
                 )
                 finish()
                 return

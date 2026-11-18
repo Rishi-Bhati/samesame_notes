@@ -72,12 +72,18 @@ class TextDocActivity : FragmentActivity() {
         }
 
         /** Opens [uri] from inside/outside the app. The flags are forwarded so the editor may write the document. */
-        fun intent(context: Context, uri: Uri, displayName: String?, writable: Boolean): Intent =
-            Intent(context, TextDocActivity::class.java)
+        fun intent(context: Context, uri: Uri, displayName: String?, writable: Boolean): Intent {
+            val flags = if (writable) {
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            } else {
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+            }
+            return Intent(context, TextDocActivity::class.java)
                 .setAction(if (writable) Intent.ACTION_EDIT else Intent.ACTION_VIEW)
                 .setData(uri)
                 .putExtra(EXTRA_DISPLAY_NAME, displayName)
                 .putExtra(EXTRA_WRITABLE, writable)
-                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                .addFlags(flags)
+        }
     }
 }

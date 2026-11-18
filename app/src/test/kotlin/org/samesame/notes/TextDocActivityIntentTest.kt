@@ -86,7 +86,7 @@ class TextDocActivityIntentTest {
     }
 
     @Test
-    fun viewIntentHasReadWriteFlagsAndActionView() {
+    fun viewIntentHasReadFlagOnlyAndActionView() {
         val intent = TextDocActivity.intent(context, sampleUri, displayName = "test.txt", writable = false)
 
         assertThat(intent.action).isEqualTo(Intent.ACTION_VIEW)
@@ -95,7 +95,7 @@ class TextDocActivityIntentTest {
         assertThat(intent.getStringExtra(TextDocActivity.EXTRA_DISPLAY_NAME)).isEqualTo("test.txt")
         assertThat(intent.getBooleanExtra(TextDocActivity.EXTRA_WRITABLE, true)).isFalse()
         assertThat(intent.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION).isNotEqualTo(0)
-        assertThat(intent.flags and Intent.FLAG_GRANT_WRITE_URI_PERMISSION).isNotEqualTo(0)
+        assertThat(intent.flags and Intent.FLAG_GRANT_WRITE_URI_PERMISSION).isEqualTo(0)
     }
 
     @Test
