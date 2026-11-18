@@ -5,6 +5,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.cancel
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
@@ -26,9 +32,12 @@ import java.util.concurrent.ConcurrentHashMap
  */
 class PdfEngineHost(
     context: Context,
-    private val scope: CoroutineScope,
+    scope: CoroutineScope,
     private val resolveFile: suspend (media: String) -> File?,
 ) {
+    private val closed = AtomicBoolean(false)
+    private val workScope = CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job]))
+    private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val appContext = context.applicationContext
     val tileCache = PdfTileCache()
     val selection = PdfSelectionState()
@@ -49,15 +58,29 @@ class PdfEngineHost(
 
     /** The renderer of [media], or null while it is still opening (the call starts opening it). */
     fun renderer(media: String): PdfTileRenderer? {
+        if (closed.get()) return null
         renderers[media]?.let { return it }
         if (media in failed || !opening.add(media)) return null
-        scope.launch {
-            val r = withContext(Dispatchers.IO) {
-                runCatching { resolveFile(media)?.let { PdfTileRenderer(it) } }.getOrNull()
+        workScope.launch {
+            var r: PdfTileRenderer? = null
+            var published = false
+            try {
+                val file = withContext(Dispatchers.IO) { resolveFile(media) }
+                if (file != null) r = PdfTileRenderer.open(file)
+                ensureActive()
+                if (!closed.get() && r != null) {
+                    renderers[media] = r
+                    published = true
+                    tileCache.touch()
+                } else failed.add(media)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                failed.add(media)
+            } finally {
+                opening.remove(media)
+                if (!published) r?.close()
             }
-            if (r != null) renderers[media] = r else failed.add(media)
-            opening.remove(media)
-            tileCache.touch()
         }
         return null
     }
@@ -66,14 +89,15 @@ class PdfEngineHost(
 
     /** Text layer of one PDF page, raw (its pageIndex is the PDF's). Null until extracted off the main thread. */
     fun rawText(pdf: PdfBackground): PdfPageText? {
+        if (closed.get()) return null
         val k = key(pdf)
         textCache.get(k)?.let { return it }
         if (pdf.media in failed || !loadingText.add(k)) return null
-        scope.launch {
-            val t = withContext(extractThread) { extract(pdf) }
-            if (t != null) textCache.put(k, t)
-            loadingText.remove(k)
-            if (t != null) version++
+        workScope.launch {
+            try {
+                val t = withContext(extractThread) { extract(pdf) }
+                if (t != null && !closed.get()) { textCache.put(k, t); version++ }
+            } finally { loadingText.remove(k) }
         }
         return null
     }
@@ -88,6 +112,7 @@ class PdfEngineHost(
     /** Visit one extracted page at a time; stop as soon as the search budget is filled. */
     suspend fun forEachSearchPage(pages: List<Pair<Int, PdfBackground>>, visit: suspend (PdfPageText) -> Boolean) {
         for ((noteIndex, pdf) in pages) {
+            if (closed.get()) break
             currentCoroutineContext().ensureActive()
             val raw = withContext(extractThread) {
                 val k = key(pdf)
@@ -97,20 +122,40 @@ class PdfEngineHost(
         }
     }
 
-    private suspend fun extract(pdf: PdfBackground): PdfPageText? = runCatching {
-        val doc = docs[pdf.media] ?: run {
-            val f = resolveFile(pdf.media) ?: return null
-            PdfTextSource(f, extractor).also { docs[pdf.media] = it }
+    private suspend fun extract(pdf: PdfBackground): PdfPageText? {
+        if (closed.get()) return null
+        return try {
+            val doc = docs[pdf.media] ?: run {
+                val f = resolveFile(pdf.media) ?: return null
+                currentCoroutineContext().ensureActive()
+                if (closed.get()) return null
+                PdfTextSource(f, extractor).also { docs[pdf.media] = it }
+            }
+            doc.page(pdf.pageIndex)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
         }
-        doc.page(pdf.pageIndex)
-    }.getOrNull()
+    }
 
     fun close() {
+        if (!closed.compareAndSet(false, true)) return
+        workScope.cancel()
         tileCache.clear()
-        renderers.values.forEach { it.close() }
-        renderers.clear()
-        val toClose = docs.values.toList()
-        docs.clear()
-        scope.launch(extractThread) { toClose.forEach { runCatching { it.close() } } }
+        memo = null
+        cleanupScope.launch {
+            try {
+                withContext(NonCancellable) {
+                    renderers.values.forEach { it.close() }
+                    renderers.clear()
+                    withContext(extractThread) {
+                        docs.values.forEach { it.close() }
+                        docs.clear()
+                        textCache.evictAll()
+                    }
+                }
+            } finally { cleanupScope.cancel() }
+        }
     }
 }
