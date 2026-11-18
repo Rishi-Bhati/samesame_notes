@@ -269,6 +269,8 @@ private fun MainPage(
                 RowDivider()
                 SettingsRow(stringResource(R.string.feature_settings_calculate_as_you_type), checked = settings.calculateAsYouType, onChecked = { v -> update { it.copy(calculateAsYouType = v) } })
                 RowDivider()
+                SettingsRow(stringResource(R.string.feature_settings_move_checked_to_bottom), checked = settings.moveCheckedToBottom, onChecked = { v -> update { it.copy(moveCheckedToBottom = v) } })
+                RowDivider()
                 // Files (0.2.0): what pasting a link to a picture of the Files library does.
                 Box {
                     SettingsRow(

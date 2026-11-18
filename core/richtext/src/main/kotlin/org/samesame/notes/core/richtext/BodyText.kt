@@ -18,6 +18,7 @@ import org.samesame.notes.core.model.richtext.RichTextOps
 import org.samesame.notes.core.model.richtext.TextAlign
 import org.samesame.notes.core.model.richtext.TextRun
 import org.samesame.notes.core.model.richtext.listMarkerPrefix
+import org.samesame.notes.core.richtext.edit.ChecklistOrder
 import org.samesame.notes.core.richtext.edit.ClipboardText
 import org.samesame.notes.core.richtext.edit.EditAccumulator
 import org.samesame.notes.core.richtext.edit.ParagraphRules
@@ -448,9 +449,92 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
     fun outdent() = setParagraphStyle(ParagraphRules::outdent)
     fun setAlign(align: TextAlign) = setParagraphStyle { it.copy(align = align) }
 
-    fun toggleChecked(paragraph: Int) = batch {
+    /**
+     * Ticks/unticks one checkbox. With "Move checked items to the bottom" on, the paragraph (with its
+     * nested children) is reordered in the same single [TextEditEvent.TextEdit] as the tick, so undo
+     * restores the order and the tick together. The edit spans the whole affected run: a text edit
+     * carries paragraph styles too, so re-applying it replays the move exactly. With the setting off
+     * only the tick changes, as before.
+     */
+    fun toggleChecked(paragraph: Int, moveCheckedToBottom: Boolean = true) = batch {
         val p = paragraphs.getOrNull(paragraph) ?: return@batch
-        if (p.checkbox) changeParagraphs(paragraph, listOf(p.copy(checked = !p.checked)))
+        if (!p.checkbox) return@batch
+        val checkedAfter = !p.checked
+        val after = p.copy(checked = checkedAfter)
+        val stylesAfter = paragraphs.toMutableList().also { it[paragraph] = after }
+        val order = if (moveCheckedToBottom) ChecklistOrder.orderAfterToggle(stylesAfter, paragraph, checkedAfter) else null
+        if (order == null) {
+            changeParagraphs(paragraph, listOf(after))
+            return@batch
+        }
+
+        val move = ChecklistOrder.moveAfterToggle(stylesAfter, paragraph, checkedAfter)!!
+        // Every paragraph between the block's old and new positions changes; that contiguous span is the edit.
+        val regionFirst = minOf(move.from, move.to)
+        val regionLast = maxOf(move.from + move.size, move.to + move.size)
+        val start = paragraphRange(regionFirst).first
+        val end = paragraphRange(regionLast - 1).last + 1
+        val before = slice(start, end)
+        val regionOrder = order.filter { it in regionFirst until regionLast }.map { it - regionFirst }
+        val regionStyles = stylesAfter.subList(regionFirst, regionLast)
+        val inserted = ChecklistOrder.reorder(before, regionOrder, regionStyles)
+
+        // Keep each caret at the same offset inside its paragraph, so a caret in the moved text travels with it.
+        val sel = selection
+        val newStart = mapCaretAcrossMove(sel.start, start, end, before, regionOrder, inserted)
+        val newEnd = mapCaretAcrossMove(sel.end, start, end, before, regionOrder, inserted)
+
+        flushEdit()
+        suppressRecording++
+        try {
+            replaceExact(start, before.length, inserted)
+        } finally {
+            suppressRecording--
+        }
+        accumulator.take()
+        Selection.setSelection(editable, newStart.coerceIn(0, length), newEnd.coerceIn(0, length))
+        emit(TextEditEvent.TextEdit(start, before, inserted, sel, TextSelection(newStart, newEnd)))
+    }
+
+    /** Maps one caret offset from the pre-move region to the post-move one; offsets outside it stay put. */
+    private fun mapCaretAcrossMove(
+        offset: Int,
+        start: Int,
+        end: Int,
+        before: RichText,
+        regionOrder: List<Int>,
+        inserted: RichText,
+    ): Int {
+        if (offset < start || offset >= end) return offset
+        val oldLengths = paragraphLengths(before)
+        var oldPos = start
+        var p = 0
+        while (p < oldLengths.lastIndex && offset >= oldPos + oldLengths[p] + 1) {
+            oldPos += oldLengths[p] + 1
+            p++
+        }
+        val within = (offset - oldPos).coerceAtMost(oldLengths[p])
+        val newLengths = paragraphLengths(inserted)
+        var newPos = start
+        for (k in regionOrder.indices) {
+            val original = regionOrder[k]
+            if (original == p) return newPos + within
+            newPos += newLengths[k] + 1
+        }
+        return offset
+    }
+
+    /** Text length of each paragraph of [rt], excluding its newline. */
+    private fun paragraphLengths(rt: RichText): List<Int> {
+        val out = ArrayList<Int>(rt.paragraphs.size)
+        var pos = 0
+        for (i in rt.paragraphs.indices) {
+            val nl = rt.text.indexOf('\n', pos)
+            val end = if (nl < 0) rt.text.length else nl
+            out += end - pos
+            pos = if (nl < 0) rt.text.length else nl + 1
+        }
+        return out
     }
 
     // ---------------------------------------------------------------- history (not recorded)

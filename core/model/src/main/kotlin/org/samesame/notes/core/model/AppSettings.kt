@@ -22,6 +22,8 @@ data class AppSettings(
     val filePasteMode: FilePasteMode = FilePasteMode.Ask,
     /** "Calculate as you type": show an inline result after a typed `=` that can be accepted. */
     val calculateAsYouType: Boolean = true,
+    /** "Move checked items to the bottom": a ticked checkbox moves below the unchecked items of its run. */
+    val moveCheckedToBottom: Boolean = true,
 )
 
 /** Settings > "When pasting a file link" (Files). Only links to pictures ask; other files always paste as links. */

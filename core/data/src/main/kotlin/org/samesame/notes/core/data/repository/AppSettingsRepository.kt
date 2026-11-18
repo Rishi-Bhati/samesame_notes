@@ -47,6 +47,7 @@ private object SettingsKeys {
     val themeMode = stringPreferencesKey("theme_mode")
     val filePasteMode = stringPreferencesKey("file_paste_mode")
     val calculateAsYouType = booleanPreferencesKey("calculate_as_you_type")
+    val moveCheckedToBottom = booleanPreferencesKey("move_checked_to_bottom")
 }
 
 /**
@@ -83,6 +84,7 @@ internal fun Preferences.toAppSettings(): AppSettings {
         themeMode = enumOrDefault(this[SettingsKeys.themeMode], d.themeMode),
         filePasteMode = enumOrDefault(this[SettingsKeys.filePasteMode], d.filePasteMode),
         calculateAsYouType = this[SettingsKeys.calculateAsYouType] ?: d.calculateAsYouType,
+        moveCheckedToBottom = this[SettingsKeys.moveCheckedToBottom] ?: d.moveCheckedToBottom,
         newNote = NewNoteStyle(
             pageMode = enumOrDefault(this[SettingsKeys.newPageMode], d.newNote.pageMode),
             ratio = enumOrDefault(this[SettingsKeys.newRatio], d.newNote.ratio),
@@ -106,6 +108,7 @@ internal fun MutablePreferences.writeAppSettings(s: AppSettings) {
     this[SettingsKeys.themeMode] = s.themeMode.name
     this[SettingsKeys.filePasteMode] = s.filePasteMode.name
     this[SettingsKeys.calculateAsYouType] = s.calculateAsYouType
+    this[SettingsKeys.moveCheckedToBottom] = s.moveCheckedToBottom
     this[SettingsKeys.newPageMode] = s.newNote.pageMode.name
     this[SettingsKeys.newRatio] = s.newNote.ratio.name
     this[SettingsKeys.newTemplate] = s.newNote.template.name

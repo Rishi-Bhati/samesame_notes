@@ -171,6 +171,9 @@ class RichTextEditorState(
         }
     private var calculateAsYouTypeState by mutableStateOf(true)
 
+    /** "Move checked items to the bottom": a ticked checkbox reorders within its run. */
+    var moveCheckedToBottom: Boolean by mutableStateOf(true)
+
     /** Current inline math suggestion, or null. Not part of the text. */
     var mathGhost: MathSuggestion? by mutableStateOf(null)
         private set
@@ -380,7 +383,7 @@ class RichTextEditorState(
             return
         }
         engine.checkboxAt(d.x, d.y)?.let {
-            body.toggleChecked(it)
+            body.toggleChecked(it, moveCheckedToBottom)
             return
         }
         val link = engine.linkAt(d.x, d.y, detected = showLinks)
