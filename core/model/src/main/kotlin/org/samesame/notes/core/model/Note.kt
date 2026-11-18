@@ -25,6 +25,9 @@ data class Note(
     /** Epoch millis the note was moved to Trash, or null when it isn't in Trash. */
     val trashedAt: Long?,
     val tags: List<String> = emptyList(),
+    /** Ticked / total checkbox paragraphs, cached from the body at save time. Zero for locked notes. */
+    val checklistDone: Int = 0,
+    val checklistTotal: Int = 0,
 ) {
     val isInTrash: Boolean get() = trashedAt != null
 

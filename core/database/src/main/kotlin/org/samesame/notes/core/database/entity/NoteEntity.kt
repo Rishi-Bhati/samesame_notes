@@ -32,6 +32,9 @@ data class NoteEntity(
     @ColumnInfo(name = "trashed_at") val trashedAt: Long?,
     /** Set on every local change, cleared by sync once the server has it. */
     @ColumnInfo(name = "is_dirty", defaultValue = "1") val isDirty: Boolean = true,
+    /** Ticked / total checkbox paragraphs, cached from the body at save time. Zero for locked notes. */
+    @ColumnInfo(name = "checklist_done", defaultValue = "0") val checklistDone: Int = 0,
+    @ColumnInfo(name = "checklist_total", defaultValue = "0") val checklistTotal: Int = 0,
 )
 
 fun NoteEntity.asExternalModel(tags: List<String> = emptyList()) = Note(
@@ -48,4 +51,6 @@ fun NoteEntity.asExternalModel(tags: List<String> = emptyList()) = Note(
     lastOpenedAt = lastOpenedAt,
     trashedAt = trashedAt,
     tags = tags,
+    checklistDone = checklistDone,
+    checklistTotal = checklistTotal,
 )

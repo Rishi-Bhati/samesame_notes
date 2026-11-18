@@ -39,7 +39,7 @@ import org.samesame.notes.core.database.entity.TagEntity
         FileTagEntity::class,
         FileRefEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 abstract class SameSameDatabase : RoomDatabase() {
@@ -119,6 +119,21 @@ abstract class SameSameDatabase : RoomDatabase() {
                 "PRIMARY KEY(`file_id`, `tag`), FOREIGN KEY(`file_id`) REFERENCES `library_files`(`id`) " +
                 "ON UPDATE NO ACTION ON DELETE CASCADE )",
             "CREATE INDEX IF NOT EXISTS `index_file_tags_tag` ON `file_tags` (`tag`)",
+        )
+
+        /**
+         * v5 caches each note's checklist progress on its catalog row (rel031 D). Purely additive: two columns with
+         * a zero default, so every existing note is intact and starts with 0/0 until its next save.
+         */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(connection: SQLiteConnection) {
+                MIGRATION_4_5_STATEMENTS.forEach(connection::execSQL)
+            }
+        }
+
+        internal val MIGRATION_4_5_STATEMENTS = listOf(
+            "ALTER TABLE `notes` ADD COLUMN `checklist_done` INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE `notes` ADD COLUMN `checklist_total` INTEGER NOT NULL DEFAULT 0",
         )
     }
 }

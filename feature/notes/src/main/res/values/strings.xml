@@ -31,6 +31,7 @@
     <string name="feature_notes_empty_locked_title">No locked notes</string>
     <string name="feature_notes_empty_locked_hint">Lock a note to keep it here.</string>
     <string name="feature_notes_default_title">Text note %1$s</string>
+    <string name="feature_notes_checklist_progress">%1$d/%2$d</string>
 
     <!-- Overflow, sort and view menus -->
     <string name="feature_notes_menu_edit">Edit</string>
