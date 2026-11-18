@@ -397,6 +397,29 @@ class BackupRepositoryTest {
     }
 
     @Test
+    fun `backup folder name format and parse round trip and backward compatibility`() {
+        val timeMs = 1_700_000_000_000L
+
+        val oldSdf = java.text.SimpleDateFormat("yyyy-MM-dd HHmm", java.util.Locale.US).apply {
+            timeZone = java.util.TimeZone.getDefault()
+        }
+        val oldFolderName = "SameSame backup " + oldSdf.format(java.util.Date(timeMs))
+        val expectedParsedTimeMs = oldSdf.parse(oldSdf.format(java.util.Date(timeMs)))!!.time
+
+        val parsedFromOld = parseBackupFolderTime(oldFolderName)
+        assertThat(parsedFromOld).isEqualTo(expectedParsedTimeMs)
+
+        val newFolderName = backupFolderName(timeMs)
+        assertThat(newFolderName).isEqualTo(oldFolderName)
+
+        val parsedFromNew = parseBackupFolderTime(newFolderName)
+        assertThat(parsedFromNew).isEqualTo(expectedParsedTimeMs)
+
+        val partialName = "$newFolderName.partial"
+        assertThat(parseBackupFolderTime(partialName)).isEqualTo(expectedParsedTimeMs)
+    }
+
+    @Test
     fun `pre-existing truncated blob is replaced on restore`() = runBlocking<Unit> {
         val now = clock.now()
         val content = "full-length-blob-content-12345"

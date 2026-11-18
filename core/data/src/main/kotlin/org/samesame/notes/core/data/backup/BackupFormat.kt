@@ -3,10 +3,11 @@ package org.samesame.notes.core.data.backup
 import org.json.JSONArray
 import org.json.JSONObject
 import java.security.MessageDigest
-import java.text.SimpleDateFormat
-import java.util.Date
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Locale
-import java.util.TimeZone
 
 const val BACKUP_FORMAT_VERSION = 1
 const val BACKUP_FOLDER_PREFIX = "SameSame backup "
@@ -17,11 +18,11 @@ const val BACKUP_NOTES_DIR = "notes"
 const val BACKUP_LIBRARY_DIR = "library"
 const val BACKUP_LIBRARY_META_FILE = "library/library.json"
 
-private val folderNameFormat = SimpleDateFormat("yyyy-MM-dd HHmm", Locale.US).apply {
-    timeZone = TimeZone.getDefault()
-}
+private val folderNamePattern = DateTimeFormatter.ofPattern("yyyy-MM-dd HHmm", Locale.US)
+private val folderNameFormat: DateTimeFormatter
+    get() = folderNamePattern.withZone(ZoneId.systemDefault())
 
-fun backupFolderName(timeMs: Long): String = BACKUP_FOLDER_PREFIX + folderNameFormat.format(Date(timeMs))
+fun backupFolderName(timeMs: Long): String = BACKUP_FOLDER_PREFIX + folderNameFormat.format(Instant.ofEpochMilli(timeMs))
 
 /** True for a completed backup folder name created by this app (not `.partial`). */
 fun isCompleteBackupFolderName(name: String): Boolean =
@@ -39,7 +40,10 @@ fun parseBackupFolderTime(name: String): Long? {
         else -> return null
     }
     val stamp = base.removePrefix(BACKUP_FOLDER_PREFIX)
-    return runCatching { folderNameFormat.parse(stamp)?.time }.getOrNull()
+    return runCatching {
+        val ldt = LocalDateTime.parse(stamp, folderNameFormat)
+        ldt.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    }.getOrNull()
 }
 
 fun ByteArray.sha256Hex(): String = MessageDigest.getInstance("SHA-256").digest(this).joinToString("") { "%02x".format(it) }
