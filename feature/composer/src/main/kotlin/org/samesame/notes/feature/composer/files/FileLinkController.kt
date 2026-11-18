@@ -120,6 +120,12 @@ internal class FileLinkController(
         insertAt(ids.map { FileLinks.Target(it, null) }, sel.min, sel.max)
     }
 
+    /** The `///` picker: replaces the `///query` range with the picked files, exactly like Insert > From Files. */
+    fun insertTyped(ids: List<FileId>, start: Int, end: Int) {
+        if (ids.isEmpty()) return
+        insertAt(ids.map { FileLinks.Target(it, null) }, start, end)
+    }
+
     private fun insertAt(targets: List<FileLinks.Target>, start: Int, end: Int) {
         if (targets.isEmpty()) return
         scope.launch {
@@ -176,7 +182,12 @@ internal class FileLinkController(
         val e = end.coerceIn(s, len)
         val pictures = ready.filterIsInstance<Shown>()
         val linkParts = ready.filterIsInstance<FileLinkPaste.Part.Link>()
-        session.group {
+        // The removed token and a picture placed on the page are one undo step: the group spans the suspend placement.
+        // The messages stay outside the group, which would otherwise swallow later edits while a snackbar is up.
+        session.breakTypingBurst()
+        session.beginEditGroup()
+        var placed = 0
+        try {
             body.setSelection(s, e)
             val style = body.currentCharStyle()
             linkParts.forEachIndexed { i, p ->
@@ -185,11 +196,12 @@ internal class FileLinkController(
             }
             // A picture-only insertion still replaces the selection (e.g. the link it was made from).
             if (linkParts.isEmpty() && e > s) body.replace(s, e, "")
-        }
-        var placed = 0
-        val place = placePicture
-        for (p in pictures) {
-            if (place != null && place(p.bytes, p.extension, p.fileId, placed)) placed++ else failed = true
+            val place = placePicture
+            for (p in pictures) {
+                if (place != null && place(p.bytes, p.extension, p.fileId, placed)) placed++ else failed = true
+            }
+        } finally {
+            session.endEditGroup()
         }
         if (failed) snackbar.showSnackbar(strings.showFailed)
         if (placed > 0 && locked && !FileTips.lockedTipSeen(context)) lockedTip = true

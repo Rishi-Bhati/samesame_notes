@@ -315,5 +315,8 @@
     <string name="feature_composer_link_copy">Copy</string>
     <string name="feature_composer_link_copied">Copied</string>
     <string name="feature_composer_link_no_app">No app can open this</string>
+    <string name="feature_composer_files_slash_no_files">No files yet</string>
+    <string name="feature_composer_files_slash_upload">Upload</string>
+    <string name="feature_composer_files_slash_upload_failed">The files couldn\'t be added to Files.</string>
     <string name="composer_widget_cant_lock">A note shown on a widget can\'t be locked.</string>
 </resources>

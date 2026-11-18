@@ -22,6 +22,7 @@ class AppSettingsTest {
         assertThat(s.moveCheckedToBottom).isTrue()
         assertThat(s.hideScrollBar).isFalse()
         assertThat(s.blockBackKey).isFalse()
+        assertThat(s.insertFilesWithSlashes).isTrue()
         assertThat(s.newNote.pageMode).isEqualTo(PageMode.Pages)
         assertThat(s.newNote.backgroundColor).isNull()
         assertThat(s.newNote.pdfPageSize).isEqualTo(PdfPageSize.Original)
@@ -72,6 +73,7 @@ class AppSettingsTest {
             toolbarChangeStyle = false, toolbarEasyWritingPad = false, toolbarZoomLock = false, adjustColourInDarkMode = false,
             calculateAsYouType = false, replaceArrows = false,
             moveCheckedToBottom = false,
+            insertFilesWithSlashes = false,
             newNote = NewNoteStyle(
                 PageMode.Infinite, PageRatio.Long, PageTemplate.GridWide, 0xFFFFEC94, PdfPageSize.FitToNote,
             ),

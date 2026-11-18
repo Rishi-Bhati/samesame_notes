@@ -28,6 +28,8 @@ data class AppSettings(
     val replaceArrows: Boolean = true,
     /** "Move checked items to the bottom": a ticked checkbox moves below the unchecked items of its run. */
     val moveCheckedToBottom: Boolean = true,
+    /** "Insert files with ///": typing the token opens the inline Files picker. */
+    val insertFilesWithSlashes: Boolean = true,
 )
 
 /** Settings > "When pasting a file link" (Files). Only links to pictures ask; other files always paste as links. */

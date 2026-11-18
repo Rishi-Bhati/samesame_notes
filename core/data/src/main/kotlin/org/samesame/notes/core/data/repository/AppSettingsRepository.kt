@@ -49,6 +49,7 @@ private object SettingsKeys {
     val calculateAsYouType = booleanPreferencesKey("calculate_as_you_type")
     val replaceArrows = booleanPreferencesKey("replace_arrows")
     val moveCheckedToBottom = booleanPreferencesKey("move_checked_to_bottom")
+    val insertFilesWithSlashes = booleanPreferencesKey("insert_files_with_slashes")
 }
 
 /**
@@ -88,6 +89,7 @@ internal fun Preferences.toAppSettings(): AppSettings {
         font = toFontSettings(),
         replaceArrows = this[SettingsKeys.replaceArrows] ?: d.replaceArrows,
         moveCheckedToBottom = this[SettingsKeys.moveCheckedToBottom] ?: d.moveCheckedToBottom,
+        insertFilesWithSlashes = this[SettingsKeys.insertFilesWithSlashes] ?: d.insertFilesWithSlashes,
         newNote = NewNoteStyle(
             pageMode = enumOrDefault(this[SettingsKeys.newPageMode], d.newNote.pageMode),
             ratio = enumOrDefault(this[SettingsKeys.newRatio], d.newNote.ratio),
@@ -114,6 +116,7 @@ internal fun MutablePreferences.writeAppSettings(s: AppSettings) {
     writeFontSettings(s.font)
     this[SettingsKeys.replaceArrows] = s.replaceArrows
     this[SettingsKeys.moveCheckedToBottom] = s.moveCheckedToBottom
+    this[SettingsKeys.insertFilesWithSlashes] = s.insertFilesWithSlashes
     this[SettingsKeys.newPageMode] = s.newNote.pageMode.name
     this[SettingsKeys.newRatio] = s.newNote.ratio.name
     this[SettingsKeys.newTemplate] = s.newNote.template.name

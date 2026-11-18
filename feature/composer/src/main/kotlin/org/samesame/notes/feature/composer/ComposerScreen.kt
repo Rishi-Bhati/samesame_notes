@@ -513,6 +513,10 @@ internal fun ComposerEditor(
     }
     val filesNavigation = org.samesame.notes.feature.composer.files.LocalLibraryFilesNavigation.current
     val filePicker = org.samesame.notes.feature.composer.files.LocalLibraryFilePicker.current
+    // The inline `///` picker lists the whole Files library, newest first.
+    val slashFiles by remember(fileLinks) {
+        fileLinks?.observeAllFiles() ?: kotlinx.coroutines.flow.flowOf(emptyList())
+    }.collectAsStateWithLifecycle(emptyList())
     // ---- text box editing: while a box is edited the toolbar, panels and Undo/Redo target its own body
     var editor by remember(session) { mutableStateOf<TextBoxEditor?>(null) }
     val latestEditor by rememberUpdatedState(editor)
@@ -631,6 +635,20 @@ internal fun ComposerEditor(
             android.widget.Toast.makeText(appContext, linkCopied, android.widget.Toast.LENGTH_SHORT).show()
         }
     }
+    // The `///` picker's empty state: pick documents, import them into Files, then insert them through the same path.
+    val slashUploadFailed = stringResource(R.string.feature_composer_files_slash_upload_failed)
+    var pendingSlashInsert by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    val slashUpload = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        val target = pendingSlashInsert
+        pendingSlashInsert = null
+        val links = fileLinks
+        if (uris.isEmpty() || target == null || links == null) return@rememberLauncherForActivityResult
+        fileLinkScope.launch {
+            val ids = runCatching { links.import(uris) }.getOrDefault(emptyList())
+            if (ids.size < uris.size) snackbar.showSnackbar(slashUploadFailed)
+            if (ids.isNotEmpty()) fileLinkController?.insertTyped(ids, target.first, target.second)
+        }
+    }
     // Print (#60): the PDF export through the Android print framework; locked notes ask for the unlock first, like export.
     fun printNote() {
         if (locked) lockedSaveNotice = true
@@ -643,6 +661,7 @@ internal fun ComposerEditor(
         textState.calculateAsYouType = settings.calculateAsYouType
         textState.replaceArrows = settings.replaceArrows
         textState.moveCheckedToBottom = settings.moveCheckedToBottom
+        textState.insertFilesWithSlashes = settings.insertFilesWithSlashes
         textState.onPasteFileLinks = fileLinkController?.let { c -> { targets -> c.paste(targets) } }
         fileLinkController?.let { c ->
             c.pasteMode = settings.filePasteMode
@@ -2693,6 +2712,19 @@ internal fun ComposerEditor(
 
         // ---- WP-J2 dialogs -------------------------------------------------------------------
         fileLinkController?.let { org.samesame.notes.feature.composer.files.FileLinkDialogs(it) }
+        // ---- `///` inline Files picker (0.3.1 F): a body token inserts through Insert > From Files' own path
+        if (fileLinkController != null) {
+            org.samesame.notes.feature.composer.files.SlashFilePickerHost(
+                state = textState,
+                files = slashFiles,
+                textCoords = { textCoords },
+                onPick = { file, start, end -> fileLinkController.insertTyped(listOf(file.id), start, end) },
+                onUpload = { start, end ->
+                    pendingSlashInsert = start to end
+                    slashUpload.launch(arrayOf("*/*"))
+                },
+            )
+        }
         if (lockedSaveNotice) {
             // Locked notes are never exported: "you need to unlock it first".
             org.samesame.notes.core.designsystem.component.AppDialog(

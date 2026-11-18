@@ -37,6 +37,9 @@ interface InputHost {
     /** Inserts the math suggestion at the caret as real text. Returns true when accepted. */
     fun acceptMathGhostFromIme(reason: String): Boolean = false
 
+    /** Enter while the `///` file picker is open: true when it inserted a row (no newline). */
+    fun slashEnterFromIme(): Boolean = false
+
     /** Keyboard-event state for the ghost; held by the editor because the connection is recreated on every restartInput. */
     val ghostJudge: org.samesame.notes.core.richtext.edit.math.GhostSelectionJudge
         get() = org.samesame.notes.core.richtext.edit.math.GhostSelectionJudge()
@@ -100,7 +103,7 @@ class RichTextInputConnection(
         ) {
             true
         } else if (t == "\n" && body.composition == null) {
-            enter()
+            if (!host.slashEnterFromIme()) enter()
             true
         } else if (body.composition == null && t.length > MIN_LINK_LENGTH && host.pasteText(t)) {
             true
@@ -166,7 +169,9 @@ class RichTextInputConnection(
                 body.deleteBackward()
             }
             KeyEvent.KEYCODE_FORWARD_DEL -> body.deleteForward()
-            KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> enter()
+            KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                if (!host.slashEnterFromIme()) enter()
+            }
             KeyEvent.KEYCODE_TAB -> {
                 val ghost = host.mathGhostAtCaret()
                 if (ghost != null) {
@@ -209,7 +214,7 @@ class RichTextInputConnection(
     }
 
     override fun performEditorAction(actionCode: Int): Boolean = edit("performEditorAction", "$actionCode") {
-        enter()
+        if (!host.slashEnterFromIme()) enter()
         true
     }
 
