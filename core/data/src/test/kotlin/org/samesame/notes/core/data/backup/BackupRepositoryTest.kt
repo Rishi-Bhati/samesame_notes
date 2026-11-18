@@ -48,6 +48,7 @@ class BackupRepositoryTest {
     private var now = 1_700_000_000_000L
     private val clock = Clock { now }
     private lateinit var db: SameSameDatabase
+    private lateinit var workingDir: File
     private lateinit var documents: NoteDocumentStore
     private lateinit var blobStore: BlobStore
     private lateinit var settingsRepo: FakeSettingsRepo
@@ -61,7 +62,8 @@ class BackupRepositoryTest {
         db = Room.inMemoryDatabaseBuilder(app, SameSameDatabase::class.java)
             .allowMainThreadQueries()
             .build()
-        documents = NoteDocumentStore(tmp.newFolder("notes"), tmp.newFolder("working"))
+        workingDir = tmp.newFolder("working")
+        documents = NoteDocumentStore(tmp.newFolder("notes"), workingDir)
         blobStore = BlobStore(tmp.newFolder("library"), freeSpace = { Long.MAX_VALUE / 2 })
         settingsRepo = FakeSettingsRepo()
         val noteRepo = DefaultNoteRepository(
@@ -230,6 +232,8 @@ class BackupRepositoryTest {
         assertThat(restoredFolder?.name).isEqualTo("Child")
         assertThat(db.folderDao().get(restoredFolder!!.parentId!!)?.name).isEqualTo("Root")
         // content restored
+        assertThat(File(workingDir, n1).exists()).isFalse()
+        assertThat(File(workingDir, n2).exists()).isFalse()
         assertThat(documents.readDocument(n1).body.plainText()).isEqualTo("body")
     }
 
@@ -279,6 +283,9 @@ class BackupRepositoryTest {
         assertThat(all.size).isEqualTo(2)
         val copy = all.first { it.id !in before }
         assertThat(copy.title).isEqualTo("FromBackup (restored)")
+        // after restore no working/<id> dir remains
+        assertThat(File(workingDir, copy.id).exists()).isFalse()
+        // reopening shows the (restored) title
         assertThat(documents.readDocument(copy.id).title).isEqualTo("FromBackup (restored)")
         assertThat(documents.readDocument(copy.id).body.plainText()).isEqualTo("backup-body")
     }

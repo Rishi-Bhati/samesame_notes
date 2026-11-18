@@ -421,6 +421,7 @@ class BackupRepository @Inject constructor(
                 noteDao.upsert(entity)
                 if (!locked) {
                     searchDao.replace(NoteSearchEntity(noteId = entry.id, title = title, body = plain, inkText = ""))
+                    documents.flush(entry.id, close = true)
                 } else {
                     searchDao.replace(NoteSearchEntity(noteId = entry.id, title = "", body = "", inkText = ""))
                 }
@@ -464,6 +465,7 @@ class BackupRepository @Inject constructor(
                 )
                 noteDao.upsert(entity)
                 searchDao.replace(NoteSearchEntity(noteId = newId, title = title, body = plain, inkText = ""))
+                documents.flush(newId, close = true)
                 true
             } finally {
                 tmp.delete()
