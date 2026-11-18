@@ -22,6 +22,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -120,40 +122,43 @@ fun PdfSelectionOverlay(
         selectionState.selectionRectsPt(pageText)
     }
 
+    val tipsNow by rememberUpdatedState(startTipView to endTipView)
+    val dragGeometryNow by rememberUpdatedState(DragGeometry(pageText, widthPt, transform, pageOrigin, viewport, touchRadiusPx))
+
     Box(
         modifier = modifier
             .fillMaxSize()
-            .pointerInput(startTipView, endTipView, viewport.scale, viewport.origin) {
-                if (startTipView == null || endTipView == null) return@pointerInput
-                // Only a press on a handle is ours; every other touch passes through so the page still pans.
+            .pointerInput(selectionState, selectedPageIndex) {
+                // Selection and viewport updates must not restart the active drag.
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                    val handle = selectionState.hitTestHandle(down.position, startTipView, endTipView, touchRadiusPx)
+                    val (start, end) = tipsNow
+                    if (start == null || end == null) return@awaitEachGesture
+                    val handle = selectionState.hitTestHandle(down.position, start, end, dragGeometryNow.touchRadius)
                         ?: return@awaitEachGesture
                     down.consume()
                     selectionState.isDraggingHandle = true
                     selectionState.isStartHandle = handle
                     selectionState.dragPositionPx = down.position
-                    while (true) {
-                        val ev = awaitPointerEvent(PointerEventPass.Initial)
-                        val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
-                        if (!ch.pressed) break
-                        ch.consume()
-                        selectionState.dragPositionPx = ch.position
-                        val (ptX, ptY) = PdfCoordinates.viewToPt(
-                            viewX = ch.position.x,
-                            viewY = ch.position.y,
-                            originX = viewport.origin.x,
-                            originY = viewport.origin.y,
-                            scale = viewport.scale,
-                            pageOriginX = pageOrigin.x,
-                            pageOriginY = pageOrigin.y,
-                            widthPt = widthPt,
-                            transform = transform,
-                        )
-                        selectionState.updateDrag(pageText, ptX, ptY)
+                    try {
+                        while (true) {
+                            val ev = awaitPointerEvent(PointerEventPass.Initial)
+                            val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!ch.pressed) break
+                            ch.consume()
+                            selectionState.dragPositionPx = ch.position
+                            val g = dragGeometryNow
+                            val (ptX, ptY) = PdfCoordinates.viewToPt(
+                                ch.position.x, ch.position.y, g.viewport.origin.x, g.viewport.origin.y,
+                                g.viewport.scale, g.pageOrigin.x, g.pageOrigin.y, g.widthPt, g.transform,
+                            )
+                            selectionState.updateDrag(g.pageText, ptX, ptY)
+                        }
+                    } finally {
+                        selectionState.isDraggingHandle = false
+                        selectionState.isStartHandle = false
+                        selectionState.dragPositionPx = Offset.Zero
                     }
-                    selectionState.isDraggingHandle = false
                 }
             },
     ) {
@@ -263,6 +268,15 @@ fun PdfSelectionOverlay(
         }
     }
 }
+
+private data class DragGeometry(
+    val pageText: PdfPageText,
+    val widthPt: Float,
+    val transform: PdfCoordinates.PageTransform,
+    val pageOrigin: Offset,
+    val viewport: Viewport,
+    val touchRadius: Float,
+)
 
 /**
  * Draws a teardrop selection handle.
