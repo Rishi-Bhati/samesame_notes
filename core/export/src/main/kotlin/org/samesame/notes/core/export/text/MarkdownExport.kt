@@ -6,11 +6,14 @@ import org.samesame.notes.core.model.document.NoteDocument
 import org.samesame.notes.core.model.document.VoiceObject
 import org.samesame.notes.core.model.richtext.ListKind
 import org.samesame.notes.core.model.richtext.RichText
+import org.samesame.notes.core.model.richtext.TextSizeCatalog
+import org.samesame.notes.core.model.richtext.TextSizeCatalog.Heading
 
 class MarkdownResult(val markdown: String, /** path inside the zip (`media/..`) to bytes; empty unless media were written. */ val media: Map<String, ByteArray>)
 
 /**
- * Markdown export. Bold, italic, strikethrough, underline (`<u>`), lists and `- [ ]` checklists.
+ * Markdown export. Headings (#, ##, ###), bold, italic, strikethrough, underline (`<u>`),
+ * nested lists, and GFM task lists (`- [ ]`, `- [x]`).
  * With [writeMedia] inline images and ink pages are written to `media/` and linked; otherwise they
  * become a `[Image]` / `[Handwriting]` placeholder.
  */
@@ -27,14 +30,37 @@ object MarkdownExport {
             val isList = p.style.hasMarker
             if (!first) out.append(if (isList && previousList) "\n" else "\n\n")
             first = false
-            val prefix = when (p.style.list) {
-                // GFM task items: "- [ ] text", and "1. [ ] text" for a numbered task (renders as an ordered task list).
-                ListKind.None -> if (p.style.checkbox) "- " else ""
-                ListKind.Bullet -> "- "
-                ListKind.Numbered -> "${p.number ?: 1}. "
-            } + if (p.style.checkbox) (if (p.style.checked) "[x] " else "[ ] ") else ""
-            out.append("    ".repeat(p.style.indent)).append(prefix)
-            val body = renderSpans(p.spans) { span ->
+
+            // Heading detection via TextSizeCatalog
+            val textSpans = p.spans.filter { !it.isObject && it.text.isNotEmpty() }
+            val heading = if (!isList && textSpans.isNotEmpty()) {
+                val firstH = TextSizeCatalog.headingFor(textSpans.first().style.fontSize, textSpans.first().style.bold)
+                if (firstH != null && textSpans.all { TextSizeCatalog.headingFor(it.style.fontSize, it.style.bold) == firstH }) {
+                    firstH
+                } else null
+            } else null
+
+            val prefix = when {
+                heading != null -> when (heading) {
+                    Heading.H1 -> "# "
+                    Heading.H2 -> "## "
+                    Heading.H3 -> "### "
+                }
+                else -> when (p.style.list) {
+                    // GFM task items: "- [ ] text", and "1. [ ] text" for a numbered task (renders as an ordered task list).
+                    ListKind.None -> if (p.style.checkbox) "- " else ""
+                    ListKind.Bullet -> "- "
+                    ListKind.Numbered -> "${p.number ?: 1}. "
+                } + if (p.style.checkbox) (if (p.style.checked) "[x] " else "[ ] ") else ""
+            }
+
+            // Only indent nested list items; plain indented paragraphs do not get 4-space markdown indent (prevents unintended code blocks).
+            if (isList) {
+                out.append("    ".repeat(p.style.indent))
+            }
+            out.append(prefix)
+
+            val body = renderSpans(p.spans, isHeading = (heading != null)) { span ->
                 when (val obj = objects[span.style.objectId]) {
                     is ImageObject -> {
                         val bytes = assets.media(obj.media)
@@ -48,7 +74,8 @@ object MarkdownExport {
                     else -> ""
                 }
             }
-            out.append(if (p.style.list == ListKind.None) escapeBlockStart(body) else body)
+
+            out.append(if (!isList && heading == null) escapeBlockStart(body) else body)
             previousList = isList
         }
         for (page in 0 until assets.pageCount) {
@@ -69,7 +96,7 @@ object MarkdownExport {
         return MarkdownResult(out.toString().trimEnd('\n') + "\n", media)
     }
 
-    private fun renderSpans(spans: List<Span>, obj: (Span) -> String): String {
+    private fun renderSpans(spans: List<Span>, isHeading: Boolean = false, obj: (Span) -> String): String {
         // group consecutive text spans with the same emphasis so markers are not repeated
         data class Key(val b: Boolean, val i: Boolean, val s: Boolean, val u: Boolean, val link: String?)
         val sb = StringBuilder()
@@ -98,7 +125,9 @@ object MarkdownExport {
         }
         for (span in spans) {
             if (span.isObject) { flush(); key = null; sb.append(obj(span)); continue }
-            val k = Key(span.style.bold, span.style.italic, span.style.strikethrough, span.style.underline, span.style.link)
+            // For headings, the heading syntax already bolds the text; avoid double-wrapping in **.
+            val b = if (isHeading) false else span.style.bold
+            val k = Key(b, span.style.italic, span.style.strikethrough, span.style.underline, span.style.link)
             if (k != key) { flush(); key = k }
             buf.append(span.text)
         }
@@ -121,8 +150,8 @@ object MarkdownExport {
 
     /** Characters that would turn a plain paragraph into a heading, quote, list... at line start. */
     private fun escapeBlockStart(s: String): String = when {
-        s.startsWith("#") || s.startsWith("+") || s.startsWith("-") || s.startsWith("=") -> "\\$s"
-        Regex("^\\d+[.)] ").containsMatchIn(s) -> s.replaceFirst(Regex("^(\\d+)([.)])"), "$1\\\\$2")
+        s.startsWith("#") || s.startsWith("+") || s.startsWith("-") || s.startsWith("=") || s.startsWith(">") -> "\\$s"
+        Regex("^\\d+[.)](?: |$)").containsMatchIn(s) -> s.replaceFirst(Regex("^(\\d+)([.)])"), "$1\\\\$2")
         else -> s
     }
 }

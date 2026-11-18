@@ -58,8 +58,8 @@ internal abstract class DataModule {
     @Binds abstract fun editorPreferences(impl: DataStoreEditorPreferencesRepository): EditorPreferencesRepository
 
     companion object {
-        @Provides @Singleton fun noteExporter(): org.samesame.notes.core.export.NoteExporter =
-            org.samesame.notes.core.export.NoteExporter().apply {
+        @Provides @Singleton fun noteExporter(@ApplicationContext context: Context): org.samesame.notes.core.export.NoteExporter =
+            org.samesame.notes.core.export.NoteExporter(context).apply {
                 register(
                     org.samesame.notes.core.export.ExportFormat.SDOCX,
                     org.samesame.notes.core.export.FormatExporter { source, _, out ->

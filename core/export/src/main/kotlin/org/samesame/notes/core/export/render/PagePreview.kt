@@ -22,6 +22,14 @@ suspend fun renderFirstPagePreview(source: ExportSource, targetWidthPx: Int, dar
     withContext(Dispatchers.Default) {
         try {
             val doc = source.document()
+            val markdown = doc.markdown
+            if (markdown != null) {
+                return@withContext MarkdownCardPreview.render(
+                    markdown.source,
+                    targetWidthPx,
+                    darkTheme && doc.style.adjustForDarkMode,
+                )
+            }
             val first = doc.pages.firstOrNull() ?: return@withContext null
             val content = source.page(first.id)
             val paths = LinkedHashSet<String>()
