@@ -285,7 +285,7 @@ internal class FileLinkController(
         val label = body.slice(link.start, link.end).plainText()
         val rows = ArrayList<ExtendedTextToolbar.Extra>()
         rows += ExtendedTextToolbar.Extra(strings.open) {
-            if (target != null) open(link) else textState.onLinkClick?.invoke(link)
+            if (target != null) open(link) else textState.onLinkClick?.invoke(link, textState.selectionRectInView().center)
         }
         rows += ExtendedTextToolbar.Extra(strings.copyLink) { copyText(link.target) }
         rows += ExtendedTextToolbar.Extra(strings.editLabel) { editing = EditedLink(link.start, link.end, link.target, label) }

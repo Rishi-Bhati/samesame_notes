@@ -184,11 +184,11 @@ class RichTextEditorState(
 
     /**
      * Called when a link is tapped: a detected link (with [showLinks] on) in edit mode, or any link in the view state and
-     * reading mode ([onReadTap]); the host opens it. A stored link run ([TextLink.explicit]) in edit mode places the
-     * caret instead; a second tap on it, or a long press, selects the whole link and shows the floating menu, whose
-     * extra rows the host adds for [linkInSelection].
+     * reading mode ([onReadTap]); the host opens it. The second argument is the tap in view px, for a menu at the finger.
+     * A stored link run ([TextLink.explicit]) in edit mode places the caret instead; a second tap on it, or a long press,
+     * selects the whole link and shows the floating menu, whose extra rows the host adds for [linkInSelection].
      */
-    var onLinkClick: ((TextLink) -> Unit)? = null
+    var onLinkClick: ((TextLink, Offset) -> Unit)? = null
 
     /**
      * Paste interception (Files): called instead of inserting when the pasted text is only library file links
@@ -395,7 +395,7 @@ class RichTextEditorState(
         if (link != null && !link.explicit && link.kind != TextLink.Kind.FileLink) {
             val open = onLinkClick
             if (open != null) {
-                open(link)
+                open(link, p)
                 return
             }
         }
@@ -430,7 +430,7 @@ class RichTextEditorState(
         val d = toDoc(p)
         val link = engine.linkAt(d.x, d.y, detected = showLinks) ?: return false
         val open = onLinkClick ?: return false
-        open(link)
+        open(link, p)
         return true
     }
 
