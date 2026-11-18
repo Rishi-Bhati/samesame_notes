@@ -51,6 +51,16 @@ class ParagraphRulesTest {
         assertThat(ParagraphRules.onEnter(ParagraphStyle(), paragraphIsEmpty = true)).isEqualTo(ParagraphRules.EnterAction.InsertNewline)
     }
 
+    @Test fun enterOnAnEmptyCheckboxItemEndsTheList() {
+        // hasMarker covers the checkbox, so Enter on an empty "[ ] " item leaves the checklist.
+        assertThat(ParagraphRules.onEnter(checked, paragraphIsEmpty = true)).isEqualTo(ParagraphRules.EnterAction.EndList)
+        assertThat(ParagraphRules.onEnter(checked.copy(checked = false), paragraphIsEmpty = true))
+            .isEqualTo(ParagraphRules.EnterAction.EndList)
+        assertThat(ParagraphRules.onEnter(checked, paragraphIsEmpty = false)).isEqualTo(ParagraphRules.EnterAction.InsertNewline)
+        assertThat(ParagraphRules.onEnter(checked.copy(indent = 1), paragraphIsEmpty = true))
+            .isEqualTo(ParagraphRules.EnterAction.Outdent)
+    }
+
     @Test fun indentAndOutdentAreClamped() {
         var p = ParagraphStyle()
         repeat(Limits.MAX_INDENT_LEVEL + 3) { p = ParagraphRules.indent(p) }
