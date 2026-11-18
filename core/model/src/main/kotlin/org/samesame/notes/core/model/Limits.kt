@@ -107,4 +107,18 @@ object Limits {
     const val MAX_FILE_TAGS = 20
     /** Files one Upload folder takes; a larger tree reports the rest as skipped. */
     const val MAX_FILES_PER_UPLOAD = 1_000
+
+    // Automatic version history (0.3.2). A version is a copy of a note's packed container.
+    /** A new version is taken on save only when the newest one is at least this old (closing the note always takes one). */
+    const val VERSION_MIN_INTERVAL_MS = 5 * 60_000L
+    /** Versions kept per note; the oldest go first. */
+    const val MAX_VERSIONS_PER_NOTE = 50
+    /** Versions older than this are pruned, except the newest [VERSIONS_ALWAYS_KEPT] of a note. */
+    const val VERSION_RETENTION_DAYS = 30
+    /** The newest versions of a note that age never removes. */
+    const val VERSIONS_ALWAYS_KEPT = 5
+    /** All versions of all notes together; beyond it the oldest are removed (the newest of each note stays). */
+    const val MAX_VERSION_BYTES_TOTAL = 500L * 1024 * 1024
+    /** Characters of body text shown in the read-only version preview. */
+    const val VERSION_PREVIEW_CHARS = 20_000
 }
