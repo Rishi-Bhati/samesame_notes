@@ -222,6 +222,21 @@ class TextDocViewModelTest {
     }
 
     @Test
+    fun flushOnStopSavesPendingEditsImmediately() = runTest {
+        val vm = TextDocViewModel(files, uris, noteStore)
+        vm.load(noteId = "stop-note", writable = true)
+
+        vm.updateText("pending stop content")
+        assertThat(noteStore.writeCount).isEqualTo(0)
+
+        vm.flushOnStop()?.join()
+
+        assertThat(noteStore.writeCount).isEqualTo(1)
+        assertThat(noteStore.lastWrittenText).isEqualTo("pending stop content")
+        assertThat(vm.uiState.value.isModified).isFalse()
+    }
+
+    @Test
     fun lockedMarkdownNoteOpensReadOnlyWithNotice() = runTest {
         val note = sampleNote(id = "locked-md", title = "Secret note", isLocked = true)
         noteStore.note = note

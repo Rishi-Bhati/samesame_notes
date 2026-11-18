@@ -335,6 +335,16 @@ class TextDocViewModel @Inject constructor(
         autosaveJob?.cancel()
     }
 
+    /** Flushes any unsaved edits immediately without waiting for autosave debounce. */
+    fun flushOnStop(context: Context? = null): Job? {
+        if (_uiState.value.isReadOnly) return null
+        if (!_uiState.value.isModified && _uiState.value.text == savedText) return null
+        autosaveJob?.cancel()
+        return viewModelScope.launch {
+            saveInPlace(context)
+        }
+    }
+
     private fun bytes(state: TextDocUiState): ByteArray =
         TextDocumentCodec.roundTripBytes(state.text, state.encoding, state.lineEnding, state.hasBom)
 
