@@ -14,6 +14,7 @@ import org.samesame.notes.core.model.document.TemplateRef
  */
 internal fun isNoteEmpty(document: NoteDocument, pageElementCounts: List<Int>): Boolean {
     if (document.title.isNotBlank()) return false
+    if (document.markdown?.content?.isNotBlank() == true) return false
     if (document.body.plainText().isNotBlank()) return false
     if (document.inlineObjects.isNotEmpty()) return false
     if (document.recordings.isNotEmpty()) return false
