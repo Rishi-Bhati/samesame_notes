@@ -60,8 +60,8 @@ internal object PdfVectorExport {
                     checkTime()
                     val spec = renderer.note.doc.pages.getOrNull(i)
                     val pdfRef = spec?.pdf
-                    val noteH = unrotatedPageH(renderer, i)
-                    if (pdfRef != null && renderer.note.media.containsKey(pdfRef.media)) {
+                    val noteH = renderer.unrotatedPageH(i)
+                    if (pdfRef != null) {
                         val srcDoc = source(pdfRef.media)
                         val src = srcDoc.getPage(pdfRef.pageIndex)
                         srcPages[i] = src
@@ -97,23 +97,12 @@ internal object PdfVectorExport {
             }
 
             // Pass 2: assemble with PdfBox.
-            val jobs = (0 until renderer.pageCount).map { PageJob(renderer.note.doc.pages.getOrNull(it), srcPages[it], unrotatedPageH(renderer, it)) }
+            val jobs = (0 until renderer.pageCount).map { PageJob(renderer.note.doc.pages.getOrNull(it), srcPages[it], renderer.unrotatedPageH(it)) }
             assemble(jobs, overlayBytes, outFile, ::checkTime)
         } finally {
             closeables.asReversed().forEach { runCatching { it.close() } }
             tempFiles.forEach { it.delete() }
         }
-    }
-
-    /**
-     * Height of page [i] in page units BEFORE its rotation: ink and markup are stored unrotated, while the layout's
-     * [NoteRenderer.pageH] already swaps the aspect of a sideways page.
-     */
-    private fun unrotatedPageH(renderer: NoteRenderer, i: Int): Float {
-        val spec = renderer.note.doc.pages.getOrNull(i)
-        if (spec == null || !spec.isSideways) return renderer.pageH(i)
-        val ratio = spec.size?.takeIf { it.isValid }?.heightOverWidth ?: renderer.note.doc.layout.ratio.heightOverWidth
-        return renderer.pageW * ratio
     }
 
     /** One output page: its spec, the original PDF page behind it (null for a native page) and the note page height in units. */

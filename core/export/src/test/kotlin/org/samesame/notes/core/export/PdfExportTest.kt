@@ -16,6 +16,7 @@ import com.tom_roush.pdfbox.text.PDFTextStripper
 import kotlinx.coroutines.runBlocking
 import org.junit.Before
 import org.junit.Test
+import org.junit.Assert.assertThrows
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
@@ -188,5 +189,16 @@ class PdfExportTest {
             assertThat(PDFTextStripper().getText(out)).contains("INHERITED FONT")
             assertThat(out.getPage(0).cosObject.containsKey(COSName.RESOURCES)).isTrue()
         }
+    }
+
+    @Test fun `missing PDF source fails without writing a blank page`() {
+        val doc = NoteDocument(id = "n", pages = listOf(PageSpec("p", pdf = PdfBackground("media/missing.pdf", 0))))
+        val out = ByteArrayOutputStream()
+        assertThrows(java.io.IOException::class.java) {
+            runBlocking {
+                NoteExporter(RuntimeEnvironment.getApplication()).export(source(doc, emptyMap()), ExportFormat.PDF, ExportOptions(), out)
+            }
+        }
+        assertThat(out.size()).isEqualTo(0)
     }
 }

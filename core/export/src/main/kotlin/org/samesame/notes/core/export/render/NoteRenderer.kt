@@ -113,6 +113,13 @@ internal class NoteRenderer(val note: LoadedNote, private val darkTheme: Boolean
     /** Height of page [i] in pu (pages keep their own size, format v6). */
     fun pageH(i: Int): Float = layout.pageHeight(i)
 
+    /** Stored drawing coordinates are before the virtual page rotation. */
+    fun unrotatedPageH(i: Int): Float {
+        val spec = doc.pages.getOrNull(i)
+        if (spec == null || !spec.isSideways) return pageH(i)
+        return pageW * (spec.size?.takeIf { it.isValid }?.heightOverWidth ?: doc.layout.ratio.heightOverWidth)
+    }
+
     private val floating: List<List<Pair<ObjectElement, FloatingObject>>> = doc.pages.map { spec ->
         note.pages[spec.id]?.elements.orEmpty().filterIsInstance<ObjectElement>().mapNotNull { e -> parseFloating(e)?.let { e to it } }
     }
