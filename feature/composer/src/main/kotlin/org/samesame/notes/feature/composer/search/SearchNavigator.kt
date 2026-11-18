@@ -1,30 +1,59 @@
 package org.samesame.notes.feature.composer.search
 
+import org.samesame.notes.core.data.pdf.PdfTextExtractor
+import org.samesame.notes.core.model.pdf.PdfPageText
+import org.samesame.notes.core.model.pdf.PdfSearchMatch
 import org.samesame.notes.core.richtext.TextSearch
+
+/** One hit in a unified in-note search (note body text or PDF text layer). */
+sealed interface SearchHit {
+    data class Body(val range: IntRange) : SearchHit
+    data class Pdf(val match: PdfSearchMatch) : SearchHit
+}
 
 /**
  * Hit list and cursor of the in-note search bar (R1). Behaviour from the reference app: a new search starts with no
  * focused hit and the view jumps to the first one ([forward] from -1); "next" and "previous" do not wrap, they are
  * disabled at the last / first hit.
+ *
+ * Supports searching both note body text and extracted PDF page text.
  */
 class SearchNavigator {
     var query: String = ""
         private set
     var matches: List<IntRange> = emptyList()
         private set
+    var pdfMatches: List<PdfSearchMatch> = emptyList()
+        private set
+    var allHits: List<SearchHit> = emptyList()
+        private set
 
-    /** Index of the focused hit, or -1 before the first jump. */
+    /** Index of the focused hit in [allHits], or -1 before the first jump. */
     var current: Int = -1
         private set
 
-    val count: Int get() = matches.size
+    val count: Int get() = allHits.size
     val canForward: Boolean get() = count > 0 && current < count - 1
     val canBackward: Boolean get() = count > 0 && current > 0
 
-    /** Runs a search over [text] and jumps to the first hit. Returns the focused hit, or null. */
-    fun search(text: CharSequence, query: String): IntRange? {
+    /** Runs a search over [text] and [pdfPages], and jumps to the first hit. Returns the focused hit range, or null. */
+    fun search(text: CharSequence, query: String, pdfPages: List<PdfPageText> = emptyList()): IntRange? {
         this.query = query.take(TextSearch.MAX_QUERY_LENGTH)
-        matches = TextSearch.find(text, this.query)
+        val bodyMatches = if (this.query.isNotEmpty() && text.isNotEmpty()) {
+            TextSearch.find(text, this.query)
+        } else {
+            emptyList()
+        }
+
+        val pdfHits = if (this.query.isNotEmpty()) {
+            pdfPages.flatMap { page -> PdfTextExtractor.search(page, this.query) }
+        } else {
+            emptyList()
+        }
+
+        matches = bodyMatches
+        pdfMatches = pdfHits
+        allHits = bodyMatches.map { SearchHit.Body(it) } + pdfHits.map { SearchHit.Pdf(it) }
         current = -1
         return forward()
     }
@@ -32,19 +61,39 @@ class SearchNavigator {
     fun clear() {
         query = ""
         matches = emptyList()
+        pdfMatches = emptyList()
+        allHits = emptyList()
         current = -1
     }
 
-    fun forward(): IntRange? {
-        if (!canForward) return matches.getOrNull(current)
+    fun currentHit(): SearchHit? = allHits.getOrNull(current)
+
+    fun forwardHit(): SearchHit? {
+        if (!canForward) return currentHit()
         current++
-        return matches[current]
+        return currentHit()
+    }
+
+    fun backwardHit(): SearchHit? {
+        if (!canBackward) return currentHit()
+        current--
+        return currentHit()
+    }
+
+    fun forward(): IntRange? {
+        val hit = forwardHit() ?: return null
+        return when (hit) {
+            is SearchHit.Body -> hit.range
+            is SearchHit.Pdf -> hit.match.start until hit.match.endExclusive
+        }
     }
 
     fun backward(): IntRange? {
-        if (!canBackward) return matches.getOrNull(current)
-        current--
-        return matches[current]
+        val hit = backwardHit() ?: return null
+        return when (hit) {
+            is SearchHit.Body -> hit.range
+            is SearchHit.Pdf -> hit.match.start until hit.match.endExclusive
+        }
     }
 
     companion object {

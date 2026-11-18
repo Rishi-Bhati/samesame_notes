@@ -81,4 +81,45 @@ class SearchNavigatorTest {
         assertThat(SearchNavigator.pagesWithHits(matches) { it / 100 }).containsExactly(0, 1, 2).inOrder()
         assertThat(SearchNavigator.hitsOnPage(matches, 0) { it / 100 }).isEqualTo(2)
     }
+
+    @Test fun searchOverBodyAndPdfPagesNavigatesInUnifiedOrder() {
+        val body = "Hello from body text"
+        val pdfText = "Hello from PDF page"
+        val glyphs = pdfText.mapIndexed { i, ch ->
+            org.samesame.notes.core.model.pdf.PdfGlyph(
+                char = ch,
+                boundsPt = org.samesame.notes.core.model.pdf.RectPt(i * 10f, 100f, (i + 1) * 10f, 120f),
+                index = i,
+            )
+        }
+        val pdfPage = org.samesame.notes.core.model.pdf.PdfPageText(
+            pageIndex = 0,
+            text = pdfText,
+            glyphs = glyphs,
+            lines = listOf(
+                org.samesame.notes.core.model.pdf.PdfLine(
+                    text = pdfText,
+                    boundsPt = org.samesame.notes.core.model.pdf.RectPt(0f, 100f, 200f, 120f),
+                    words = emptyList(),
+                )
+            ),
+            links = emptyList(),
+        )
+
+        val n = SearchNavigator()
+        val firstHit = n.search(body, "Hello", listOf(pdfPage))
+        assertThat(firstHit).isEqualTo(0..5)
+        assertThat(n.count).isEqualTo(2)
+        assertThat(n.currentHit()).isInstanceOf(SearchHit.Body::class.java)
+
+        val secondHit = n.forwardHit()
+        assertThat(secondHit).isInstanceOf(SearchHit.Pdf::class.java)
+        val pdfHit = (secondHit as SearchHit.Pdf).match
+        assertThat(pdfHit.pageIndex).isEqualTo(0)
+        assertThat(pdfHit.start).isEqualTo(0)
+        assertThat(pdfHit.endExclusive).isEqualTo(5)
+
+        val backHit = n.backwardHit()
+        assertThat(backHit).isInstanceOf(SearchHit.Body::class.java)
+    }
 }
