@@ -72,6 +72,8 @@ data class TextDecorations(
     val mathGhostText: String? = null,
     /** Body offset the [mathGhostText] is anchored after (usually the caret, right after `=`). */
     val mathGhostAnchor: Int = -1,
+    /** Inclusive body ranges of the amounts counted by a visible total ghost. */
+    val mathCountedRanges: List<IntRange> = emptyList(),
 )
 
 /**
@@ -576,6 +578,7 @@ class BodyTextEngine(
             }
         }
         if (ghost != null) {
+            drawCountedAmounts(canvas, pageIndex, decorations.mathCountedRanges)
             drawMathGhost(canvas, pageIndex, decorations.mathGhostAnchor, ghost)
         }
         if (caret) {
@@ -590,6 +593,32 @@ class BodyTextEngine(
             }
         }
         canvas.restoreToCount(save)
+    }
+
+    private val countedPath = Path()
+
+    /** Reuses layout selection geometry so wrapped and bidirectional amounts underline correctly. */
+    private fun drawCountedAmounts(canvas: Canvas, pageIndex: Int, ranges: List<IntRange>) {
+        val slice = pagination().slices[pageIndex]
+        onPageSurface(pageIndex) {
+            tmpPaint.style = Paint.Style.FILL
+            tmpPaint.color = blend(drawColors.text, drawColors.page, GHOST_ALPHA * 0.4f)
+            for (range in ranges) {
+                if (range.isEmpty() || range.first < 0 || range.last >= body.length) continue
+                val first = maxOf(layout.getLineForOffset(range.first), slice.firstLine)
+                val last = minOf(layout.getLineForOffset(range.last), slice.lastLine)
+                if (first > last) continue
+                countedPath.reset()
+                layout.getSelectionPath(range.first, range.last + 1, countedPath)
+                for (line in first..last) {
+                    val y = layout.getLineBaseline(line).toFloat() + 2f
+                    val save = canvas.save()
+                    canvas.clipRect(0f, y, layout.width.toFloat(), y + 1f)
+                    canvas.drawPath(countedPath, tmpPaint)
+                    canvas.restoreToCount(save)
+                }
+            }
+        }
     }
 
     /** Draws the inline math suggestion at [anchor] (body offset) on its page, without changing the layout. */
