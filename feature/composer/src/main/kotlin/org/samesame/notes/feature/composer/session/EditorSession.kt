@@ -465,14 +465,20 @@ class EditorSession(
      * The box grows to [minHeightPu] when the text needs more room; with [fitHeight] (a box that sizes itself to its
      * text) its height becomes exactly [minHeightPu].
      */
-    fun setTextBoxText(pageId: String, id: ElementId, text: RichText, minHeightPu: Float = 0f, fitHeight: Boolean = false): Boolean = editElements(pageId) { list ->
-        list.map { e ->
-            if (e.id != id || e !is ObjectElement) return@map e
-            val f = e.floating() ?: return@map e
-            val tb = f.obj as? TextBoxObject ?: return@map e
-            val delta = if (fitHeight) minHeightPu - f.rect.height else (minHeightPu - f.rect.height).coerceAtLeast(0f)
-            if (tb.text == text && delta == 0f) e
-            else e.withFloating(f.copy(obj = tb.copy(text = text), rect = f.rect.copy(bottom = f.rect.bottom + delta)))
+    fun setTextBoxText(pageId: String, id: ElementId, text: RichText, minHeightPu: Float = 0f, fitHeight: Boolean = false): Boolean {
+        val stored = (pages.content(pageId)?.elements?.firstOrNull { it.id == id } as? ObjectElement)
+            ?.floating()?.obj as? TextBoxObject ?: return false
+        if (stored.text == text) return false
+        return editElements(pageId) { list ->
+            list.map { e ->
+                if (e.id != id || e !is ObjectElement) return@map e
+                val f = e.floating() ?: return@map e
+                val tb = f.obj as? TextBoxObject ?: return@map e
+                // Appearance can change the measured height without an edit.
+                if (tb.text == text) return@map e
+                val delta = if (fitHeight) minHeightPu - f.rect.height else (minHeightPu - f.rect.height).coerceAtLeast(0f)
+                e.withFloating(f.copy(obj = tb.copy(text = text), rect = f.rect.copy(bottom = f.rect.bottom + delta)))
+            }
         }
     }
 
@@ -489,6 +495,9 @@ class EditorSession(
         pageId: String, id: ElementId, text: RichText, heightPu: Float, fresh: Boolean, fitHeight: Boolean = fresh,
     ): TextBoxEditResult {
         if (pages.content(pageId)?.elements?.any { it.id == id } != true) return TextBoxEditResult.Unchanged
+        val stored = (pages.content(pageId)?.elements?.firstOrNull { it.id == id } as? ObjectElement)
+            ?.floating()?.obj as? TextBoxObject
+        if (!fresh && stored?.text == text) return TextBoxEditResult.Unchanged
         if (text.length == 0) {
             val last = history.peekUndo()
             if (fresh && last is AddElements && last.page == pageId && last.added.singleOrNull()?.element?.id == id) {

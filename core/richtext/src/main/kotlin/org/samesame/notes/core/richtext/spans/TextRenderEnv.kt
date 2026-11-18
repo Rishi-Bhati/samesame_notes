@@ -75,7 +75,10 @@ class TextRenderEnv {
     }
 
     companion object {
-        /** Set when the editor opens, from the font settings; every body created afterwards starts with these. */
+        /**
+         * Set when the editor opens, from the font settings; every body created afterwards starts with these.
+         * A changed font applies to an open note the next time it is opened.
+         */
         @Volatile
         var defaultTypeface: Typeface = Typeface.DEFAULT
 

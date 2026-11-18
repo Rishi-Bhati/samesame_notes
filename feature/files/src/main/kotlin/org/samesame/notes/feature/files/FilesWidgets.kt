@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -210,8 +211,8 @@ internal fun FileListItem(
 ) {
     val colors = SameSameTheme.colors
     Row(
-        modifier.fillMaxWidth().height(68.dp).clip(RoundedCornerShape(12.dp)).background(colors.card)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick).padding(horizontal = 14.dp),
+        modifier.fillMaxWidth().heightIn(min = 68.dp).clip(RoundedCornerShape(12.dp)).background(colors.card)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick).padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (selecting) SelectionCircle(selected, Modifier.padding(end = 12.dp))

@@ -1,7 +1,5 @@
 package org.samesame.notes.feature.settings
 
-import android.net.Uri
-import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -23,26 +21,28 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.produceState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.samesame.notes.core.designsystem.icon.AppIcons
-import org.samesame.notes.core.designsystem.theme.CustomFontFiles
 import org.samesame.notes.core.designsystem.theme.LocalExtraFontScale
 import org.samesame.notes.core.designsystem.theme.SameSameText
 import org.samesame.notes.core.designsystem.theme.SameSameTheme
@@ -72,24 +72,25 @@ private fun FontSection.labelRes(): Int = when (this) {
 
 /** Settings > Font size and style: live preview, app-wide and per-section sizes, and the font. */
 @Composable
-internal fun FontPage(settings: AppSettings, update: ((AppSettings) -> AppSettings) -> Unit, onBack: () -> Unit) {
+internal fun FontPage(settings: AppSettings, update: ((AppSettings) -> AppSettings) -> Unit, viewModel: SettingsViewModel, onBack: () -> Unit) {
     val font = settings.font
     val change: (FontSettings.() -> FontSettings) -> Unit = { f -> update { it.copy(font = it.font.f()) } }
     // While a slider is dragged the preview follows it; the setting is written when the finger lifts.
     var livePercent by remember(font.appPercent) { mutableIntStateOf(font.appPercent) }
     var sectionsOpen by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-
-    val pickFont = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        scope.launch {
-            val result = withContext(Dispatchers.IO) { importFont(context, uri) }
-            when (result) {
-                is FontImport.Done -> change { copy(choice = FontChoice(FontKind.Custom), customFontName = result.name) }
-                is FontImport.Failed -> Toast.makeText(context, result.messageRes, Toast.LENGTH_LONG).show()
-            }
+    val busy by viewModel.fontBusy.collectAsStateWithLifecycle()
+    val customMissing by produceState(true, font.customFontFileName, font.customFontName) {
+        value = withContext(Dispatchers.IO) {
+            !java.io.File(java.io.File(context.filesDir, "fonts"), CustomFontFile.storageName(font.customFontFileName)).isFile
         }
+    }
+    LaunchedEffect(viewModel) {
+        viewModel.fontErrors.collect { Toast.makeText(context, it, Toast.LENGTH_LONG).show() }
+    }
+    val fallbackName = stringResource(R.string.feature_settings_font_custom_default_name)
+    val pickFont = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) viewModel.importFont(uri, fallbackName)
     }
 
     SettingsScaffold(stringResource(R.string.feature_settings_font_title), onBack) {
@@ -140,7 +141,6 @@ internal fun FontPage(settings: AppSettings, update: ((AppSettings) -> AppSettin
             SectionHeader(stringResource(R.string.feature_settings_font_family))
             GroupCard {
                 val customName = font.customFontName ?: stringResource(R.string.feature_settings_font_custom_default_name)
-                val customMissing = remember(font.customFontName, CustomFontFiles.revision) { !CustomFontFiles.file(context).isFile }
                 FontChoiceRow(stringResource(R.string.feature_settings_font_system), null, font.choice.kind == FontKind.System) {
                     change { copy(choice = FontChoice()) }
                 }
@@ -160,20 +160,13 @@ internal fun FontPage(settings: AppSettings, update: ((AppSettings) -> AppSettin
                         font.choice.kind == FontKind.Custom,
                     ) { if (!customMissing) change { copy(choice = FontChoice(FontKind.Custom)) } }
                     RowDivider()
-                    SettingsRow(stringResource(R.string.feature_settings_font_remove), onClick = {
-                        CustomFontFiles.remove(context)
-                        change {
-                            copy(
-                                customFontName = null,
-                                choice = if (choice.kind == FontKind.Custom) FontChoice() else choice,
-                            )
-                        }
-                    })
+                    SettingsRow(stringResource(R.string.feature_settings_font_remove), enabled = !busy, onClick = viewModel::removeFont)
                 }
                 RowDivider()
                 SettingsRow(
                     stringResource(R.string.feature_settings_font_add),
                     summary = stringResource(R.string.feature_settings_font_add_summary),
+                    enabled = !busy,
                     onClick = { pickFont.launch(FontMimeTypes) },
                 )
             }
@@ -189,7 +182,10 @@ internal fun FontPage(settings: AppSettings, update: ((AppSettings) -> AppSettin
 
 /** Size that renders as [base] x [percent] on screen whatever scale the page itself currently has. */
 @Composable
-private fun previewSp(base: Float, percent: Float): TextUnit = (base * percent / 100f / LocalExtraFontScale.current).sp
+private fun previewSp(base: Float, percent: Float): TextUnit = with(LocalDensity.current) {
+    val currentDp = base.sp.toDp()
+    Dp(currentDp.value * percent / 100f / LocalExtraFontScale.current).toSp()
+}
 
 /** A notes-list style card and a line of editor text, drawn in the chosen font at the size being set. */
 @Composable
@@ -239,36 +235,4 @@ private fun FontChoiceRow(title: String, summary: String?, selected: Boolean, on
         }
         if (selected) Icon(AppIcons.Check, null, tint = colors.accent, modifier = Modifier.size(24.dp))
     }
-}
-
-private sealed interface FontImport {
-    data class Done(val name: String) : FontImport
-    data class Failed(val messageRes: Int) : FontImport
-}
-
-/** Copies the picked file into app storage through the validator; blocking, call it off the main thread. */
-private fun importFont(context: android.content.Context, uri: Uri): FontImport {
-    val resolver = context.contentResolver
-    val input = try { resolver.openInputStream(uri) } catch (e: Exception) { null } ?: return FontImport.Failed(R.string.feature_settings_font_error_read)
-    val result = input.use { CustomFontFiles.import(context, it) }
-    return when (result) {
-        CustomFontFiles.ImportResult.Imported -> FontImport.Done(displayName(context, uri))
-        CustomFontFiles.ImportResult.Unreadable -> FontImport.Failed(R.string.feature_settings_font_error_read)
-        is CustomFontFiles.ImportResult.Rejected -> FontImport.Failed(
-            when (result.reason) {
-                CustomFontFile.Verdict.TooLarge -> R.string.feature_settings_font_error_too_large
-                CustomFontFile.Verdict.Empty -> R.string.feature_settings_font_error_empty
-                else -> R.string.feature_settings_font_error_not_a_font
-            },
-        )
-    }
-}
-
-private fun displayName(context: android.content.Context, uri: Uri): String {
-    val raw = try {
-        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
-            if (c.moveToFirst()) c.getString(0) else null
-        }
-    } catch (e: Exception) { null }
-    return raw?.substringBeforeLast('.')?.takeIf { it.isNotBlank() } ?: context.getString(R.string.feature_settings_font_custom_default_name)
 }

@@ -41,13 +41,14 @@ class TextBoxEditor(
     val pageId: String,
     val id: ElementId,
     val fresh: Boolean,
-    initial: RichText,
+    private val initial: RichText,
     /** The stored rect of the box (page space). */
     val rect: RectPu,
     context: Context,
     dark: Boolean,
 ) {
     val body = BodyText(initial, TextRenderEnv())
+    private val initialSnapshot = body.toRichText()
     val state = RichTextEditorState(body, TextBoxGeometry(rect.width, TextBoxGeometry.UNBOUNDED_HEIGHT), context)
     private val history = UndoManager()
 
@@ -67,9 +68,10 @@ class TextBoxEditor(
 
     /** Height of the box while editing. */
     val height: Float
-        get() = if (fresh) requiredHeight else maxOf(rect.height, requiredHeight)
+        get() = if (fresh) requiredHeight else if (toRichText() == initial) rect.height else maxOf(rect.height, requiredHeight)
 
-    fun toRichText(): RichText = body.toRichText()
+    // Keep the original representation when opening or undoing all edits only normalised the spans.
+    fun toRichText(): RichText = body.toRichText().let { if (it == initialSnapshot) initial else it }
 
     val canUndo: Boolean get() = history.undoSize > 0
     val canRedo: Boolean get() = history.redoSize > 0
