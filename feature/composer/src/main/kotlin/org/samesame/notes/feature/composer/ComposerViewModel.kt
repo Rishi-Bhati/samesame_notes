@@ -76,6 +76,27 @@ class ComposerViewModel @AssistedInject constructor(
         override suspend fun resolve(ids: List<org.samesame.notes.core.model.files.FileId>) =
             files.getFiles(ids).associateBy { it.id }
 
+        override fun observeAllFiles() = files.observeAllFiles(
+            org.samesame.notes.core.model.files.FileSort(
+                org.samesame.notes.core.model.files.FileSortField.DateAdded,
+                ascending = false,
+            ),
+        )
+
+        override suspend fun import(uris: List<android.net.Uri>): List<org.samesame.notes.core.model.files.FileId> =
+            withContext(Dispatchers.IO) {
+                uris.mapNotNull { uri ->
+                    runCatching {
+                        val result = files.importFromUri(
+                            uri,
+                            folderId = null,
+                            onDuplicate = org.samesame.notes.core.model.files.DuplicatePolicy.KeepBoth,
+                        )
+                        (result as? org.samesame.notes.core.model.files.ImportResult.Imported)?.file?.id
+                    }.getOrNull()
+                }
+            }
+
         override fun contentUri(file: org.samesame.notes.core.model.files.LibraryFile) = files.contentUri(file)
 
         override suspend fun readBytes(file: org.samesame.notes.core.model.files.LibraryFile, maxBytes: Long): ByteArray? =

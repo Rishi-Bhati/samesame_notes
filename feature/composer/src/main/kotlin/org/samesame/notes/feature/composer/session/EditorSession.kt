@@ -256,6 +256,11 @@ class EditorSession(
     /** Several edits as one undo step (e.g. text that appends pages). */
     fun <T> group(block: () -> T): T = history.group(block)
 
+    /** As [group], for a step that spans suspend work (a file insertion with its picture); always pair with [endEditGroup]. */
+    fun beginEditGroup() = history.beginGroup()
+
+    fun endEditGroup() = history.endGroup()
+
     fun changeInlineObject(id: String, after: NoteObject?) {
         val before = holder.inlineObject(id)
         if (before == after) return

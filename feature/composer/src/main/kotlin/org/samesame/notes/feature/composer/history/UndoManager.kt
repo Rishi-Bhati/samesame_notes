@@ -79,18 +79,28 @@ class UndoManager(
 
     /** Everything recorded inside [block] becomes one undo step. */
     fun <T> group(block: () -> T): T {
-        if (groupDepth++ == 0) groupBuffer = ArrayList()
+        beginGroup()
         try {
             return block()
         } finally {
-            if (--groupDepth == 0) {
-                val cmds = groupBuffer.orEmpty()
-                groupBuffer = null
-                when (cmds.size) {
-                    0 -> Unit
-                    1 -> record(cmds[0])
-                    else -> record(Group(cmds))
-                }
+            endGroup()
+        }
+    }
+
+    /** Opens a group that spans suspend work (picture placement); pair it with [endGroup] in a `finally`. */
+    fun beginGroup() {
+        if (groupDepth++ == 0) groupBuffer = ArrayList()
+    }
+
+    fun endGroup() {
+        if (groupDepth == 0) return
+        if (--groupDepth == 0) {
+            val cmds = groupBuffer.orEmpty()
+            groupBuffer = null
+            when (cmds.size) {
+                0 -> Unit
+                1 -> record(cmds[0])
+                else -> record(Group(cmds))
             }
         }
     }
