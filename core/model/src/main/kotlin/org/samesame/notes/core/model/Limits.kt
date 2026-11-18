@@ -112,4 +112,11 @@ object Limits {
     const val MAX_FILE_TAGS = 20
     /** Files one Upload folder takes; a larger tree reports the rest as skipped. */
     const val MAX_FILES_PER_UPLOAD = 1_000
+
+    // Text documents (0.4.0 phase 3.1). Larger files open read-only so a cut-off copy never overwrites the original.
+    const val MAX_TEXTDOC_EDIT_BYTES = 5L * 1024 * 1024
+    /** Longest line the editor lays out at once; longer lines are cut into rows to keep Compose responsive. */
+    const val MAX_TEXTDOC_LINE_CHARS = 4000
+    /** Find stops after this many hits; the editor is not a full text search engine. */
+    const val MAX_TEXTDOC_FIND_MATCHES = 5000
 }
