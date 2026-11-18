@@ -134,8 +134,9 @@ class NoteVersionStore(
     @Synchronized
     fun pruneTotal(maxBytes: Long = Limits.MAX_VERSION_BYTES_TOTAL) {
         val noteDirs = root.listFiles { f -> f.isDirectory } ?: return
-        val all = noteDirs.flatMap { d -> list(d.name).drop(1) }.sortedBy { it.id }
-        var total = noteDirs.sumOf { d -> list(d.name).sumOf { it.sizeBytes } }
+        val versionsByNote = noteDirs.map { d -> list(d.name) }
+        val all = versionsByNote.flatMap { it.drop(1) }.sortedBy { it.id }
+        var total = versionsByNote.sumOf { list -> list.sumOf { it.sizeBytes } }
         for (v in all) {
             if (total <= maxBytes) break
             remove(v.noteId, v.id)
