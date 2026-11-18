@@ -14,6 +14,7 @@ import org.samesame.notes.core.model.Limits
 import java.io.File
 import java.io.OutputStream
 import java.io.IOException
+import java.util.concurrent.TimeoutException
 import org.samesame.notes.core.model.document.PdfMarkupKind
 import org.samesame.notes.core.model.document.PdfTextMarkup
 
@@ -35,27 +36,34 @@ internal object PdfExport {
     const val MAX_RASTER_PIXELS = 12_000_000L
 
     /** Choose a complete staged PDF before touching the caller's output. */
-    fun write(renderer: NoteRenderer, out: OutputStream) = writeStaged(
+    fun write(renderer: NoteRenderer, out: OutputStream, deadline: PdfExportDeadline = PdfExportDeadline()) = writeStaged(
         out,
-        vector = { PdfVectorExport.write(renderer, it) },
-        fallback = { file -> file.outputStream().use { writeRaster(renderer, it) } },
+        vector = { PdfVectorExport.write(renderer, it, deadline) },
+        fallback = { file -> file.outputStream().use { writeRaster(renderer, it, deadline) } },
+        checkTime = deadline::check,
     )
 
-    internal fun writeStaged(out: OutputStream, vector: (File) -> Unit, fallback: (File) -> Unit) {
+    internal fun writeStaged(out: OutputStream, vector: (File) -> Unit, fallback: (File) -> Unit, checkTime: (String) -> Unit = {}) {
         val staged = File.createTempFile("pdf-export", ".pdf")
         try {
             try {
+                checkTime("vector start")
                 vector(staged)
             } catch (e: Exception) {
+                if (e is TimeoutException) throw e
                 Log.w("PdfExport", "vector export failed, using the raster fallback", e)
+                checkTime("fallback start")
                 fallback(staged)
             } catch (e: OutOfMemoryError) {
                 Log.w("PdfExport", "vector export ran out of memory, using the raster fallback", e)
+                checkTime("fallback start")
                 fallback(staged)
             } catch (e: LinkageError) {
                 Log.w("PdfExport", "vector export unavailable, using the raster fallback", e)
+                checkTime("fallback start")
                 fallback(staged)
             }
+            checkTime("output copy")
             staged.inputStream().use { it.copyTo(out) }
             out.flush()
         } finally {
@@ -64,15 +72,19 @@ internal object PdfExport {
     }
 
     /** The 0.4 export: original pages as 300 dpi pictures under vector ink. Kept as the fallback. */
-    fun writeRaster(renderer: NoteRenderer, out: OutputStream) {
+    fun writeRaster(renderer: NoteRenderer, out: OutputStream, deadline: PdfExportDeadline = PdfExportDeadline()) {
         val sources = PdfSources(renderer)
+        deadline.check("raster start")
         val pdf = PdfDocument()
+        var activePage: PdfDocument.Page? = null
         try {
             for (i in 0 until renderer.pageCount) {
+                deadline.check("raster page")
                 val spec = renderer.note.doc.pages.getOrNull(i)
                 val pdfRef = spec?.pdf
                 val background = pdfRef?.let { sources.open(it.media) }
                 val original = background?.pageSize(pdfRef!!.pageIndex)
+                deadline.check("raster source load")
                 val noteH = renderer.unrotatedPageH(i)
                 val rotation = spec?.normalizedRotation ?: 0
                 if (original != null && background != null && pdfRef != null) {
@@ -81,44 +93,55 @@ internal object PdfExport {
                     val page = pdf.startPage(PdfDocument.PageInfo.Builder(
                         if (rotation % 180 != 0) pageHeight else pageWidth,
                         if (rotation % 180 != 0) pageWidth else pageHeight, i + 1,
-                    ).create())
+                    ).create()).also { activePage = it }
                     val c = page.canvas
                     rotatePage(c, rotation, pageWidth.toFloat(), pageHeight.toFloat())
                     c.clipRect(0f, 0f, pageWidth.toFloat(), pageHeight.toFloat())
                     c.drawColor(Color.WHITE)
+                    deadline.check("raster render")
                     background.render(c, pdfRef.pageIndex, pageWidth.toFloat(), pageHeight.toFloat())
+                    deadline.check("raster render")
                     // Inverse of the importer's "fit original into note page": map note space onto the original page.
                     val t = PdfPageGeometry.fit(srcW, srcH, Limits.PAGE_WIDTH_PU, noteH)
                     c.save()
                     c.scale(pageWidth / srcW, pageHeight / srcH) // whole-point page box vs the exact original size
                     c.scale(1f / t.scale, 1f / t.scale)
                     c.translate(-t.dx, -t.dy)
+                    deadline.check("raster overlay")
                     renderer.drawPage(c, i, Layers(background = false, template = false))
                     drawMarkup(c, spec.textMarkup)
                     c.restore()
+                    deadline.check("raster overlay")
                     pdf.finishPage(page)
+                    activePage = null
                 } else {
                     val ratio = noteH / renderer.pageW
                     val (pageWidth, pageHeight) = PdfPageGeometry.nativePageBox(spec?.size, ratio)
                     val page = pdf.startPage(PdfDocument.PageInfo.Builder(
                         if (rotation % 180 != 0) pageHeight else pageWidth,
                         if (rotation % 180 != 0) pageWidth else pageHeight, i + 1,
-                    ).create())
+                    ).create()).also { activePage = it }
                     val c = page.canvas
                     rotatePage(c, rotation, pageWidth.toFloat(), pageHeight.toFloat())
                     c.clipRect(0f, 0f, pageWidth.toFloat(), pageHeight.toFloat())
                     val scale = PdfPageGeometry.pointsPerPu(pageWidth)
                     c.scale(scale, pageHeight / noteH)
                     c.clipRect(0f, 0f, renderer.pageW, noteH)
+                    deadline.check("raster overlay")
                     renderer.drawPage(c, i)
                     drawMarkup(c, spec?.textMarkup.orEmpty())
+                    deadline.check("raster overlay")
                     pdf.finishPage(page)
+                    activePage = null
                 }
             }
+            deadline.check("raster save")
             pdf.writeTo(out)
+            deadline.check("raster save")
             out.flush()
         } finally {
             sources.close()
+            activePage?.let { runCatching { pdf.finishPage(it) } }
             pdf.close()
         }
     }

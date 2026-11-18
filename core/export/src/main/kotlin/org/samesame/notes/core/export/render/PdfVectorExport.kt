@@ -24,7 +24,6 @@ import org.samesame.notes.core.model.document.PdfTextMarkup
 import com.tom_roush.pdfbox.io.MemoryUsageSetting
 import java.io.IOException
 import java.io.File
-import java.util.concurrent.TimeoutException
 
 /**
  * Real PDF export. Pages that came from a PDF keep their original page (content stream, fonts, images, so vectors and
@@ -38,16 +37,13 @@ import java.util.concurrent.TimeoutException
 internal object PdfVectorExport {
     private fun scratch() = MemoryUsageSetting.setupMixed(Limits.PDF_SCRATCH_MEMORY_BYTES)
 
-    fun write(renderer: NoteRenderer, outFile: File) {
-        val started = System.nanoTime()
-        fun checkTime() {
-            if ((System.nanoTime() - started) / 1_000_000 > Limits.PDF_VECTOR_EXPORT_TIMEOUT_MS) throw TimeoutException("vector PDF export")
-        }
+    fun write(renderer: NoteRenderer, outFile: File, deadline: PdfExportDeadline = PdfExportDeadline()) {
+        deadline.check("vector start")
         val overlayFile = File.createTempFile("pdf-overlay", ".pdf")
         try {
             PDDocument(scratch()).use { target ->
                 for (i in 0 until renderer.pageCount) {
-                    checkTime()
+                    deadline.check("source load")
                     val spec = renderer.note.doc.pages.getOrNull(i)
                     val noteH = renderer.unrotatedPageH(i)
                     val ref = spec?.pdf
@@ -56,24 +52,31 @@ internal object PdfVectorExport {
                         PDDocument.load(file, scratch())
                     }
                     source.use { document ->
+                        deadline.check("source load")
                         val src = document?.getPage(ref!!.pageIndex)
-                        writeOverlay(renderer, i, src, overlayFile)
+                        writeOverlay(renderer, i, src, overlayFile, deadline)
+                        deadline.check("overlay load")
                         PDDocument.load(overlayFile, scratch()).use { overlay ->
-                            assemblePage(target, spec, src, noteH, overlay)
+                            deadline.check("overlay load")
+                            assemblePage(target, spec, src, noteH, overlay, deadline)
                         }
                     }
                 }
+                deadline.check("vector save")
                 target.save(outFile)
+                deadline.check("vector save")
             }
         } finally {
             overlayFile.delete()
         }
     }
 
-    private fun writeOverlay(renderer: NoteRenderer, i: Int, src: PDPage?, file: File) {
+    private fun writeOverlay(renderer: NoteRenderer, i: Int, src: PDPage?, file: File, deadline: PdfExportDeadline) {
         val spec = renderer.note.doc.pages.getOrNull(i)
         val noteH = renderer.unrotatedPageH(i)
+        deadline.check("overlay start")
         val overlay = PdfDocument()
+        var activePage: PdfDocument.Page? = null
         try {
             if (src != null) {
                 val crop = src.cropBox
@@ -81,30 +84,42 @@ internal object PdfVectorExport {
                 val srcW = if (sideways) crop.height else crop.width
                 val srcH = if (sideways) crop.width else crop.height
                 val (pw, ph) = PdfPageGeometry.pageBox(srcW, srcH)
-                val page = overlay.startPage(PdfDocument.PageInfo.Builder(pw, ph, 1).create())
+                val page = overlay.startPage(PdfDocument.PageInfo.Builder(pw, ph, 1).create()).also { activePage = it }
                 val c = page.canvas
                 c.clipRect(0f, 0f, pw.toFloat(), ph.toFloat())
                 val t = PdfPageGeometry.fit(srcW, srcH, Limits.PAGE_WIDTH_PU, noteH)
                 c.scale(pw / srcW, ph / srcH)
                 c.scale(1f / t.scale, 1f / t.scale)
                 c.translate(-t.dx, -t.dy)
+                deadline.check("overlay draw")
                 renderer.drawPage(c, i, Layers(background = false, template = false))
+                deadline.check("overlay draw")
                 overlay.finishPage(page)
+                activePage = null
             } else {
                 val (pw, ph) = PdfPageGeometry.nativePageBox(spec?.size, noteH / renderer.pageW)
-                val page = overlay.startPage(PdfDocument.PageInfo.Builder(pw, ph, 1).create())
+                val page = overlay.startPage(PdfDocument.PageInfo.Builder(pw, ph, 1).create()).also { activePage = it }
                 val c = page.canvas
                 c.clipRect(0f, 0f, pw.toFloat(), ph.toFloat())
                 c.scale(PdfPageGeometry.pointsPerPu(pw), ph / noteH)
                 c.clipRect(0f, 0f, renderer.pageW, noteH)
+                deadline.check("overlay draw")
                 renderer.drawPage(c, i)
+                deadline.check("overlay draw")
                 overlay.finishPage(page)
+                activePage = null
             }
+            deadline.check("overlay save")
             file.outputStream().use { overlay.writeTo(it) }
-        } finally { overlay.close() }
+            deadline.check("overlay save")
+        } finally {
+            activePage?.let { runCatching { overlay.finishPage(it) } }
+            overlay.close()
+        }
     }
 
-    private fun assemblePage(target: PDDocument, spec: PageSpec?, src: PDPage?, noteH: Float, overlayDoc: PDDocument) {
+    private fun assemblePage(target: PDDocument, spec: PageSpec?, src: PDPage?, noteH: Float, overlayDoc: PDDocument, deadline: PdfExportDeadline) {
+        deadline.check("page import")
         val layers = LayerUtility(target)
         val overlayPage = overlayDoc.getPage(0)
         val specRotation = spec?.normalizedRotation ?: 0
@@ -126,8 +141,11 @@ internal object PdfVectorExport {
             page.cosObject.getDictionaryObject(COSName.ANNOTS)?.let { annotations ->
                 page.cosObject.setItem(COSName.ANNOTS, PDFCloneUtility(target).cloneForNewDocument(annotations))
             }
+            deadline.check("page import")
             toUser = PdfPageGeometry.displayedToUser(rot, crop.lowerLeftX, crop.lowerLeftY, crop.width, crop.height)
+            deadline.check("overlay import")
             val form = layers.importPageAsForm(overlayDoc, 0)
+            deadline.check("overlay import")
             val (pw, ph) = PdfPageGeometry.pageBox(srcW, srcH)
             PDPageContentStream(target, page, PDPageContentStream.AppendMode.APPEND, true, true).use { cs ->
                 cs.saveGraphicsState()
@@ -145,6 +163,7 @@ internal object PdfVectorExport {
             overlayPage.resources?.let { resources ->
                 page.resources = PDResources(PDFCloneUtility(target).cloneForNewDocument(resources.cosObject) as COSDictionary)
             }
+            deadline.check("page import")
             val box = page.mediaBox
             toUser = floatArrayOf(1f, 0f, 0f, 1f, 0f, 0f)
             mapPu = { x, y -> x * box.width / Limits.PAGE_WIDTH_PU to box.height - y * box.height / noteH }
@@ -152,12 +171,13 @@ internal object PdfVectorExport {
         }
         val extra = spec?.textMarkup.orEmpty()
             .take(Limits.MAX_MARKUPS_PER_PAGE)
-            .map { annotation(it, toUser, mapPu) }
+            .map { deadline.check("markup overlay"); annotation(it, toUser, mapPu) }
         if (extra.isNotEmpty()) {
             val list = page.annotations
             list.addAll(extra)
             page.annotations = list
         }
+        deadline.check("page overlay")
     }
 
     private fun annotation(m: PdfTextMarkup, toUser: FloatArray, mapPu: (Float, Float) -> Pair<Float, Float>): PDAnnotation {

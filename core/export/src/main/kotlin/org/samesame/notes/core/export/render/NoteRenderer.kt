@@ -53,14 +53,18 @@ internal class LoadedNote(
 }
 
 /** [includePdfMedia]: also load the original PDFs behind imported pages (only PDF export needs them; they can be large). */
-internal suspend fun loadNote(source: ExportSource, includePdfMedia: Boolean = false): LoadedNote {
+internal suspend fun loadNote(source: ExportSource, includePdfMedia: Boolean = false, checkTime: (String) -> Unit = {}): LoadedNote {
+    checkTime("document load")
     val doc = source.document()
+    checkTime("document load")
     val pages = LinkedHashMap<String, PageContent>()
     val paths = LinkedHashSet<String>()
     doc.inlineObjects.filterIsInstance<ImageObject>().forEach { paths += it.media }
     val pdfPaths = LinkedHashSet<String>()
     for (spec in doc.pages) {
+        checkTime("page load")
         val content = source.page(spec.id)
+        checkTime("page load")
         pages[spec.id] = content
         (spec.template as? TemplateRef.Image)?.let { paths += it.media }
         if (includePdfMedia) spec.pdf?.let { pdfPaths += it.media }
@@ -69,17 +73,23 @@ internal suspend fun loadNote(source: ExportSource, includePdfMedia: Boolean = f
         }
     }
     val media = LinkedHashMap<String, ByteArray>()
-    for (p in paths) source.media(p)?.let { media[p] = it }
+    for (p in paths) {
+        checkTime("image load")
+        source.media(p)?.let { media[p] = it }
+        checkTime("image load")
+    }
     val pdfMedia = LinkedHashMap<String, File>()
     val owned = ArrayList<File>()
     try {
         for (path in pdfPaths) {
+            checkTime("PDF media load")
             pdfMedia[path] = source.mediaFile(path) ?: run {
                 val file = File.createTempFile("pdf-media", ".pdf").also { owned += it }
                 val input = source.openMedia(path) ?: throw IOException("Missing PDF source: $path")
                 input.use { stream -> file.outputStream().use { stream.copyTo(it) } }
                 file
             }
+            checkTime("PDF media load")
         }
         return LoadedNote(doc, pages, media, pdfMedia, owned)
     } catch (e: Throwable) {

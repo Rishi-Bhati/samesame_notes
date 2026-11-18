@@ -12,6 +12,7 @@ import org.samesame.notes.core.export.render.ImageExport
 import org.samesame.notes.core.export.render.LoadedNote
 import org.samesame.notes.core.export.render.NoteRenderer
 import org.samesame.notes.core.export.render.PdfExport
+import org.samesame.notes.core.export.render.PdfExportDeadline
 import org.samesame.notes.core.export.render.loadNote
 import org.samesame.notes.core.export.text.HtmlExport
 import org.samesame.notes.core.export.text.MarkdownConverter
@@ -51,7 +52,8 @@ class NoteExporter(private val context: Context? = null) {
         if (format == ExportFormat.SSNOTE || format == ExportFormat.SDOCX) {
             throw UnsupportedOperationException("$format export is not available (TODO(sdocx) / handled by the repository)")
         }
-        val loaded = loadNote(scoped, includePdfMedia = format == ExportFormat.PDF)
+        val deadline = if (format == ExportFormat.PDF) PdfExportDeadline() else null
+        val loaded = loadNote(scoped, includePdfMedia = format == ExportFormat.PDF, checkTime = { deadline?.check(it) })
         try {
             if (format == ExportFormat.PDF) context?.let { PDFBoxResourceLoader.init(it.applicationContext) }
             return withContext(Dispatchers.Default) {
@@ -88,7 +90,7 @@ class NoteExporter(private val context: Context? = null) {
                             val convertedPages = if (loaded.pages.isEmpty()) mapOf(pages.first().id to PageContent(pages.first().id, emptyList(), 0)) else loaded.pages
                             val convertedLoaded = LoadedNote(convertedDoc, convertedPages, loaded.media, loaded.pdfMedia)
                             val renderer = NoteRenderer(convertedLoaded)
-                            PdfExport.write(renderer, out)
+                            PdfExport.write(renderer, out, deadline ?: PdfExportDeadline())
                         }
                         ExportFormat.DOCX -> {
                             MarkdownDocxExport.write(md, doc.title, out)
@@ -116,7 +118,7 @@ class NoteExporter(private val context: Context? = null) {
                 val assets = AndroidAssets(renderer)
                 val target = expectedTarget(format, options, doc.layout.mode == PageMode.Infinite, renderer.pageCount)
                 when (format) {
-                    ExportFormat.PDF -> PdfExport.write(renderer, out)
+                    ExportFormat.PDF -> PdfExport.write(renderer, out, deadline ?: PdfExportDeadline())
                     ExportFormat.IMAGES -> return@withContext ImageExport.write(renderer, doc.title, options, out)
                     ExportFormat.TXT -> out.write(TextExport.render(doc, assets).toByteArray(Charsets.UTF_8))
                     ExportFormat.HTML -> {
