@@ -10,4 +10,5 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.kotlinx.coroutines.core)
     implementation(projects.core.files)
+    implementation(projects.feature.textdoc)
 }
