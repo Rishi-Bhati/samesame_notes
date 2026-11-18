@@ -102,6 +102,8 @@ import org.samesame.notes.core.model.NoteId
 import org.samesame.notes.core.model.SortDirection
 import org.samesame.notes.core.model.SortField
 import org.samesame.notes.core.model.ViewMode
+import org.samesame.notes.core.designsystem.theme.FontSectionScope
+import org.samesame.notes.core.model.FontSection
 import org.samesame.notes.feature.lock.LockAuthFlow
 import org.samesame.notes.feature.lock.LockFlowTransition
 import org.samesame.notes.feature.lock.LockAuthMode
@@ -116,6 +118,17 @@ fun NotesRoute(
     onOpenFiles: () -> Unit = {},
     viewModel: NotesViewModel = hiltViewModel(),
     drawerFiles: DrawerFilesViewModel = hiltViewModel(),
+) = FontSectionScope(FontSection.Notes) {
+    NotesRouteContent(onOpenNote, onOpenSettings, onOpenFiles, viewModel, drawerFiles)
+}
+
+@Composable
+private fun NotesRouteContent(
+    onOpenNote: (NoteId) -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenFiles: () -> Unit,
+    viewModel: NotesViewModel,
+    drawerFiles: DrawerFilesViewModel,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val filesCount by drawerFiles.fileCount.collectAsStateWithLifecycle()
@@ -360,6 +373,7 @@ internal fun NotesScreen(
             openSwipeEndExclusion = 24.dp,
             drawerContent = {
                 fun close(action: () -> Unit) { action(); scope.launch { drawerState.close() } }
+                FontSectionScope(FontSection.Drawer) {
                 NotesDrawer(
                     selected = state.filter,
                     allCount = state.allNotesCount,
@@ -378,6 +392,7 @@ internal fun NotesScreen(
                     filesCount = filesCount,
                     onOpenFiles = { close { onOpenFiles() } },
                 )
+                }
             },
         ) {
             val drawerButton: @Composable () -> Unit = {

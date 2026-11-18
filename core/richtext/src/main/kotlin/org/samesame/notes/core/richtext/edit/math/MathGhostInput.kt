@@ -8,6 +8,9 @@ package org.samesame.notes.core.richtext.edit.math
  * ([ImeGhostSync]).
  */
 object MathGhostInput {
+    /** Ordinary `=` expressions keep Enter as a newline; total keywords accept their result. */
+    fun enterAccepts(ghost: MathSuggestion?): Boolean = ghost?.keywordLine == true
+
     /** [text] as the keyboard must see it: the ghost inserted at [anchor] (the caret stays in front of it). */
     fun withGhost(text: CharSequence, anchor: Int, ghost: String): String {
         val a = anchor.coerceIn(0, text.length)

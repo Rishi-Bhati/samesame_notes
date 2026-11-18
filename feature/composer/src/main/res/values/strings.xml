@@ -151,6 +151,7 @@
     <string name="feature_composer_ov_tags">Tags</string>
     <string name="feature_composer_ov_version_history">Version history</string>
     <string name="feature_composer_ov_save_as_file">Save as file</string>
+    <string name="feature_composer_ov_delete_page">Delete page</string>
 
     <!-- Version history -->
     <string name="feature_composer_version_from">Version from %1$s</string>
@@ -270,6 +271,8 @@
     <string name="feature_composer_release_add_page">Release to add page.</string>
     <string name="feature_composer_bookmark">Bookmark</string>
     <string name="feature_composer_delete_page">Delete</string>
+    <string name="feature_composer_delete_page_title">Delete this page?</string>
+    <string name="feature_composer_delete_page_message">Handwriting, pictures and other items on this page will be deleted. Typed text stays in the note and moves to the next pages.</string>
     <string name="feature_composer_page_of">%1$d/%2$d</string>
 
     <!-- Full screen (#61) -->
@@ -321,5 +324,15 @@
     <string name="feature_composer_files_show_failed">The picture can\'t be shown in the note, so it was pasted as a link.</string>
     <string name="feature_composer_files_locked_tip">This file is also kept in Files, which isn\'t locked. Delete it there if it\'s private.</string>
     <string name="feature_composer_files_ok">OK</string>
+    <string name="feature_composer_link_call">Call</string>
+    <string name="feature_composer_link_send_message">Send message</string>
+    <string name="feature_composer_link_send_email">Send email</string>
+    <string name="feature_composer_link_open_maps">Open in Maps</string>
+    <string name="feature_composer_link_copy">Copy</string>
+    <string name="feature_composer_link_copied">Copied</string>
+    <string name="feature_composer_link_no_app">No app can open this</string>
+    <string name="feature_composer_files_slash_no_files">No files yet</string>
+    <string name="feature_composer_files_slash_upload">Upload</string>
+    <string name="feature_composer_files_slash_upload_failed">The files couldn\'t be added to Files.</string>
     <string name="composer_widget_cant_lock">A note shown on a widget can\'t be locked.</string>
 </resources>

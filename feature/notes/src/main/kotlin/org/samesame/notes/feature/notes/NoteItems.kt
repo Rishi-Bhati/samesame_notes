@@ -168,6 +168,7 @@ internal fun NoteGridItem(
             if (note.isFavorite && !selecting) {
                 Icon(AppIcons.StarFilled, null, tint = colors.accent, modifier = Modifier.padding(start = 3.4.dp).size(12.dp))
             }
+            ChecklistProgress(note, Modifier.padding(start = 6.dp))
         }
     }
 }
@@ -175,6 +176,18 @@ internal fun NoteGridItem(
 @Composable
 private fun daysLabel(days: Int) =
     stringResource(if (days == 1) R.string.feature_notes_trash_day else R.string.feature_notes_trash_days, days)
+
+/** Small "3/7" progress label on cards with checkboxes. Locked notes show nothing (it would leak content). */
+@Composable
+private fun ChecklistProgress(note: Note, modifier: Modifier = Modifier) {
+    if (note.isLocked || note.checklistTotal <= 0) return
+    Text(
+        stringResource(R.string.feature_notes_checklist_progress, note.checklistDone, note.checklistTotal),
+        style = SameSameText.Caption,
+        color = SameSameTheme.colors.textSecondary,
+        modifier = modifier,
+    )
+}
 
 /** "List" view mode: a full-width card with the time on top and the content below. */
 @OptIn(ExperimentalFoundationApi::class)
@@ -205,6 +218,7 @@ internal fun NoteListItem(
                 if (note.isFavorite && !selecting) {
                     Icon(AppIcons.StarFilled, null, tint = colors.accent, modifier = Modifier.padding(start = 4.dp).size(12.dp))
                 }
+                ChecklistProgress(note, Modifier.padding(start = 6.dp))
             }
             Row(Modifier.padding(start = 3.8.dp, top = 12.1.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (note.isLocked) Icon(AppIcons.Lock, null, tint = colors.textSecondary, modifier = Modifier.padding(end = 6.dp).size(16.dp))
@@ -270,10 +284,13 @@ internal fun NoteSimpleItem(
                     Icon(AppIcons.StarFilled, null, tint = colors.accent, modifier = Modifier.padding(start = 6.dp).size(12.dp))
                 }
             }
-            Text(
-                if (daysLeft != null) daysLabel(daysLeft) else noteTimeLabel(note.modifiedAt),
-                style = SameSameText.CardDate, color = colors.textSecondary, modifier = Modifier.padding(top = 3.8.dp),
-            )
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 3.8.dp)) {
+                Text(
+                    if (daysLeft != null) daysLabel(daysLeft) else noteTimeLabel(note.modifiedAt),
+                    style = SameSameText.CardDate, color = colors.textSecondary,
+                )
+                ChecklistProgress(note, Modifier.padding(start = 6.dp))
+            }
         }
     }
 }

@@ -37,11 +37,20 @@ interface InputHost {
     /** Inserts the math suggestion at the caret as real text. Returns true when accepted. */
     fun acceptMathGhostFromIme(reason: String): Boolean = false
 
+    /** Enter while the `///` file picker is open: true when it inserted a row (no newline). */
+    fun slashEnterFromIme(): Boolean = false
+
     /** Keyboard-event state for the ghost; held by the editor because the connection is recreated on every restartInput. */
     val ghostJudge: org.samesame.notes.core.richtext.edit.math.GhostSelectionJudge
         get() = org.samesame.notes.core.richtext.edit.math.GhostSelectionJudge()
     val ghostDoubleSpace: org.samesame.notes.core.richtext.edit.math.GhostDoubleSpace
         get() = org.samesame.notes.core.richtext.edit.math.GhostDoubleSpace()
+
+    /** Current caret page index (0-based) in document space. */
+    fun currentCaretPage(): Int = 0
+
+    /** Called when the user deletes backwards with Backspace / IME delete. */
+    fun onUserBackspace(pageBefore: Int, caretBefore: Int, caretAfter: Int) = Unit
 }
 
 /**
@@ -100,7 +109,7 @@ class RichTextInputConnection(
         ) {
             true
         } else if (t == "\n" && body.composition == null) {
-            body.insertNewline()
+            if (!host.slashEnterFromIme()) enter()
             true
         } else if (body.composition == null && t.length > MIN_LINK_LENGTH && host.pasteText(t)) {
             true
@@ -142,19 +151,30 @@ class RichTextInputConnection(
 
     override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean = edit("deleteSurroundingText", "$beforeLength,$afterLength") {
         val sel = body.selection
+        val caretBefore = sel.max
+        val pageBefore = host.currentCaretPage()
         host.ghostDoubleSpace.onDelete(SystemClock.uptimeMillis())
-        if (beforeLength == 1 && afterLength == 0 && sel.collapsed && body.composition == null) {
+        val ok = if (beforeLength == 1 && afterLength == 0 && sel.collapsed && body.composition == null) {
             body.deleteBackward()
             true
         } else {
             super.deleteSurroundingText(beforeLength, afterLength)
         }
+        val caretAfter = body.selection.start
+        if (beforeLength > 0 && caretAfter < caretBefore) host.onUserBackspace(pageBefore, caretBefore, caretAfter)
+        ok
     }
 
     override fun deleteSurroundingTextInCodePoints(beforeLength: Int, afterLength: Int): Boolean =
         edit("deleteSurroundingTextInCodePoints", "$beforeLength,$afterLength") {
+            val sel = body.selection
+            val caretBefore = sel.max
+            val pageBefore = host.currentCaretPage()
             host.ghostDoubleSpace.onDelete(SystemClock.uptimeMillis())
-            super.deleteSurroundingTextInCodePoints(beforeLength, afterLength)
+            val ok = super.deleteSurroundingTextInCodePoints(beforeLength, afterLength)
+            val caretAfter = body.selection.start
+            if (beforeLength > 0 && caretAfter < caretBefore) host.onUserBackspace(pageBefore, caretBefore, caretAfter)
+            ok
         }
 
     override fun sendKeyEvent(event: KeyEvent): Boolean = edit("sendKeyEvent", "action=${event.action} key=${KeyEvent.keyCodeToString(event.keyCode)} meta=${event.metaState}") {
@@ -162,11 +182,17 @@ class RichTextInputConnection(
         val sel = body.selection
         when (event.keyCode) {
             KeyEvent.KEYCODE_DEL -> {
+                val caretBefore = sel.max
+                val pageBefore = host.currentCaretPage()
                 host.ghostDoubleSpace.onDelete(SystemClock.uptimeMillis())
                 body.deleteBackward()
+                val caretAfter = body.selection.start
+                if (caretAfter < caretBefore) host.onUserBackspace(pageBefore, caretBefore, caretAfter)
             }
             KeyEvent.KEYCODE_FORWARD_DEL -> body.deleteForward()
-            KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> body.insertNewline()
+            KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                if (!host.slashEnterFromIme()) enter()
+            }
             KeyEvent.KEYCODE_TAB -> {
                 val ghost = host.mathGhostAtCaret()
                 if (ghost != null) {
@@ -209,8 +235,15 @@ class RichTextInputConnection(
     }
 
     override fun performEditorAction(actionCode: Int): Boolean = edit("performEditorAction", "$actionCode") {
-        body.insertNewline()
+        if (!host.slashEnterFromIme()) enter()
         true
+    }
+
+    private fun enter() {
+        if (body.composition == null && MathGhostInput.enterAccepts(host.mathGhostAtCaret()) &&
+            host.acceptMathGhostFromIme("enter")
+        ) return
+        body.insertNewline()
     }
 
     override fun getTextBeforeCursor(n: Int, flags: Int): CharSequence? {

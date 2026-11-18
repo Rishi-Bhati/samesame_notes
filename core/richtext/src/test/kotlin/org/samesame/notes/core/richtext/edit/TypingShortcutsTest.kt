@@ -86,4 +86,61 @@ class TypingShortcutsTest {
         assertThat(TypingShortcuts.autoIndent("hello")).isEqualTo("")
         assertThat(TypingShortcuts.autoIndent("")).isEqualTo("")
     }
+
+    @Test fun arrowsAreRecognisedAtLineStartAndMidSentence() {
+        // Line start
+        assertThat(TypingShortcuts.arrow("->")).isEqualTo(ArrowReplacement(2, "→", "->"))
+        assertThat(TypingShortcuts.arrow("<-")).isEqualTo(ArrowReplacement(2, "←", "<-"))
+        assertThat(TypingShortcuts.arrow("<->")).isEqualTo(ArrowReplacement(3, "↔", "<->"))
+        assertThat(TypingShortcuts.arrow("←>")).isEqualTo(ArrowReplacement(2, "↔", "<->"))
+        assertThat(TypingShortcuts.arrow("=>")).isEqualTo(ArrowReplacement(2, "⇒", "=>"))
+        assertThat(TypingShortcuts.arrow("<=>")).isEqualTo(ArrowReplacement(3, "⇔", "<=>"))
+
+        // Mid-sentence with space
+        assertThat(TypingShortcuts.arrow("a ->")).isEqualTo(ArrowReplacement(2, "→", "->"))
+        assertThat(TypingShortcuts.arrow("a <-")).isEqualTo(ArrowReplacement(2, "←", "<-"))
+        assertThat(TypingShortcuts.arrow("a <->")).isEqualTo(ArrowReplacement(3, "↔", "<->"))
+        assertThat(TypingShortcuts.arrow("a ←>")).isEqualTo(ArrowReplacement(2, "↔", "<->"))
+        assertThat(TypingShortcuts.arrow("a =>")).isEqualTo(ArrowReplacement(2, "⇒", "=>"))
+        assertThat(TypingShortcuts.arrow("a <=>")).isEqualTo(ArrowReplacement(3, "⇔", "<=>"))
+
+        // Mid-sentence attached to text
+        assertThat(TypingShortcuts.arrow("x->")).isEqualTo(ArrowReplacement(2, "→", "->"))
+        assertThat(TypingShortcuts.arrow("x<-")).isEqualTo(ArrowReplacement(2, "←", "<-"))
+        assertThat(TypingShortcuts.arrow("x<->")).isEqualTo(ArrowReplacement(3, "↔", "<->"))
+        assertThat(TypingShortcuts.arrow("x←>")).isEqualTo(ArrowReplacement(2, "↔", "<->"))
+        assertThat(TypingShortcuts.arrow("x=>")).isEqualTo(ArrowReplacement(2, "⇒", "=>"))
+        assertThat(TypingShortcuts.arrow("x<=>")).isEqualTo(ArrowReplacement(3, "⇔", "<=>"))
+
+        // Overlapping prefixes: ==> converts last two chars =>, --> converts last two chars ->
+        assertThat(TypingShortcuts.arrow("==>")).isEqualTo(ArrowReplacement(2, "⇒", "=>"))
+        assertThat(TypingShortcuts.arrow("-->")).isEqualTo(ArrowReplacement(2, "→", "->"))
+    }
+
+    @Test fun arrowNonConversionsAreIgnored() {
+        assertThat(TypingShortcuts.arrow("--")).isNull()
+        assertThat(TypingShortcuts.arrow("<=")).isNull()
+        assertThat(TypingShortcuts.arrow(">=")).isNull()
+        assertThat(TypingShortcuts.arrow("<--")).isNull()
+        assertThat(TypingShortcuts.arrow("foo<--")).isNull()
+        assertThat(TypingShortcuts.arrow("a-")).isNull()
+        assertThat(TypingShortcuts.arrow("b>")).isNull()
+        assertThat(TypingShortcuts.arrow("")).isNull()
+        assertThat(TypingShortcuts.arrow("-")).isNull()
+        assertThat(TypingShortcuts.arrow(">")).isNull()
+        assertThat(TypingShortcuts.arrow("=")).isNull()
+    }
+
+    @Test fun urlsDoNotConvertArrows() {
+        assertThat(TypingShortcuts.arrow("http://a.b/c->")).isNull()
+        assertThat(TypingShortcuts.arrow("https://example.com/foo->")).isNull()
+        assertThat(TypingShortcuts.arrow("www.x.com/->")).isNull()
+        assertThat(TypingShortcuts.arrow("see http://a.b/c->")).isNull()
+        assertThat(TypingShortcuts.arrow("visit www.x.com/->")).isNull()
+        assertThat(TypingShortcuts.arrow("ftp://example.com/a<-")).isNull()
+
+        // After whitespace, arrow is outside the URL token
+        assertThat(TypingShortcuts.arrow("http://example.com ->")).isEqualTo(ArrowReplacement(2, "→", "->"))
+        assertThat(TypingShortcuts.arrow("www.example.com ->")).isEqualTo(ArrowReplacement(2, "→", "->"))
+    }
 }

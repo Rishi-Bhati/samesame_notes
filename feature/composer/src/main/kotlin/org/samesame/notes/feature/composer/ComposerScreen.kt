@@ -234,6 +234,8 @@ import org.samesame.notes.feature.composer.menus.OverflowMenu
 import org.samesame.notes.feature.composer.menus.ReadingAction
 import org.samesame.notes.feature.composer.menus.ReadingOverflowMenu
 import org.samesame.notes.feature.composer.menus.PageSettingsPopup
+import org.samesame.notes.feature.composer.pages.PageFacts
+import org.samesame.notes.feature.composer.pages.pagesToRemoveAfterBackspace
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -456,6 +458,7 @@ internal fun ComposerEditor(
     var unlockConfirm by rememberSaveable { mutableStateOf(false) }
     var lockFlow by rememberSaveable { mutableStateOf(false) }
     var trashConfirm by rememberSaveable { mutableStateOf(false) }
+    var deletePageConfirmId by rememberSaveable { mutableStateOf<String?>(null) }
     val chrome by session.chrome.collectAsStateWithLifecycle()
     val tools by session.tools.collectAsStateWithLifecycle()
     val doc by session.document.collectAsStateWithLifecycle()
@@ -511,6 +514,31 @@ internal fun ComposerEditor(
     val preparedText = remember(session) { (session.body as? BodyTextBinding)?.prepared }
     val textState = rememberRichTextEditorState(body, layout, preparedText)
     textState.sensitive = locked
+
+    fun requestDeletePage(pageId: String) {
+        scope.launch {
+            val pages = session.holder.current.pages
+            if (pages.size <= 1) return@launch
+            if (doc.layout.mode == PageMode.Infinite) return@launch
+            val index = pages.indexOfFirst { it.id == pageId }
+            if (index < 0) return@launch
+            val page = pages[index]
+            val content = session.pages.await(pageId)
+            val lastTextPage = if (body.length == 0) -1 else textState.engine.caret(body.length).pageIndex
+            val facts = PageFacts(
+                id = page.id,
+                hasElements = content == null || content.elements.isNotEmpty(),
+                hasPdf = page.pdf != null,
+                hasImageTemplate = page.template is TemplateRef.Image,
+                bookmarked = page.isBookmarked,
+            )
+            if (facts.isEmpty && index > lastTextPage) {
+                session.deletePages(setOf(pageId))
+            } else {
+                deletePageConfirmId = pageId
+            }
+        }
+    }
     val snackbar = remember { SnackbarHostState() }
     // ---- Files links (F-3): paste hook, chooser, link taps and menus, Insert > From Files
     val fileLinkScope = rememberCoroutineScope()
@@ -521,6 +549,10 @@ internal fun ComposerEditor(
     }
     val filesNavigation = org.samesame.notes.feature.composer.files.LocalLibraryFilesNavigation.current
     val filePicker = org.samesame.notes.feature.composer.files.LocalLibraryFilePicker.current
+    // The inline `///` picker lists the whole Files library, newest first.
+    val slashFiles by remember(fileLinks) {
+        fileLinks?.observeAllFiles() ?: kotlinx.coroutines.flow.flowOf(emptyList())
+    }.collectAsStateWithLifecycle(emptyList())
     // ---- text box editing: while a box is edited the toolbar, panels and Undo/Redo target its own body
     var editor by remember(session) { mutableStateOf<TextBoxEditor?>(null) }
     val latestEditor by rememberUpdatedState(editor)
@@ -562,6 +594,8 @@ internal fun ComposerEditor(
         editor = TextBoxEditor(pageId, id, fresh, box.text, f.rect, editorContext, pageDark).also {
             it.state.sensitive = locked
             it.state.calculateAsYouType = settings.calculateAsYouType
+            it.state.replaceArrows = settings.replaceArrows
+            it.state.moveCheckedToBottom = settings.moveCheckedToBottom
         }
         textState.hideKeyboard()
         if (session.chrome.value.toolbar.mode == EditorMode.Pen) session.dispatch(ToolbarIntent.ToggleHandwriting)
@@ -587,7 +621,11 @@ internal fun ComposerEditor(
         return handlers.selection.grabs(viewport.viewToDoc(view) - latestLayout.pageOrigin(index))
     }
     SideEffect { handlers.selection.allowLasso = { session.chrome.value.toolbar.mode == EditorMode.Pen } }
-    SideEffect { editor?.state?.calculateAsYouType = settings.calculateAsYouType }
+    SideEffect {
+        editor?.state?.calculateAsYouType = settings.calculateAsYouType
+        editor?.state?.replaceArrows = settings.replaceArrows
+        editor?.state?.moveCheckedToBottom = settings.moveCheckedToBottom
+    }
     LaunchedEffect(editor) {
         val e = editor ?: return@LaunchedEffect
         androidx.compose.runtime.withFrameNanos { }
@@ -603,6 +641,56 @@ internal fun ComposerEditor(
     // Settings: "Show links in notes" underlines links and opens them on tap. Web previews (`settings.showWebPreviews`)
     // has no consumer yet: web cards are not built.
     val appContext = LocalContext.current
+    // Tap menu for phone, e-mail and address links: a small floating menu at the finger with the actions the reference
+    // offers. Reuses the Files chooser's floating action mode, so it looks and behaves like the selection menu.
+    val linkView = androidx.compose.ui.platform.LocalView.current
+    val linkMenu = remember { org.samesame.notes.feature.composer.files.FloatingChoiceMenu(linkView) }
+    DisposableEffect(linkMenu) { onDispose { linkMenu.hide() } }
+    val linkScope = rememberCoroutineScope()
+    val linkCall = stringResource(R.string.feature_composer_link_call)
+    val linkMessage = stringResource(R.string.feature_composer_link_send_message)
+    val linkEmail = stringResource(R.string.feature_composer_link_send_email)
+    val linkMaps = stringResource(R.string.feature_composer_link_open_maps)
+    val linkCopy = stringResource(R.string.feature_composer_link_copy)
+    val linkCopied = stringResource(R.string.feature_composer_link_copied)
+    val linkNoApp = stringResource(R.string.feature_composer_link_no_app)
+    /** Starts [intent], or says so when the device has nothing for it (a tablet without a dialer or maps app). */
+    fun openLinkIntent(intent: android.content.Intent) {
+        try {
+            appContext.startActivity(intent)
+        } catch (_: android.content.ActivityNotFoundException) {
+            linkScope.launch { snackbar.showSnackbar(linkNoApp) }
+        }
+    }
+    /** Copies the link's visible text; Android 13+ shows its own clipboard confirmation. */
+    fun copyLinkText(text: String) {
+        if (text.isEmpty()) return
+        val cm = appContext.getSystemService(android.content.ClipboardManager::class.java) ?: return
+        cm.setPrimaryClip(android.content.ClipData.newPlainText(text, text))
+        if (android.os.Build.VERSION.SDK_INT < 33) {
+            android.widget.Toast.makeText(appContext, linkCopied, android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+    fun copyLinkText(link: TextLink) {
+        val s = link.start.coerceIn(0, body.editable.length)
+        val e = link.end.coerceIn(s, body.editable.length)
+        if (e <= s) return
+        copyLinkText(body.editable.subSequence(s, e).toString())
+    }
+    // The `///` picker's empty state: pick documents, import them into Files, then insert them through the same path.
+    val slashUploadFailed = stringResource(R.string.feature_composer_files_slash_upload_failed)
+    var pendingSlashInsert by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    val slashUpload = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        val target = pendingSlashInsert
+        pendingSlashInsert = null
+        val links = fileLinks
+        if (uris.isEmpty() || target == null || links == null) return@rememberLauncherForActivityResult
+        fileLinkScope.launch {
+            val ids = runCatching { links.import(uris) }.getOrDefault(emptyList())
+            if (ids.size < uris.size) snackbar.showSnackbar(slashUploadFailed)
+            if (ids.isNotEmpty()) fileLinkController?.insertTyped(ids, target.first, target.second)
+        }
+    }
     // Print (#60): the PDF export through the Android print framework; locked notes ask for the unlock first, like export.
     fun printNote() {
         if (locked) lockedSaveNotice = true
@@ -613,55 +701,42 @@ internal fun ComposerEditor(
     SideEffect {
         textState.showLinks = settings.showLinks
         textState.calculateAsYouType = settings.calculateAsYouType
+        textState.replaceArrows = settings.replaceArrows
+        textState.moveCheckedToBottom = settings.moveCheckedToBottom
+        textState.insertFilesWithSlashes = settings.insertFilesWithSlashes
+        textState.onUserBackspace = { caretPageBefore, _, _ ->
+            if (doc.layout.mode != PageMode.Infinite) {
+                scope.launch {
+                    androidx.compose.runtime.withFrameNanos { }
+                    val caretPageAfter = textState.engine.caret(textState.body.selection.start).pageIndex
+                    if (caretPageAfter < caretPageBefore) {
+                        val lastTextPage = if (body.length == 0) -1 else textState.engine.caret(body.length).pageIndex
+                        val currentPages = session.holder.current.pages
+                        if (currentPages.size > 1) {
+                            val facts = currentPages.map { p ->
+                                val content = session.pages.await(p.id)
+                                PageFacts(
+                                    id = p.id,
+                                    hasElements = content == null || content.elements.isNotEmpty(),
+                                    hasPdf = p.pdf != null,
+                                    hasImageTemplate = p.template is TemplateRef.Image,
+                                    bookmarked = p.isBookmarked,
+                                )
+                            }
+                            val toRemove = pagesToRemoveAfterBackspace(facts, caretPageBefore, caretPageAfter, lastTextPage)
+                            if (toRemove.isNotEmpty()) {
+                                session.deletePages(toRemove.toSet())
+                            }
+                        }
+                    }
+                }
+            }
+        }
         textState.onPasteFileLinks = fileLinkController?.let { c -> { targets -> c.paste(targets) } }
         fileLinkController?.let { c ->
             c.pasteMode = settings.filePasteMode
             c.locked = locked
             c.navigation = filesNavigation
-        }
-        textState.onLinkClick = { link ->
-            runCatching {
-                val intent = when (link.kind) {
-                    TextLink.Kind.Date, TextLink.Kind.Time -> {
-                        // Calendar insert, like the reference: ACTION_EDIT with an event mime type and begin/end extras.
-                        val parsed = org.samesame.notes.core.richtext.DateTimeLinkParser.parse(link.target)
-                        if (parsed == null) null else {
-                            val cal = java.util.Calendar.getInstance()
-                            val hasDate = parsed.year != null && parsed.month != null && parsed.day != null
-                            if (hasDate) cal.set(parsed.year!!, parsed.month!! - 1, parsed.day!!)
-                            val timed = parsed.hour != null
-                            if (timed) {
-                                cal.set(java.util.Calendar.HOUR_OF_DAY, parsed.hour!!)
-                                cal.set(java.util.Calendar.MINUTE, parsed.minute ?: 0)
-                            } else {
-                                cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
-                                cal.set(java.util.Calendar.MINUTE, 0)
-                            }
-                            android.content.Intent(android.content.Intent.ACTION_EDIT)
-                                .setType("vnd.android.cursor.item/event")
-                                .putExtra("beginTime", cal.timeInMillis)
-                                .putExtra("endTime", cal.timeInMillis + if (timed) 60 * 60 * 1000L else 24 * 60 * 60 * 1000L)
-                                .putExtra("allDay", !timed)
-                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                        }
-                    }
-                    TextLink.Kind.Phone -> android.content.Intent(
-                        android.content.Intent.ACTION_DIAL, android.net.Uri.parse(link.target),
-                    ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                    TextLink.Kind.Email -> android.content.Intent(
-                        android.content.Intent.ACTION_SENDTO, android.net.Uri.parse(link.target),
-                    ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                    TextLink.Kind.Url -> android.content.Intent(
-                        android.content.Intent.ACTION_VIEW, android.net.Uri.parse(link.target),
-                    ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                    // A library file: resolved and opened (or explained) by the Files controller.
-                    TextLink.Kind.FileLink -> {
-                        fileLinkController?.open(link)
-                        null
-                    }
-                }
-                if (intent != null) appContext.startActivity(intent)
-            }
         }
     }
     val textMode = tb.mode == EditorMode.Text
@@ -773,6 +848,100 @@ internal fun ComposerEditor(
             textState.selectionRectInView().translate(origin)
         }
     }
+    SideEffect {
+        textState.onLinkClick = { link, tap ->
+            val s = link.start.coerceIn(0, body.editable.length)
+            val e = link.end.coerceIn(s, body.editable.length)
+            val linkText = if (e > s) body.editable.subSequence(s, e).toString() else ""
+            val rows = when (link.kind) {
+                TextLink.Kind.Phone -> listOf(
+                    org.samesame.notes.feature.composer.files.FloatingChoiceMenu.Row(linkCall) {
+                        openLinkIntent(
+                            android.content.Intent(android.content.Intent.ACTION_DIAL, android.net.Uri.parse(link.target))
+                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                    },
+                    org.samesame.notes.feature.composer.files.FloatingChoiceMenu.Row(linkMessage) {
+                        val number = link.target.removePrefix("tel:").filter { it.isDigit() || it == '+' }
+                        openLinkIntent(
+                            android.content.Intent(
+                                android.content.Intent.ACTION_SENDTO, android.net.Uri.parse("smsto:$number"),
+                            ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                    },
+                    org.samesame.notes.feature.composer.files.FloatingChoiceMenu.Row(linkCopy) { copyLinkText(linkText) },
+                )
+                TextLink.Kind.Email -> listOf(
+                    org.samesame.notes.feature.composer.files.FloatingChoiceMenu.Row(linkEmail) {
+                        openLinkIntent(
+                            android.content.Intent(
+                                android.content.Intent.ACTION_SENDTO, android.net.Uri.parse(link.target),
+                            ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                    },
+                    org.samesame.notes.feature.composer.files.FloatingChoiceMenu.Row(linkCopy) { copyLinkText(linkText) },
+                )
+                TextLink.Kind.Address -> listOf(
+                    org.samesame.notes.feature.composer.files.FloatingChoiceMenu.Row(linkMaps) {
+                        openLinkIntent(
+                            android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(link.target))
+                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                    },
+                    org.samesame.notes.feature.composer.files.FloatingChoiceMenu.Row(linkCopy) { copyLinkText(linkText) },
+                )
+                else -> emptyList()
+            }
+            if (rows.isNotEmpty()) {
+                // The action mode wants the anchor in the window's view coordinates, not the editor's.
+                val origin = textCoords?.takeIf { it.isAttached }?.localToRoot(Offset.Zero) ?: Offset.Zero
+                val p = tap + origin
+                linkMenu.show(
+                    androidx.compose.ui.geometry.Rect(p.x, p.y, p.x + 1f, p.y + 1f),
+                    rows,
+                    onDismiss = {},
+                )
+            } else {
+                runCatching {
+                    val intent = when (link.kind) {
+                        TextLink.Kind.Date, TextLink.Kind.Time -> {
+                            // Calendar insert, like the reference: ACTION_EDIT with an event mime type and begin/end extras.
+                            val parsed = org.samesame.notes.core.richtext.DateTimeLinkParser.parse(link.target)
+                            if (parsed == null) null else {
+                                val cal = java.util.Calendar.getInstance()
+                                val hasDate = parsed.year != null && parsed.month != null && parsed.day != null
+                                if (hasDate) cal.set(parsed.year!!, parsed.month!! - 1, parsed.day!!)
+                                val timed = parsed.hour != null
+                                if (timed) {
+                                    cal.set(java.util.Calendar.HOUR_OF_DAY, parsed.hour!!)
+                                    cal.set(java.util.Calendar.MINUTE, parsed.minute ?: 0)
+                                } else {
+                                    cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
+                                    cal.set(java.util.Calendar.MINUTE, 0)
+                                }
+                                android.content.Intent(android.content.Intent.ACTION_EDIT)
+                                    .setType("vnd.android.cursor.item/event")
+                                    .putExtra("beginTime", cal.timeInMillis)
+                                    .putExtra("endTime", cal.timeInMillis + if (timed) 60 * 60 * 1000L else 24 * 60 * 60 * 1000L)
+                                    .putExtra("allDay", !timed)
+                                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                        }
+                        TextLink.Kind.Url -> android.content.Intent(
+                            android.content.Intent.ACTION_VIEW, android.net.Uri.parse(link.target),
+                        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        // A library file: resolved and opened (or explained) by the Files controller.
+                        TextLink.Kind.FileLink -> {
+                            fileLinkController?.open(link)
+                            null
+                        }
+                        else -> null
+                    }
+                    if (intent != null) appContext.startActivity(intent)
+                }
+            }
+        }
+    }
     // The canvas area in the root box's coordinates; read by the selection pill in its layout phase only.
     val canvasBounds = remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
     // Keep the caret of an edited text box on screen while typing / when the keyboard resizes the canvas.
@@ -857,7 +1026,7 @@ internal fun ComposerEditor(
      */
     fun viewTap(p: Offset) {
         val d = viewport.viewToDoc(p)
-        textState.engine.checkboxAt(d.x, d.y)?.let { body.toggleChecked(it); return }
+        textState.engine.checkboxAt(d.x, d.y)?.let { body.toggleChecked(it, textState.moveCheckedToBottom); return }
         if (textState.onReadTap(p)) return
         if (lastViewDownStylus) {
             // A pen tap: edit in pen mode (handwriting), no caret / keyboard.
@@ -2079,14 +2248,16 @@ internal fun ComposerEditor(
                         } else if (tb.mode == EditorMode.Reading) {
                             // Book-icon reading mode (read only): a tap plays a voice object or follows a link, nothing else.
                             Box(
-                                Modifier.fillMaxSize().textBoxTaps(
-                                    hit = { true },
-                                    onTap = { p ->
-                                        val voice = voiceAtView(p)
-                                        if (voice != null) playVoice(voice.second) else textState.onReadTap(p)
-                                    },
-                                    onLongPress = {},
-                                ),
+                                Modifier.fillMaxSize()
+                                    .onGloballyPositioned { textCoords = it }
+                                    .textBoxTaps(
+                                        hit = { true },
+                                        onTap = { p ->
+                                            val voice = voiceAtView(p)
+                                            if (voice != null) playVoice(voice.second) else textState.onReadTap(p)
+                                        },
+                                        onLongPress = {},
+                                    ),
                             )
                         }
                         val boxEditor = editor
@@ -2478,6 +2649,7 @@ internal fun ComposerEditor(
                 OverflowMenu(
                     penMode = tb.mode == EditorMode.Pen,
                     favorite = favorite,
+                    showDeletePage = doc.layout.mode != PageMode.Infinite && doc.pages.size > 1,
                     onAction = { action ->
                         closeMenu()
                         when (action) {
@@ -2494,6 +2666,10 @@ internal fun ComposerEditor(
                             OverflowAction.Tags -> tagsOpen = true
                             OverflowAction.VersionHistory -> versionHistoryOpen = true
                             OverflowAction.SaveAsFile -> if (locked) lockedSaveNotice = true else saveAsOpen = true
+                            OverflowAction.DeletePage -> {
+                                val pageId = doc.pages.getOrNull(currentPage)?.id
+                                if (pageId != null) requestDeletePage(pageId)
+                            }
                             OverflowAction.Share -> if (locked) lockedSaveNotice = true else shareMenuOpen = true
                             OverflowAction.Favourite -> onToggleFavorite()
                             OverflowAction.Delete -> trashConfirm = true
@@ -2591,7 +2767,7 @@ internal fun ComposerEditor(
                 onReorder = { from, to -> reorder(from, to) },
                 onAddPage = { addBlankPage() },
                 onToggleBookmark = { id -> session.updatePageSpec(id) { it.copy(isBookmarked = !it.isBookmarked) } },
-                onDelete = { id -> scope.launch { session.deletePages(setOf(id)) } },
+                onDelete = { id -> requestDeletePage(id) },
                 onOpenPage = { i ->
                     pageScreen = null
                     val r = layout.pageRects.getOrNull(i)
@@ -2617,6 +2793,19 @@ internal fun ComposerEditor(
 
         // ---- WP-J2 dialogs -------------------------------------------------------------------
         fileLinkController?.let { org.samesame.notes.feature.composer.files.FileLinkDialogs(it) }
+        // ---- `///` inline Files picker (0.3.1 F): a body token inserts through Insert > From Files' own path
+        if (fileLinkController != null) {
+            org.samesame.notes.feature.composer.files.SlashFilePickerHost(
+                state = textState,
+                files = slashFiles,
+                textCoords = { textCoords },
+                onPick = { file, start, end -> fileLinkController.insertTyped(listOf(file.id), start, end) },
+                onUpload = { start, end ->
+                    pendingSlashInsert = start to end
+                    slashUpload.launch(arrayOf("*/*"))
+                },
+            )
+        }
         if (lockedSaveNotice) {
             // Locked notes are never exported: "you need to unlock it first".
             org.samesame.notes.core.designsystem.component.AppDialog(
@@ -2658,6 +2847,28 @@ internal fun ComposerEditor(
                 androidx.compose.material3.Text(
                     androidx.compose.ui.res.pluralStringResource(R.plurals.feature_composer_trash_title, 1, 1),
                     color = SameSameTheme.colors.textPrimary, fontSize = 16.sp,
+                )
+            }
+        }
+        if (deletePageConfirmId != null) {
+            org.samesame.notes.core.designsystem.component.AppDialog(
+                onDismissRequest = { deletePageConfirmId = null },
+                dismissLabel = stringResource(android.R.string.cancel),
+                confirmLabel = stringResource(R.string.feature_composer_delete),
+                onConfirm = {
+                    val id = deletePageConfirmId
+                    deletePageConfirmId = null
+                    if (id != null) {
+                        scope.launch { session.deletePages(setOf(id)) }
+                    }
+                },
+                atBottom = true,
+                title = stringResource(R.string.feature_composer_delete_page_title),
+            ) {
+                androidx.compose.material3.Text(
+                    stringResource(R.string.feature_composer_delete_page_message),
+                    color = SameSameTheme.colors.textPrimary,
+                    fontSize = 16.sp,
                 )
             }
         }

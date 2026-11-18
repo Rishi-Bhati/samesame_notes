@@ -22,6 +22,14 @@ data class AppSettings(
     val filePasteMode: FilePasteMode = FilePasteMode.Ask,
     /** "Calculate as you type": show an inline result after a typed `=` that can be accepted. */
     val calculateAsYouType: Boolean = true,
+    /** Settings > Font size and style: app-wide scale, per-section scales and the font. */
+    val font: FontSettings = FontSettings(),
+    /** "Replace arrows as you type": `->` becomes `→`, `<-` `←`, `<->` `↔`, `=>` `⇒`, `<=>` `⇔`. */
+    val replaceArrows: Boolean = true,
+    /** "Move checked items to the bottom": a ticked checkbox moves below the unchecked items of its run. */
+    val moveCheckedToBottom: Boolean = true,
+    /** "Insert files with ///": typing the token opens the inline Files picker. */
+    val insertFilesWithSlashes: Boolean = true,
 )
 
 /** Settings > "When pasting a file link" (Files). Only links to pictures ask; other files always paste as links. */

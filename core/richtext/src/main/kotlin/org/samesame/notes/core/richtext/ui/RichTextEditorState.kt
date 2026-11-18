@@ -30,6 +30,7 @@ import org.samesame.notes.core.richtext.PreparedTextLayout
 import org.samesame.notes.core.richtext.RichTextColors
 import org.samesame.notes.core.richtext.TextDecorations
 import org.samesame.notes.core.richtext.edit.TextEditEvent
+import org.samesame.notes.core.richtext.edit.SlashTrigger
 import org.samesame.notes.core.richtext.TemplateLineAlignment
 import org.samesame.notes.core.richtext.edit.math.MathDetector
 import org.samesame.notes.core.richtext.edit.math.MathSuggestion
@@ -82,7 +83,14 @@ class RichTextEditorState(
     var hint: String? by mutableStateOf(null)
 
     /** False in pen and reading modes: no caret, no IME, taps ignored. */
-    var enabled by mutableStateOf(true)
+    var enabled: Boolean
+        get() = enabledState
+        set(value) {
+            if (enabledState == value) return
+            enabledState = value
+            recomputeSlashTrigger()
+        }
+    private var enabledState by mutableStateOf(true)
 
     /**
      * View state (not editable): long press still selects a word with handles and the floating toolbar (Copy, Select all),
@@ -103,8 +111,14 @@ class RichTextEditorState(
     /** Gestures run: editable, or the read-only selection of the view state. */
     val acceptsGestures: Boolean get() = enabled || readOnlySelect
 
-    var isFocused by mutableStateOf(false)
-        internal set
+    var isFocused: Boolean
+        get() = focused
+        internal set(value) {
+            if (focused == value) return
+            focused = value
+            recomputeSlashTrigger()
+        }
+    private var focused by mutableStateOf(false)
 
     internal var caretBlinkOn by mutableStateOf(true)
 
@@ -135,9 +149,17 @@ class RichTextEditorState(
         revision++
         caretBlinkOn = true
         recomputeMathGhost()
+        recomputeSlashTrigger()
         reportSelectionToIme()
     }
     private val editListener: (TextEditEvent) -> Unit = { e ->
+        if (e is TextEditEvent.TextEdit) {
+            // Only a typed character (or a finished composition) may open a token; a paste or a replace over a selection
+            // leaves `///` in the text inert.
+            slashOpenAllowed = e.composed || (e.removed.length == 0 && e.inserted.length == 1)
+        } else {
+            slashOpenAllowed = false
+        }
         if (e is TextEditEvent.TextEdit && handle == null) {
             handlesVisible = false
             toolbarVisible = false
@@ -161,7 +183,7 @@ class RichTextEditorState(
     /** "Show links in notes": underline links and open them on tap. */
     var showLinks by mutableStateOf(true)
 
-    /** "Calculate as you type": show an inline result after a typed `=` that can be accepted. */
+    /** "Calculate as you type": show an inline result for expressions and total keywords. */
     var calculateAsYouType: Boolean
         get() = calculateAsYouTypeState
         set(value) {
@@ -171,17 +193,54 @@ class RichTextEditorState(
         }
     private var calculateAsYouTypeState by mutableStateOf(true)
 
+    /** "Replace arrows as you type": `->` becomes `→`, `<-` `←`, `<->` `↔`, `=>` `⇒`, `<=>` `⇔`. */
+    var replaceArrows: Boolean
+        get() = body.replaceArrows
+        set(v) {
+            body.replaceArrows = v
+        }
+    /** "Move checked items to the bottom": a ticked checkbox reorders within its run. */
+    var moveCheckedToBottom: Boolean by mutableStateOf(true)
+    /** "Insert files with ///": typing the token under the caret opens the inline Files picker. */
+    var insertFilesWithSlashes: Boolean
+        get() = insertFilesWithSlashesState
+        set(value) {
+            if (insertFilesWithSlashesState == value) return
+            insertFilesWithSlashesState = value
+            recomputeSlashTrigger()
+        }
+    private var insertFilesWithSlashesState by mutableStateOf(true)
+
+    /** The `///query` token under the caret, or null. Not part of the text. */
+    var slashTrigger: SlashTrigger.Match? by mutableStateOf(null)
+        private set
+
+    /**
+     * Host hook for Enter while the `///` picker is open: true when it inserted the chosen row, so the IME's newline is
+     * dropped. Null (or false) inserts the newline as usual, which closes the picker like any other caret move.
+     */
+    var onSlashEnter: (() -> Boolean)? = null
+
+    // Whether the last edit was one typed character (or an IME composition), as opposed to a paste or a selection edit.
+    private var slashOpenAllowed = false
+
+    // A token that appeared without typing (pasted, or the caret moved into it) stays inert until it changes.
+    private var slashSuppressedStart = -1
+
+    // The caret seen by the last trigger recompute: a token survives a change event only when the caret didn't move.
+    private var lastSlashSelection = -1
+
     /** Current inline math suggestion, or null. Not part of the text. */
     var mathGhost: MathSuggestion? by mutableStateOf(null)
         private set
 
     /**
      * Called when a link is tapped: a detected link (with [showLinks] on) in edit mode, or any link in the view state and
-     * reading mode ([onReadTap]); the host opens it. A stored link run ([TextLink.explicit]) in edit mode places the
-     * caret instead; a second tap on it, or a long press, selects the whole link and shows the floating menu, whose
-     * extra rows the host adds for [linkInSelection].
+     * reading mode ([onReadTap]); the host opens it. The second argument is the tap in view px, for a menu at the finger.
+     * A stored link run ([TextLink.explicit]) in edit mode places the caret instead; a second tap on it, or a long press,
+     * selects the whole link and shows the floating menu, whose extra rows the host adds for [linkInSelection].
      */
-    var onLinkClick: ((TextLink) -> Unit)? = null
+    var onLinkClick: ((TextLink, Offset) -> Unit)? = null
 
     /**
      * Paste interception (Files): called instead of inserting when the pasted text is only library file links
@@ -189,6 +248,9 @@ class RichTextEditorState(
      * clipboard chip. The host inserts link runs or images over the current selection. Null pastes the text as is.
      */
     var onPasteFileLinks: ((List<org.samesame.notes.core.model.files.FileLinks.Target>) -> Unit)? = null
+
+    /** Called when the user backspaces in the editor: (caretPageBefore, caretOffsetBefore, caretOffsetAfter). */
+    var onUserBackspace: ((pageBefore: Int, caretBefore: Int, caretAfter: Int) -> Unit)? = null
 
     /** The stored link the selection lies in (a caret inside one, or a selection within one), or null. */
     fun linkInSelection(): TextLink? = body.selection.let { engine.storedLinkCovering(it.min, it.max) }
@@ -209,6 +271,7 @@ class RichTextEditorState(
         hint = if (isFocused) null else hint,
         mathGhostText = mathGhost?.text,
         mathGhostAnchor = mathGhost?.anchor ?: -1,
+        mathCountedRanges = mathGhost?.countedRanges.orEmpty(),
     )
 
     /**
@@ -272,7 +335,16 @@ class RichTextEditorState(
         override val ghostJudge get() = this@RichTextEditorState.ghostJudge
         override val ghostDoubleSpace get() = this@RichTextEditorState.ghostDoubleSpace
 
+        override fun currentCaretPage(): Int =
+            if (body.length == 0) 0 else engine.caret(body.selection.max).pageIndex
+
+        override fun onUserBackspace(pageBefore: Int, caretBefore: Int, caretAfter: Int) {
+            this@RichTextEditorState.onUserBackspace?.invoke(pageBefore, caretBefore, caretAfter)
+        }
+
         override fun acceptMathGhostFromIme(reason: String): Boolean = this@RichTextEditorState.acceptMathGhost("ime:$reason")
+
+        override fun slashEnterFromIme(): Boolean = this@RichTextEditorState.onSlashEnter?.invoke() == true
     }
 
     private val imm: InputMethodManager
@@ -380,14 +452,14 @@ class RichTextEditorState(
             return
         }
         engine.checkboxAt(d.x, d.y)?.let {
-            body.toggleChecked(it)
+            body.toggleChecked(it, moveCheckedToBottom)
             return
         }
         val link = engine.linkAt(d.x, d.y, detected = showLinks)
         if (link != null && !link.explicit && link.kind != TextLink.Kind.FileLink) {
             val open = onLinkClick
             if (open != null) {
-                open(link)
+                open(link, p)
                 return
             }
         }
@@ -422,7 +494,7 @@ class RichTextEditorState(
         val d = toDoc(p)
         val link = engine.linkAt(d.x, d.y, detected = showLinks) ?: return false
         val open = onLinkClick ?: return false
-        open(link)
+        open(link, p)
         return true
     }
 
@@ -608,6 +680,43 @@ class RichTextEditorState(
     fun canPaste(): Boolean = clipboard.hasPrimaryClip()
 
     internal fun hasSelection(): Boolean = !body.selection.collapsed
+
+    // ---------------------------------------------------------------- slash file picker
+
+    /**
+     * Finds the `///query` token ending at the collapsed caret. A token may only open on typing (or an IME composition);
+     * pasted text and a caret moved into existing text stay inert until the token changes.
+     */
+    private fun recomputeSlashTrigger() {
+        val sel = body.selection
+        val current = slashTrigger
+        // A change listener also fires on caret moves; only a new typed character may keep an open token alive after one.
+        val caretMoved = sel.min != lastSlashSelection
+        lastSlashSelection = sel.min
+        val typed = slashOpenAllowed || body.composition != null
+        val match = if (!insertFilesWithSlashesState || !enabledState || !focused || !sel.collapsed) {
+            null
+        } else {
+            val lineStart = body.paragraphRange(body.paragraphIndexAt(sel.min)).first
+            val found = SlashTrigger.detect(body.editable.subSequence(lineStart, sel.min))
+            found?.let { SlashTrigger.Match(lineStart + it.start, it.query) }
+        }
+        val next = when {
+            match == null -> {
+                slashSuppressedStart = -1
+                null
+            }
+            // The same token while typing (or a follow-up change with the caret unchanged) stays open.
+            typed || (current != null && current.start == match.start && !caretMoved) -> match
+            slashSuppressedStart == match.start -> null
+            else -> {
+                slashSuppressedStart = match.start
+                null
+            }
+        }
+        slashOpenAllowed = false
+        if (next != slashTrigger) slashTrigger = next
+    }
 
     // ---------------------------------------------------------------- math ghost
 

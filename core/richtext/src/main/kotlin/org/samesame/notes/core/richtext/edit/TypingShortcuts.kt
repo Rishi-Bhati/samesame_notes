@@ -10,6 +10,9 @@ data class InlineMarker(val start: Int, val end: Int, val kind: Kind) {
     enum class Kind { Bold, Italic, Strikethrough }
 }
 
+/** A typed ASCII arrow that should become one arrow character: replace [length] chars before the caret with [arrow]. */
+data class ArrowReplacement(val length: Int, val arrow: String, val typed: String)
+
 /**
  * Pure recognition of the WhatsApp/Markdown-style typing shortcuts, kept out of [BodyText] so all the
  * string edge cases can be tested on the JVM.
@@ -64,5 +67,36 @@ object TypingShortcuts {
     fun autoIndent(textBeforeCaret: String): String {
         val end = textBeforeCaret.indexOfFirst { it != ' ' && it != '\t' }
         return if (end <= 0) "" else textBeforeCaret.substring(0, end)
+    }
+
+    /**
+     * An ASCII arrow sequence ending at the caret to be replaced with a single arrow character.
+     * [textBeforeCaret] is the current line text up to and including the character just typed.
+     * Returns null if no arrow matches or if within a URL-like token.
+     */
+    fun arrow(textBeforeCaret: String): ArrowReplacement? {
+        if (textBeforeCaret.isEmpty()) return null
+        val candidate = when (textBeforeCaret.last()) {
+            '>' -> when {
+                textBeforeCaret.endsWith("<=>") -> ArrowReplacement(3, "⇔", "<=>")
+                textBeforeCaret.endsWith("←>") -> ArrowReplacement(2, "↔", "<->")
+                textBeforeCaret.endsWith("<->") -> ArrowReplacement(3, "↔", "<->")
+                textBeforeCaret.endsWith("->") -> ArrowReplacement(2, "→", "->")
+                textBeforeCaret.endsWith("=>") -> ArrowReplacement(2, "⇒", "=>")
+                else -> null
+            }
+            '-' -> when {
+                textBeforeCaret.endsWith("<--") -> null
+                textBeforeCaret.endsWith("<-") -> ArrowReplacement(2, "←", "<-")
+                else -> null
+            }
+            else -> null
+        } ?: return null
+
+        val tokenStart = textBeforeCaret.indexOfLast { it.isWhitespace() }.let { if (it < 0) 0 else it + 1 }
+        val token = textBeforeCaret.substring(tokenStart)
+        if (token.contains("://") || token.startsWith("www.")) return null
+
+        return candidate
     }
 }

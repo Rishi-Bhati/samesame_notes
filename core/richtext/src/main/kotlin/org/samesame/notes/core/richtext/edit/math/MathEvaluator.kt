@@ -11,6 +11,8 @@ private val SPACE_GROUPED = Regex("""^\d{1,3}(?: \d{3})+(?:[.,]\d+)?$""")
 /** A result that is ready to show: [text] is the number (and unit), [ops] how many operations produced it. */
 data class MathResult(val text: String, val ops: Int)
 
+enum class AggregateKind { Total, Subtotal, GrandTotal, Average, Count, Max, Min }
+
 /**
  * A recursive-descent calculator over [BigDecimal] for the "calculate as you type" suggestion.
  *
@@ -65,6 +67,79 @@ object MathEvaluator {
         } catch (_: Failure) {
             null
         }
+    }
+
+    /** Exact quantities for item expressions; formatting and rounding happen only after aggregation. */
+    internal fun readQuantity(expression: String): Pair<BigDecimal, MathUnit?>? {
+        val (value, _) = evaluateInternal(expression, MathConfig.English) ?: return null
+        val quantity = value as? Num ?: return null
+        return try {
+            checked(quantity.value) to quantity.unit
+        } catch (_: Failure) {
+            null
+        }
+    }
+
+    /** Aggregates parsed items; the detector selects subtotal results for [AggregateKind.GrandTotal]. */
+    fun aggregate(amounts: List<Amount>, kind: AggregateKind): MathResult? {
+        if (amounts.isEmpty() || amounts.size > Limits.MATH_BLOCK_MAX_LINES) return null
+        val currencies = amounts.mapNotNull { it.currency }.toSet()
+        if (currencies.size > 1) return null
+        val first = amounts.first()
+        val unit = first.unit
+        if (amounts.any { (it.unit == null) != (unit == null) || it.unit?.dimension != unit?.dimension }) return null
+        // Affine temperature units cannot be converted and summed as ordinary quantities.
+        if (unit?.dimension == MathDimension.Temperature && amounts.any { it.unit !== unit }) return null
+        return try {
+            val values = amounts.map {
+                checked(if (unit == null || it.unit === unit) it.value else unit.fromBase(it.unit!!.toBase(it.value)))
+            }
+            val value = checked(when (kind) {
+                AggregateKind.Average -> values.fold(BigDecimal.ZERO, BigDecimal::add).divide(BigDecimal(values.size), MC)
+                AggregateKind.Count -> BigDecimal(values.size)
+                AggregateKind.Max -> values.maxOrNull() ?: return null
+                AggregateKind.Min -> values.minOrNull() ?: return null
+                else -> values.fold(BigDecimal.ZERO, BigDecimal::add)
+            })
+            if (kind == AggregateKind.Count) return MathResult(formatNumber(value), 1)
+            if (unit?.dimension == MathDimension.Time) return MathResult(formatDuration(unit.toBase(value)), 1)
+            val sign = if (value.signum() < 0) "-" else ""
+            val unsigned = groupedNumber(value.abs(), amounts.maxOf { it.grouping })
+            val currency = currencies.firstOrNull().orEmpty()
+            val suffix = first.unitDisplay ?: unit?.symbol
+            MathResult(sign + currency + unsigned + if (suffix == null) "" else " $suffix", 1)
+        } catch (_: Failure) {
+            null
+        } catch (_: ArithmeticException) {
+            null
+        }
+    }
+
+    private fun groupedNumber(value: BigDecimal, grouping: GroupingStyle): String {
+        val number = formatNumber(value)
+        if (grouping == GroupingStyle.None) return number
+        val negative = number.startsWith('-')
+        val parts = number.removePrefix("-").split('.')
+        var integer = parts.first()
+        val groups = ArrayList<String>()
+        var size = 3
+        while (integer.length > size) {
+            groups += integer.takeLast(size)
+            integer = integer.dropLast(size)
+            if (grouping == GroupingStyle.Indian) size = 2
+        }
+        groups += integer
+        return (if (negative) "-" else "") + groups.asReversed().joinToString(",") +
+            if (parts.size == 2) ".${parts[1]}" else ""
+    }
+
+    private fun formatDuration(seconds: BigDecimal): String {
+        // A single signed quantity round-trips without making a later minute component positive.
+        if (seconds.signum() < 0) return formatNumber(seconds.divide(BigDecimal(60), MathUnit.MC)) + "min"
+        val minutes = seconds.divide(BigDecimal(60), MathUnit.MC)
+        val hours = minutes.divideToIntegralValue(BigDecimal(60))
+        val remainder = minutes.remainder(BigDecimal(60))
+        return formatNumber(hours) + "h" + if (remainder.signum() == 0) "" else " ${formatNumber(remainder)}m"
     }
 
     /** A number for display: at most [Limits.MATH_MAX_DECIMALS] decimals, no trailing zeros, never `-0`. */

@@ -155,7 +155,7 @@ internal fun MenuDottedDivider(modifier: Modifier = Modifier) {
 // ------------------------------------------------------------------------------------------------ Overflow (#54, #60)
 
 enum class OverflowAction {
-    PageSorter, PageTemplate, PageView, PageSettings, FullScreen, Tags, VersionHistory, SaveAsFile, Print, Favourite, Share, Delete,
+    PageSorter, PageTemplate, PageView, PageSettings, FullScreen, Tags, VersionHistory, SaveAsFile, DeletePage, Print, Favourite, Share, Delete,
 }
 
 /**
@@ -164,7 +164,13 @@ enum class OverflowAction {
  * screen, Tags, Save as file, + Print in pen mode), a second rule and the Favourite / Share / Delete glyphs 81 dp apart.
  */
 @Composable
-internal fun OverflowMenu(penMode: Boolean, onAction: (OverflowAction) -> Unit, modifier: Modifier = Modifier, favorite: Boolean = false) {
+internal fun OverflowMenu(
+    penMode: Boolean,
+    onAction: (OverflowAction) -> Unit,
+    modifier: Modifier = Modifier,
+    favorite: Boolean = false,
+    showDeletePage: Boolean = false,
+) {
     MenuSurface(modifier.width(278.9.dp)) {
         Column(Modifier.padding(top = 16.dp, bottom = 22.7.dp)) {
             PillMenuRow(AppIcons.PageSorter, R.string.feature_composer_ov_page_sorter) { onAction(OverflowAction.PageSorter) }
@@ -183,6 +189,7 @@ internal fun OverflowMenu(penMode: Boolean, onAction: (OverflowAction) -> Unit, 
             PlainActionRow(R.string.feature_composer_ov_tags) { onAction(OverflowAction.Tags) }
             PlainActionRow(R.string.feature_composer_ov_version_history) { onAction(OverflowAction.VersionHistory) }
             PlainActionRow(R.string.feature_composer_ov_save_as_file) { onAction(OverflowAction.SaveAsFile) }
+            if (showDeletePage) PlainActionRow(R.string.feature_composer_ov_delete_page) { onAction(OverflowAction.DeletePage) }
             if (penMode) PlainActionRow(R.string.feature_composer_ov_print) { onAction(OverflowAction.Print) }
             Spacer(Modifier.height(16.3.dp))
             MenuDottedDivider(Modifier.padding(horizontal = 22.dp))

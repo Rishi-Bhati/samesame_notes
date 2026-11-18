@@ -11,11 +11,16 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-/** System font (Roboto on most devices). */
-private val Font = FontFamily.SansSerif
+/**
+ * No family on the shared styles: they inherit it from the theme (`ProvideTextStyle` in [SameSameTheme]), so the font
+ * chosen in Settings reaches every screen. System default is the platform sans-serif (Roboto on most devices).
+ */
+private val Font: FontFamily? = null
 
-internal val SameSameTypography = Typography().let { base ->
-    fun TextStyle.sys() = copy(fontFamily = Font)
+/** Material typography in [family] (null = the platform sans-serif, as before the font setting existed). */
+internal fun sameSameTypography(family: FontFamily?) = Typography().let { base ->
+    val face = family ?: FontFamily.SansSerif
+    fun TextStyle.sys() = copy(fontFamily = face)
     base.copy(
         displayLarge = base.displayLarge.sys(), displayMedium = base.displayMedium.sys(),
         displaySmall = base.displaySmall.sys(), headlineLarge = base.headlineLarge.sys(),
@@ -61,13 +66,15 @@ object SameSameText {
  */
 @Composable
 @ReadOnlyComposable
-fun fixedSp(dp: Float): TextUnit = with(LocalDensity.current) { dp.dp.toSp() }
+fun fixedSp(dp: Float): TextUnit = with(LocalDensity.current) { (dp * extraFontScale()).dp.toSp() }
 
-/** [sp] scaled by the system font scale, but never by more than [max] (One UI large-text limit). */
+/** [sp] scaled by the combined system, app and section scale, capped at [max] for fixed-size chrome. */
 @Composable
 @ReadOnlyComposable
 fun cappedSp(sp: Float, max: Float = 1.1f): TextUnit =
-    with(LocalDensity.current) { (sp * minOf(fontScale, max)).dp.toSp() }
+    with(LocalDensity.current) {
+        cappedFontDp(sp, fontScale, max).dp.toSp()
+    }
 
 /** This style with its size/line height ignoring the font scale (spec dimen in dp). */
 @Composable

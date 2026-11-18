@@ -18,6 +18,7 @@ import org.samesame.notes.core.model.richtext.RichTextOps
 import org.samesame.notes.core.model.richtext.TextAlign
 import org.samesame.notes.core.model.richtext.TextRun
 import org.samesame.notes.core.model.richtext.listMarkerPrefix
+import org.samesame.notes.core.richtext.edit.ChecklistOrder
 import org.samesame.notes.core.richtext.edit.ClipboardText
 import org.samesame.notes.core.richtext.edit.EditAccumulator
 import org.samesame.notes.core.richtext.edit.ParagraphRules
@@ -55,6 +56,9 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
     /** Style for the next typed text when the user toggled a style at a caret; cleared when the caret moves. */
     var typingStyle: CharStyle? = null
         private set
+
+    /** "Replace arrows as you type": `->` becomes `→`, `<-` `←`, `<->` `↔`, `=>` `⇒`, `<=>` `⇔`. */
+    var replaceArrows: Boolean = true
 
     /** Bumped on any change (text, spans, selection, composition). */
     var version: Long = 0
@@ -183,6 +187,7 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
     // ---------------------------------------------------------------- selection
 
     fun setSelection(start: Int, end: Int = start) {
+        lastArrow = null
         val s = start.coerceIn(0, length)
         val e = end.coerceIn(0, length)
         if (selection == TextSelection(s, e)) return
@@ -227,6 +232,7 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
 
     /** Types [text] over the selection. A lone `\n` behaves like Enter ([insertNewline]). */
     fun commitText(text: CharSequence) {
+        lastArrow = null
         if (text.toString() == "\n") insertNewline() else batch {
             if (composition != null || imeComposing) {
                 val sel = selection
@@ -247,6 +253,7 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
 
     /** Enter: new paragraph (list continues), or ends the list on an empty item. */
     fun insertNewline() = batch {
+        lastArrow = null
         val sel = selection
         val p = paragraphIndexAt(sel.min)
         val style = paragraphs[p]
@@ -268,10 +275,22 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
     fun deleteBackward() = batch {
         val sel = selection
         if (!sel.collapsed) {
+            lastArrow = null
             replace(sel.min, sel.max, "")
             return@batch
         }
         val caret = sel.min
+        val arrow = lastArrow
+        if (arrow != null && caret == arrow.position + arrow.arrow.length &&
+            arrow.position >= 0 && caret <= length &&
+            editable.subSequence(arrow.position, caret).toString() == arrow.arrow
+        ) {
+            editable.replace(arrow.position, caret, arrow.typed)
+            Selection.setSelection(editable, arrow.position + arrow.typed.length)
+            lastArrow = null
+            return@batch
+        }
+        lastArrow = null
         val p = paragraphIndexAt(caret)
         val range = paragraphRange(p)
         if (caret == range.first && ParagraphRules.backspaceRemovesMarker(paragraphs[p])) {
@@ -298,6 +317,7 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
     }
 
     fun deleteForward() = batch {
+        lastArrow = null
         val sel = selection
         if (!sel.collapsed) {
             replace(sel.min, sel.max, "")
@@ -313,6 +333,7 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
      * (head keeps its style, middle paragraphs take the fragment's, a plain last one continues).
      */
     fun insertRich(fragment: RichText) = batch {
+        lastArrow = null
         val frag = RichTextOps.normalise(fragment)
         val sel = selection
         val s = sel.min
@@ -339,7 +360,12 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
 
     private var lastConversion: TypedConversion? = null
 
-    /** Runs after a typed character: line-start markers and, on a space, inline `*bold*`-style markers. */
+    /** An arrow character that was just converted, so Backspace immediately after restores the typed ASCII text. */
+    private data class ArrowConversion(val position: Int, val arrow: String, val typed: String)
+
+    private var lastArrow: ArrowConversion? = null
+
+    /** Runs after a typed character: line-start markers, arrows, and on a space, inline `*bold*`-style markers. */
     private fun applyTypingShortcuts(typed: CharSequence) {
         val sel = selection
         if (!sel.collapsed || typed.isEmpty()) return
@@ -349,6 +375,7 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
         val prefix = editable.subSequence(range.first, caret).toString()
         TypingShortcuts.blockMarker(prefix)?.let { marker ->
             lastConversion = TypedConversion(p, marker.marker, paragraphs[p])
+            lastArrow = null
             editable.delete(range.first, caret)
             Selection.setSelection(editable, range.first)
             setParagraphsRaw(
@@ -359,6 +386,17 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
                 ),
             )
             return
+        }
+        lastArrow = null
+        if (replaceArrows && (typed.last() == '>' || typed.last() == '-')) {
+            val match = TypingShortcuts.arrow(prefix)
+            if (match != null) {
+                val pos = caret - match.length
+                editable.replace(pos, caret, match.arrow)
+                Selection.setSelection(editable, pos + match.arrow.length)
+                lastArrow = ArrowConversion(position = pos, arrow = match.arrow, typed = match.typed)
+                return
+            }
         }
         if (typed.length == 1 && typed[0] == ' ') applyInlineShortcut(range)
     }
@@ -386,6 +424,7 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
         Selection.setSelection(editable, end)
         typingStyle = null
         lastConversion = null
+        lastArrow = null
     }
 
     /** Leading spaces/tabs of paragraph [p] before [caret], for auto-indent. */
@@ -448,9 +487,92 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
     fun outdent() = setParagraphStyle(ParagraphRules::outdent)
     fun setAlign(align: TextAlign) = setParagraphStyle { it.copy(align = align) }
 
-    fun toggleChecked(paragraph: Int) = batch {
+    /**
+     * Ticks/unticks one checkbox. With "Move checked items to the bottom" on, the paragraph (with its
+     * nested children) is reordered in the same single [TextEditEvent.TextEdit] as the tick, so undo
+     * restores the order and the tick together. The edit spans the whole affected run: a text edit
+     * carries paragraph styles too, so re-applying it replays the move exactly. With the setting off
+     * only the tick changes, as before.
+     */
+    fun toggleChecked(paragraph: Int, moveCheckedToBottom: Boolean = true) = batch {
         val p = paragraphs.getOrNull(paragraph) ?: return@batch
-        if (p.checkbox) changeParagraphs(paragraph, listOf(p.copy(checked = !p.checked)))
+        if (!p.checkbox) return@batch
+        val checkedAfter = !p.checked
+        val after = p.copy(checked = checkedAfter)
+        val stylesAfter = paragraphs.toMutableList().also { it[paragraph] = after }
+        val order = if (moveCheckedToBottom) ChecklistOrder.orderAfterToggle(stylesAfter, paragraph, checkedAfter) else null
+        if (order == null) {
+            changeParagraphs(paragraph, listOf(after))
+            return@batch
+        }
+
+        val move = ChecklistOrder.moveAfterToggle(stylesAfter, paragraph, checkedAfter)!!
+        // Every paragraph between the block's old and new positions changes; that contiguous span is the edit.
+        val regionFirst = minOf(move.from, move.to)
+        val regionLast = maxOf(move.from + move.size, move.to + move.size)
+        val start = paragraphRange(regionFirst).first
+        val end = paragraphRange(regionLast - 1).last + 1
+        val before = slice(start, end)
+        val regionOrder = order.filter { it in regionFirst until regionLast }.map { it - regionFirst }
+        val regionStyles = stylesAfter.subList(regionFirst, regionLast)
+        val inserted = ChecklistOrder.reorder(before, regionOrder, regionStyles)
+
+        // Keep each caret at the same offset inside its paragraph, so a caret in the moved text travels with it.
+        val sel = selection
+        val newStart = mapCaretAcrossMove(sel.start, start, end, before, regionOrder, inserted)
+        val newEnd = mapCaretAcrossMove(sel.end, start, end, before, regionOrder, inserted)
+
+        flushEdit()
+        suppressRecording++
+        try {
+            replaceExact(start, before.length, inserted)
+        } finally {
+            suppressRecording--
+        }
+        accumulator.take()
+        Selection.setSelection(editable, newStart.coerceIn(0, length), newEnd.coerceIn(0, length))
+        emit(TextEditEvent.TextEdit(start, before, inserted, sel, TextSelection(newStart, newEnd)))
+    }
+
+    /** Maps one caret offset from the pre-move region to the post-move one; offsets outside it stay put. */
+    private fun mapCaretAcrossMove(
+        offset: Int,
+        start: Int,
+        end: Int,
+        before: RichText,
+        regionOrder: List<Int>,
+        inserted: RichText,
+    ): Int {
+        if (offset < start || offset >= end) return offset
+        val oldLengths = paragraphLengths(before)
+        var oldPos = start
+        var p = 0
+        while (p < oldLengths.lastIndex && offset >= oldPos + oldLengths[p] + 1) {
+            oldPos += oldLengths[p] + 1
+            p++
+        }
+        val within = (offset - oldPos).coerceAtMost(oldLengths[p])
+        val newLengths = paragraphLengths(inserted)
+        var newPos = start
+        for (k in regionOrder.indices) {
+            val original = regionOrder[k]
+            if (original == p) return newPos + within
+            newPos += newLengths[k] + 1
+        }
+        return offset
+    }
+
+    /** Text length of each paragraph of [rt], excluding its newline. */
+    private fun paragraphLengths(rt: RichText): List<Int> {
+        val out = ArrayList<Int>(rt.paragraphs.size)
+        var pos = 0
+        for (i in rt.paragraphs.indices) {
+            val nl = rt.text.indexOf('\n', pos)
+            val end = if (nl < 0) rt.text.length else nl
+            out += end - pos
+            pos = if (nl < 0) rt.text.length else nl + 1
+        }
+        return out
     }
 
     // ---------------------------------------------------------------- history (not recorded)
@@ -487,6 +609,7 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
             }
             accumulator.take()
             typingStyle = null
+            lastArrow = null
         }
         onExternalChange?.invoke()
     }
@@ -514,6 +637,7 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
             }
             accumulator.take()
             typingStyle = null
+            lastArrow = null
         }
         onExternalChange?.invoke()
     }
@@ -625,7 +749,7 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
 
     /** Style of the character before [offset] (after it at 0); `RichTextOps.styleBefore`. */
     private fun styleBefore(offset: Int): CharStyle =
-        if (length == 0) CharStyle() else RichTextBridge.charStyleAt(editable, if (offset <= 0) 0 else minOf(offset, length) - 1)
+        if (length == 0) CharStyle(fontSize = env.newTextFontSize) else RichTextBridge.charStyleAt(editable, if (offset <= 0) 0 else minOf(offset, length) - 1)
 
     /** [styleBefore] with the link rule (`RichTextOps.typingStyle`): text typed at [offset] doesn't extend a link it ends. */
     private fun typingStyleAt(offset: Int): CharStyle {
@@ -733,7 +857,10 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
         if (what is LinePitchSpan) return
         if (what === Selection.SELECTION_START || what === Selection.SELECTION_END) {
             val sel = selection
-            if (raw == null && !(sel.collapsed && sel.min == expectedCaret)) typingStyle = null
+            if (raw == null && !(sel.collapsed && sel.min == expectedCaret)) {
+                typingStyle = null
+                lastArrow = null
+            }
         } else if (what is CharStyleSpan || what is ParagraphSpan || what is InlineObjectSpan) {
             layoutVersion++
         }

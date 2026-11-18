@@ -400,6 +400,7 @@ internal class DefaultNoteRepository @Inject constructor(
         }
 
         val plain = bundle.document.body.plainText()
+        val (done, total) = checklistCounts(bundle.document.body)
         val now = clock.now()
         val created = archive.endTag.createdTime.takeIf { it > 0 }?.div(1000) ?: now
         noteDao.upsert(
@@ -407,6 +408,8 @@ internal class DefaultNoteRepository @Inject constructor(
                 id = id,
                 title = bundle.title,
                 previewText = plain.take(PREVIEW_LENGTH),
+                checklistDone = done,
+                checklistTotal = total,
                 folderId = folderId?.value,
                 isFavorite = false,
                 // The .sdocx lock flag is only a flag (spec: not encrypted); the imported note is stored unlocked, so the
@@ -537,9 +540,11 @@ internal class DefaultNoteRepository @Inject constructor(
             documents.writeDocument(document)
             documents.flush(id)
             val now = clock.now()
+            val (done, total) = checklistCounts(document.body)
             noteDao.upsert(
                 NoteEntity(
                     id = id, title = title, previewText = document.body.plainText().take(PREVIEW_LENGTH), folderId = folderId?.value,
+                    checklistDone = done, checklistTotal = total,
                     isFavorite = false, isLocked = false, pageMode = document.layout.mode, backgroundColor = style.backgroundColor ?: 0,
                     createdAt = now, modifiedAt = now, lastOpenedAt = now, trashedAt = null, isDirty = true,
                 ),
@@ -652,12 +657,15 @@ internal class DefaultNoteRepository @Inject constructor(
         val doc = imported.document
         val legacyViewState = imported.legacyViewState
         val plain = doc.body.plainText()
+        val (done, total) = checklistCounts(doc.body)
         val now = clock.now()
         noteDao.upsert(
             NoteEntity(
                 id = doc.id,
                 title = doc.title,
                 previewText = plain.take(PREVIEW_LENGTH),
+                checklistDone = done,
+                checklistTotal = total,
                 folderId = folderId?.value,
                 isFavorite = false,
                 isLocked = false,
@@ -717,12 +725,13 @@ internal class DefaultNoteRepository @Inject constructor(
             // Owner decision: a locked note's title stays in the catalog and is visible; only the body preview and the
             // searchable body are removed (title search still finds it).
             if (row.title != doc.title) noteDao.updateTitle(id.value, doc.title, now)
-            noteDao.updatePreview(id.value, "", now)
+            noteDao.updatePreview(id.value, "", 0, 0, now)
             searchDao.replace(NoteSearchEntity(noteId = id.value, title = doc.title, body = "", inkText = ""))
             return@withLock
         }
         if (row.title != doc.title) noteDao.updateTitle(id.value, doc.title, now)
-        noteDao.updatePreview(id.value, plain.take(PREVIEW_LENGTH), now)
+        val (done, total) = checklistCounts(doc.body)
+        noteDao.updatePreview(id.value, plain.take(PREVIEW_LENGTH), done, total, now)
         searchDao.replace(
             NoteSearchEntity(noteId = id.value, title = doc.title, body = plain, inkText = ""),
         )
@@ -960,7 +969,7 @@ internal class DefaultNoteRepository @Inject constructor(
                     // The encrypted document carries the body; the catalog keeps the visible title (owner decision 2026-11-02).
                     org.samesame.notes.core.data.traced("lock:lockNote") { documents.lockNote(id.value, master, title = row.title) }
                     previewCache?.forget(id.value) // no rendered page of a locked note stays on disk
-                    noteDao.setLocked(id.value, true, title = row.title, preview = "")
+                    noteDao.setLocked(id.value, true, title = row.title, preview = "", done = 0, total = 0)
                     // Only the title stays searchable, never the body.
                     searchDao.replace(NoteSearchEntity(noteId = id.value, title = row.title, body = "", inkText = ""))
                 }
@@ -982,7 +991,8 @@ internal class DefaultNoteRepository @Inject constructor(
                 if (!row.isLocked) return@withLock
                 val doc = org.samesame.notes.core.data.traced("lock:unlockNote") { documents.unlockNote(id.value, master) }
                 val plain = doc.body.plainText()
-                noteDao.setLocked(id.value, false, title = doc.title, preview = plain.take(PREVIEW_LENGTH))
+                val (done, total) = checklistCounts(doc.body)
+                noteDao.setLocked(id.value, false, title = doc.title, preview = plain.take(PREVIEW_LENGTH), done = done, total = total)
                 // A marker left by a render that died while the note was unlocked must not block the fresh preview.
                 previewFailures.forget(id.value)
                 searchDao.replace(NoteSearchEntity(noteId = id.value, title = doc.title, body = plain, inkText = ""))
@@ -1040,6 +1050,10 @@ internal class DefaultNoteRepository @Inject constructor(
             ),
         )
     }
+
+    /** Checklist progress cached on the catalog row for home cards (locked notes store 0/0). */
+    private fun checklistCounts(body: RichText): Pair<Int, Int> =
+        body.paragraphs.count { it.checkbox && it.checked } to body.paragraphs.count { it.checkbox }
 
     private companion object {
         const val PREVIEW_LENGTH = 300

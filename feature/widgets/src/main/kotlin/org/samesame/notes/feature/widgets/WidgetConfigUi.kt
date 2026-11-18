@@ -73,7 +73,7 @@ internal fun ComponentActivity.setConfigContent(content: @Composable () -> Unit)
     val settingsFlow = WidgetEntryPoint.get(this).settings().settings
     setContent {
         val settings by settingsFlow.collectAsStateWithLifecycle(initialValue = AppSettings())
-        SameSameTheme(darkTheme = settings.themeMode.isDark(isSystemInDarkTheme())) {
+        SameSameTheme(darkTheme = settings.themeMode.isDark(isSystemInDarkTheme()), font = settings.font) {
             Box(Modifier.fillMaxSize().background(SameSameTheme.colors.background).systemBarsPadding()) { content() }
         }
     }

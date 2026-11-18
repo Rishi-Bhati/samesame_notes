@@ -130,6 +130,19 @@ class MathEvaluatorTest {
     }
 
     @Test
+    fun parsedAggregatesValidateBeforeCountingAndCheckOverflow() {
+        val items = listOf(LineAmount.parse("Rice 1 kg")!!, LineAmount.parse("Rice 500 g")!!)
+        assertThat(MathEvaluator.aggregate(items, AggregateKind.Max)?.text).isEqualTo("1 kg")
+        assertThat(MathEvaluator.aggregate(items, AggregateKind.Min)?.text).isEqualTo("0.5 kg")
+        assertThat(MathEvaluator.aggregate(items, AggregateKind.Count)?.text).isEqualTo("2")
+        assertThat(MathEvaluator.aggregate(listOf(LineAmount.parse("$50")!!, LineAmount.parse("₹50")!!), AggregateKind.Count)).isNull()
+        val large = Amount(java.math.BigDecimal("9".repeat(40)), sourceRange = 0..39)
+        assertThat(MathEvaluator.aggregate(listOf(large, large), AggregateKind.Total)).isNull()
+        val tiny = listOf("0.00000000004", "0.00000000004", "0.00000000004").map { LineAmount.parse(it)!! }
+        assertThat(MathEvaluator.aggregate(tiny, AggregateKind.Total)?.text).isEqualTo("0.0000000001")
+    }
+
+    @Test
     fun formatNumberNeverPrintsNegativeZero() {
         assertThat(MathEvaluator.formatNumber(java.math.BigDecimal("-0.0"))).isEqualTo("0")
         assertThat(MathEvaluator.formatNumber(java.math.BigDecimal("1.2300"))).isEqualTo("1.23")

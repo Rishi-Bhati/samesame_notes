@@ -49,6 +49,7 @@ import org.samesame.notes.feature.composer.session.CloseGate
 import org.samesame.notes.feature.composer.session.EditorClipboard
 import org.samesame.notes.feature.composer.session.EditorSession
 import org.samesame.notes.feature.composer.text.BodyTextBinding
+import org.samesame.notes.core.richtext.spans.TextRenderEnv
 import org.samesame.notes.feature.composer.text.prepareEditorText
 import org.samesame.notes.feature.composer.toolbar.EditorMode
 import java.util.logging.Level
@@ -75,6 +76,27 @@ class ComposerViewModel @AssistedInject constructor(
     val fileLinks: org.samesame.notes.feature.composer.files.NoteFileLinks = object : org.samesame.notes.feature.composer.files.NoteFileLinks {
         override suspend fun resolve(ids: List<org.samesame.notes.core.model.files.FileId>) =
             files.getFiles(ids).associateBy { it.id }
+
+        override fun observeAllFiles() = files.observeAllFiles(
+            org.samesame.notes.core.model.files.FileSort(
+                org.samesame.notes.core.model.files.FileSortField.DateAdded,
+                ascending = false,
+            ),
+        )
+
+        override suspend fun import(uris: List<android.net.Uri>): List<org.samesame.notes.core.model.files.FileId> =
+            withContext(Dispatchers.IO) {
+                uris.mapNotNull { uri ->
+                    runCatching {
+                        val result = files.importFromUri(
+                            uri,
+                            folderId = null,
+                            onDuplicate = org.samesame.notes.core.model.files.DuplicatePolicy.KeepBoth,
+                        )
+                        (result as? org.samesame.notes.core.model.files.ImportResult.Imported)?.file?.id
+                    }.getOrNull()
+                }
+            }
 
         override fun contentUri(file: org.samesame.notes.core.model.files.LibraryFile) = files.contentUri(file)
 
@@ -322,6 +344,10 @@ class ComposerViewModel @AssistedInject constructor(
         }
         viewModelScope.launch {
             val initial = appSettings.settings.first()
+            // The chosen font and the new-text size apply to every text body made from here on (render-time only).
+            TextRenderEnv.defaultTypeface = org.samesame.notes.core.designsystem.theme.resolveFontTypeface(appContext, initial.font)
+                ?: android.graphics.Typeface.DEFAULT
+            TextRenderEnv.defaultNewTextFontSize = initial.font.newTextSize()
             settingsLoaded.value = true
             if (!openSession(initial.autoSaveNotes)) return@launch
             appSettings.settings.collect { s -> _session.value?.autoSave = s.autoSaveNotes }
