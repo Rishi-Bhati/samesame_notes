@@ -85,7 +85,7 @@ class MainActivity : FragmentActivity() {
                 }
             }
 
-            SameSameTheme(darkTheme = dark) {
+            SameSameTheme(darkTheme = dark, font = settings.font) {
                 SameSameNavDisplay(
                     openNoteId = importState.noteId,
                     onOpenNoteConsumed = importViewModel::consume,

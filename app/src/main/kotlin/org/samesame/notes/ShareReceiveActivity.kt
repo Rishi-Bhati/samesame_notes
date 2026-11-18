@@ -68,7 +68,7 @@ class ShareReceiveActivity : FragmentActivity() {
                     }
                 }
             }
-            SameSameTheme(darkTheme = dark) {
+            SameSameTheme(darkTheme = dark, font = settings.font) {
                 if (state.items.isNotEmpty()) {
                     ShareReceiveSheet(
                         viewModel = viewModel,

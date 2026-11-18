@@ -37,7 +37,7 @@ class FilesActivity : FragmentActivity() {
             val settings by appSettings.settings.collectAsStateWithLifecycle(initialValue = AppSettings(themeMode = launchTheme))
             val dark = isDarkTheme(settings.themeMode)
             SystemBarAppearance(dark)
-            SameSameTheme(darkTheme = dark) {
+            SameSameTheme(darkTheme = dark, font = settings.font) {
                 FilesRoute(
                     onBack = { finish() },
                     onOpenNote = { id -> startActivity(ComposerActivity.intent(this, id.value)) },

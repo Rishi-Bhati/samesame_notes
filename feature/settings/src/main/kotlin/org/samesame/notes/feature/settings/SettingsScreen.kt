@@ -96,7 +96,7 @@ import org.samesame.notes.core.designsystem.theme.fixedSp
 @Serializable
 data object SettingsKey : NavKey
 
-private enum class Page { Main, Style, Toolbar, About, Privacy, Licences, Unlock, Export }
+private enum class Page { Main, Style, Toolbar, About, Privacy, Licences, Unlock, Export, Font }
 
 @Composable
 fun SettingsRoute(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewModel()) {
@@ -113,6 +113,7 @@ fun SettingsRoute(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMod
         Page.Unlock -> UnlockMethodsPage(onBack = { page = parent })
         Page.Style -> StylePage(settings, update, onBack = { page = parent })
         Page.Toolbar -> ToolbarPage(settings, update, onBack = { page = parent })
+        Page.Font -> FontPage(settings, update, onBack = { page = parent })
         Page.About -> AboutPage(onBack = { page = parent }, onLicences = { page = Page.Licences })
         Page.Privacy -> PrivacyPage(onBack = { page = parent })
         Page.Licences -> LicencesPage(onBack = { page = parent })
@@ -246,6 +247,8 @@ private fun MainPage(
                         }
                     }
                 }
+                RowDivider()
+                SettingsRow(stringResource(R.string.feature_settings_font_row), onClick = { onOpen(Page.Font) })
                 RowDivider()
                 SettingsRow(stringResource(R.string.feature_settings_new_note_style), onClick = { onOpen(Page.Style) })
                 RowDivider()
