@@ -1,6 +1,7 @@
 package org.samesame.notes.core.export
 
 import android.content.Context
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.samesame.notes.core.export.ooxml.DocxExport
@@ -50,7 +51,8 @@ class NoteExporter(private val context: Context? = null) {
         if (format == ExportFormat.SSNOTE || format == ExportFormat.SDOCX) {
             throw UnsupportedOperationException("$format export is not available (TODO(sdocx) / handled by the repository)")
         }
-        val loaded = loadNote(scoped)
+        val loaded = loadNote(scoped, includePdfMedia = format == ExportFormat.PDF)
+        if (format == ExportFormat.PDF) context?.let { PDFBoxResourceLoader.init(it.applicationContext) }
         return withContext(Dispatchers.Default) {
             val doc = loaded.doc
             val markdown = doc.markdown

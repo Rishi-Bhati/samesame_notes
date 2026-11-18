@@ -46,7 +46,8 @@ internal class LoadedNote(
     val media: Map<String, ByteArray>,
 )
 
-internal suspend fun loadNote(source: ExportSource): LoadedNote {
+/** [includePdfMedia]: also load the original PDFs behind imported pages (only PDF export needs them; they can be large). */
+internal suspend fun loadNote(source: ExportSource, includePdfMedia: Boolean = false): LoadedNote {
     val doc = source.document()
     val pages = LinkedHashMap<String, PageContent>()
     val paths = LinkedHashSet<String>()
@@ -55,6 +56,7 @@ internal suspend fun loadNote(source: ExportSource): LoadedNote {
         val content = source.page(spec.id)
         pages[spec.id] = content
         (spec.template as? TemplateRef.Image)?.let { paths += it.media }
+        if (includePdfMedia) spec.pdf?.let { paths += it.media }
         for (e in content.elements) {
             if (e is ObjectElement) parseFloating(e)?.obj?.bitmapMedia?.let { paths += it }
         }

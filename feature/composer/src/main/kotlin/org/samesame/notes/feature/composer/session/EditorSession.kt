@@ -63,6 +63,9 @@ import org.samesame.notes.feature.composer.history.EditTarget
 import org.samesame.notes.feature.composer.history.Group
 import org.samesame.notes.feature.composer.history.IndexedElement
 import org.samesame.notes.feature.composer.history.ObjectChange
+import org.samesame.notes.core.model.document.PdfMarkupKind
+import org.samesame.notes.core.model.document.PdfTextMarkup
+import org.samesame.notes.core.model.document.QuadPu
 import org.samesame.notes.feature.composer.history.PageListChange
 import org.samesame.notes.feature.composer.history.PageSpecChange
 import org.samesame.notes.feature.composer.history.ParagraphStyleChange
@@ -859,6 +862,34 @@ class EditorSession(
         holder.updatePage(after)
         history.record(PageSpecChange(id, before, after))
         autosaver.onEdit()
+    }
+
+    /**
+     * Adds a text markup (highlight / underline / strike) to a PDF page; one undo step via [updatePageSpec]. [quads] are in
+     * unrotated page units. Returns the new markup id, or null when the page is gone, [quads] is empty or a limit is hit.
+     * The text-selection UI (phase 4.1) calls this; nothing in the editor calls it yet.
+     */
+    fun addTextMarkup(pageId: String, kind: PdfMarkupKind, color: Long, quads: List<QuadPu>, text: String = ""): String? {
+        val spec = holder.current.pages.firstOrNull { it.id == pageId } ?: return null
+        if (quads.isEmpty() || spec.textMarkup.size >= Limits.MAX_MARKUPS_PER_PAGE) return null
+        val markup = PdfTextMarkup(
+            id = java.util.UUID.randomUUID().toString(),
+            kind = kind,
+            color = color,
+            quads = quads.take(Limits.MAX_QUADS_PER_MARKUP),
+            text = text.take(Limits.MAX_MARKUP_TEXT_LENGTH),
+            createdAtMs = System.currentTimeMillis(),
+        )
+        updatePageSpec(pageId) { it.copy(textMarkup = it.textMarkup + markup) }
+        return markup.id
+    }
+
+    /** Removes a text markup; one undo step. False when it is not on the page. */
+    fun removeTextMarkup(pageId: String, markupId: String): Boolean {
+        val spec = holder.current.pages.firstOrNull { it.id == pageId } ?: return false
+        if (spec.textMarkup.none { it.id == markupId }) return false
+        updatePageSpec(pageId) { s -> s.copy(textMarkup = s.textMarkup.filter { it.id != markupId }) }
+        return true
     }
 
     private fun applyPageList(before: List<PageSpec>, after: List<PageSpec>, detached: List<PageContent>) {
