@@ -655,13 +655,19 @@ internal fun ComposerEditor(
         }
     }
     /** Copies the link's visible text; Android 13+ shows its own clipboard confirmation. */
-    fun copyLinkText(link: TextLink) {
-        val text = body.editable.subSequence(link.start, link.end).toString()
+    fun copyLinkText(text: String) {
+        if (text.isEmpty()) return
         val cm = appContext.getSystemService(android.content.ClipboardManager::class.java) ?: return
         cm.setPrimaryClip(android.content.ClipData.newPlainText(text, text))
         if (android.os.Build.VERSION.SDK_INT < 33) {
             android.widget.Toast.makeText(appContext, linkCopied, android.widget.Toast.LENGTH_SHORT).show()
         }
+    }
+    fun copyLinkText(link: TextLink) {
+        val s = link.start.coerceIn(0, body.editable.length)
+        val e = link.end.coerceIn(s, body.editable.length)
+        if (e <= s) return
+        copyLinkText(body.editable.subSequence(s, e).toString())
     }
     // The `///` picker's empty state: pick documents, import them into Files, then insert them through the same path.
     val slashUploadFailed = stringResource(R.string.feature_composer_files_slash_upload_failed)
@@ -836,6 +842,9 @@ internal fun ComposerEditor(
     }
     SideEffect {
         textState.onLinkClick = { link, tap ->
+            val s = link.start.coerceIn(0, body.editable.length)
+            val e = link.end.coerceIn(s, body.editable.length)
+            val linkText = if (e > s) body.editable.subSequence(s, e).toString() else ""
             val rows = when (link.kind) {
                 TextLink.Kind.Phone -> listOf(
                     org.samesame.notes.feature.composer.files.FloatingChoiceMenu.Row(linkCall) {
@@ -852,7 +861,7 @@ internal fun ComposerEditor(
                             ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
                         )
                     },
-                    org.samesame.notes.feature.composer.files.FloatingChoiceMenu.Row(linkCopy) { copyLinkText(link) },
+                    org.samesame.notes.feature.composer.files.FloatingChoiceMenu.Row(linkCopy) { copyLinkText(linkText) },
                 )
                 TextLink.Kind.Email -> listOf(
                     org.samesame.notes.feature.composer.files.FloatingChoiceMenu.Row(linkEmail) {
@@ -862,7 +871,7 @@ internal fun ComposerEditor(
                             ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
                         )
                     },
-                    org.samesame.notes.feature.composer.files.FloatingChoiceMenu.Row(linkCopy) { copyLinkText(link) },
+                    org.samesame.notes.feature.composer.files.FloatingChoiceMenu.Row(linkCopy) { copyLinkText(linkText) },
                 )
                 TextLink.Kind.Address -> listOf(
                     org.samesame.notes.feature.composer.files.FloatingChoiceMenu.Row(linkMaps) {
@@ -871,7 +880,7 @@ internal fun ComposerEditor(
                                 .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
                         )
                     },
-                    org.samesame.notes.feature.composer.files.FloatingChoiceMenu.Row(linkCopy) { copyLinkText(link) },
+                    org.samesame.notes.feature.composer.files.FloatingChoiceMenu.Row(linkCopy) { copyLinkText(linkText) },
                 )
                 else -> emptyList()
             }

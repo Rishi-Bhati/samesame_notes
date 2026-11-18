@@ -152,6 +152,65 @@ class LinkDetectorTest {
     }
 
     @Test
+    fun addressEndsDoNotSwallowConversationalTextOrPhone() {
+        assertThat(addresses("Meet at 12 Baker St, and do not forget the milk")).containsExactly("12 Baker St")
+
+        val mixed = "12 Baker Street, call me at +1 555 123 4567"
+        val links = LinkDetector.find(mixed)
+        assertThat(links.filter { it.kind == TextLink.Kind.Address }.map { mixed.substring(it.start, it.end) })
+            .containsExactly("12 Baker Street")
+        assertThat(links.filter { it.kind == TextLink.Kind.Phone }.map { it.target })
+            .containsExactly("tel:+15551234567")
+
+        assertThat(addresses("221B Baker Street, London NW1 6XE")).containsExactly("221B Baker Street, London NW1 6XE")
+    }
+
+    @Test
+    fun falsePositivesAreNotDetectedAsAddresses() {
+        val nonAddresses = listOf(
+            "Only 1 way, please",
+            "10 Rd, 5 wins",
+            "2 Close, 3 open",
+            "Score: 1 Ct, 2 fouls",
+            "Order 123 Drive, shipped today",
+            "Milk 60",
+            "Room 101",
+            "Day 2",
+            "2 Close",
+            "1 way",
+        )
+        for (item in nonAddresses) {
+            assertThat(addresses(item)).isEmpty()
+        }
+    }
+
+    @Test
+    fun genericWordsRequireCapitalizedStreetName() {
+        assertThat(addresses("10 Downing Close")).containsExactly("10 Downing Close")
+        assertThat(addresses("10 downing close")).isEmpty()
+    }
+
+    @Test
+    fun detectsSectorAddressesWithRequiredCity() {
+        assertThat(addresses("Sector 17, Chandigarh")).containsExactly("Sector 17, Chandigarh")
+        assertThat(addresses("Sector 62, Noida")).containsExactly("Sector 62, Noida")
+        assertThat(addresses("Sector 17A, Chandigarh")).containsExactly("Sector 17A, Chandigarh")
+        assertThat(addresses("Flat 4, Sector 17, Chandigarh")).containsExactly("Flat 4, Sector 17, Chandigarh")
+
+        assertThat(addresses("We are in Sector 5 today")).isEmpty()
+        assertThat(addresses("Sector 5")).isEmpty()
+        assertThat(addresses("Sector 5, and then we left")).isEmpty()
+    }
+
+    @Test
+    fun addressContinuationStopsAtNonMatchingPart() {
+        assertThat(addresses("350 Fifth Avenue, New York, NY 10118"))
+            .containsExactly("350 Fifth Avenue, New York, NY 10118")
+        assertThat(addresses("Meet at 12 Baker St, London, and call me"))
+            .containsExactly("12 Baker St, London")
+    }
+
+    @Test
     fun unicodeTextIsNotMangled() {
         val text = "café 会议 at 5:30 pm — موعد 12/03/2026"
         val links = LinkDetector.find(text)
