@@ -113,7 +113,7 @@ fun SettingsRoute(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMod
         Page.Unlock -> UnlockMethodsPage(onBack = { page = parent })
         Page.Style -> StylePage(settings, update, onBack = { page = parent })
         Page.Toolbar -> ToolbarPage(settings, update, onBack = { page = parent })
-        Page.Font -> FontPage(settings, update, onBack = { page = parent })
+        Page.Font -> FontPage(settings, update, viewModel, onBack = { page = parent })
         Page.About -> AboutPage(onBack = { page = parent }, onLicences = { page = Page.Licences })
         Page.Privacy -> PrivacyPage(onBack = { page = parent })
         Page.Licences -> LicencesPage(onBack = { page = parent })
@@ -175,12 +175,13 @@ internal fun SettingsRow(
     summary: String? = null,
     checked: Boolean? = null,
     onChecked: ((Boolean) -> Unit)? = null,
+    enabled: Boolean = true,
     onClick: (() -> Unit)? = null,
 ) {
     val colors = SameSameTheme.colors
     Row(
         Modifier.fillMaxWidth().heightIn(min = 55.dp)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else if (checked != null && onChecked != null) Modifier.clickable { onChecked(!checked) } else Modifier)
+            .then(if (onClick != null) Modifier.clickable(enabled = enabled, onClick = onClick) else if (checked != null && onChecked != null) Modifier.clickable(enabled = enabled) { onChecked(!checked) } else Modifier)
             .padding(start = 24.dp, end = if (checked != null) 27.dp else 24.dp, top = if (summary != null) 15.dp else 0.dp, bottom = if (summary != null) 15.dp else 0.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -510,7 +511,7 @@ private fun StyleTabs(selected: StyleTab, onSelect: (StyleTab) -> Unit) {
         ).forEach { (t, label) ->
             val on = t == selected
             Box(
-                Modifier.weight(1f).height(35.dp).clip(CircleShape)
+                Modifier.weight(1f).heightIn(min = 35.dp).clip(CircleShape)
                     .background(if (on) (if (colors.isDark) Color(0xFF282828) else colors.pill) else Color.Transparent)
                     .clickable { onSelect(t) },
                 contentAlignment = Alignment.Center,
@@ -518,6 +519,8 @@ private fun StyleTabs(selected: StyleTab, onSelect: (StyleTab) -> Unit) {
                 Text(
                     stringResource(label), fontSize = cappedSp(16f), fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
                     color = if (on) colors.textPrimary else colors.textSecondary,
+                    maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
                 )
             }
         }
@@ -619,7 +622,7 @@ private fun TemplateTabContent(style: NewNoteStyle, change: ((NewNoteStyle) -> N
     var images by rememberSaveable { mutableStateOf(true) }
     Column(Modifier.fillMaxSize()) {
         GroupCard(Modifier.weight(1f, fill = false)) {
-            Row(Modifier.fillMaxWidth().height(55.dp).padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().heightIn(min = 55.dp).padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     stringResource(if (images) R.string.feature_settings_template_default else R.string.feature_settings_template_pdf_heading),
                     fontSize = cappedSp(17f), color = colors.textPrimary, modifier = Modifier.weight(1f),

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -110,7 +111,7 @@ internal fun FilesTrashScreen(viewModel: FilesViewModel, snackbar: SnackbarHostS
                 items(trash.folders, key = { "d" + it.id.value }) { folder ->
                     val sel = folder.id in folders
                     Row(
-                        Modifier.fillMaxWidth().height(60.dp).background(colors.card, RoundedCornerShape(12.dp))
+                        Modifier.fillMaxWidth().heightIn(min = 60.dp).background(colors.card, RoundedCornerShape(12.dp))
                             .clickable { folders = folders.toggled(folder.id) }.padding(horizontal = 14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -252,7 +253,7 @@ internal fun MoveFilesScreen(
 private fun PickRow(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, depth: Int, enabled: Boolean, tint: Color, onClick: () -> Unit) {
     val colors = SameSameTheme.colors
     Row(
-        Modifier.fillMaxWidth().height(55.dp).clickable(enabled = enabled, onClick = onClick)
+        Modifier.fillMaxWidth().heightIn(min = 55.dp).clickable(enabled = enabled, onClick = onClick)
             .padding(start = 34.dp + (18 * depth.coerceAtMost(5)).dp, end = 32.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

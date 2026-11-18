@@ -35,6 +35,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -45,6 +46,8 @@ import kotlinx.coroutines.launch
 import org.samesame.notes.core.designsystem.component.EmptyState
 import org.samesame.notes.core.designsystem.component.SimpleTopBar
 import org.samesame.notes.core.designsystem.icon.AppIcons
+import org.samesame.notes.core.designsystem.theme.FontSectionScope
+import org.samesame.notes.core.model.FontSection
 import org.samesame.notes.core.designsystem.theme.SameSameText
 import org.samesame.notes.core.designsystem.theme.SameSameTheme
 import org.samesame.notes.core.designsystem.theme.capped
@@ -65,7 +68,7 @@ fun FilePickerSheet(
     onPicked: (List<FileId>) -> Unit,
     onDismiss: () -> Unit,
     viewModel: FilePickerViewModel = hiltViewModel(),
-) {
+) = FontSectionScope(FontSection.Files) {
     // The ViewModel outlives one showing of the sheet, so every showing starts clean.
     LaunchedEffect(Unit) { viewModel.reset() }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -149,16 +152,18 @@ fun FilePickerSheet(
                     }
                 }
             }
-            Row(
-                Modifier.fillMaxWidth().background(colors.background).navigationBarsPadding().height(56.dp).padding(horizontal = 24.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                PickerButton(stringResource(R.string.feature_files_cancel), true, Modifier.weight(1f), onDismiss)
-                Box(Modifier.width(1.dp).height(16.dp).background(colors.divider))
-                PickerButton(stringResource(R.string.feature_files_picker_insert), state.selected.isNotEmpty(), Modifier.weight(1f)) {
-                    scope.launch {
-                        val ids = viewModel.confirmed()
-                        if (ids.isNotEmpty()) onPicked(ids) else onDismiss()
+            FontSectionScope(FontSection.Chrome) {
+                Row(
+                    Modifier.fillMaxWidth().background(colors.background).navigationBarsPadding().height(56.dp).padding(horizontal = 24.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    PickerButton(stringResource(R.string.feature_files_cancel), true, Modifier.weight(1f), onDismiss)
+                    Box(Modifier.width(1.dp).height(16.dp).background(colors.divider))
+                    PickerButton(stringResource(R.string.feature_files_picker_insert), state.selected.isNotEmpty(), Modifier.weight(1f)) {
+                        scope.launch {
+                            val ids = viewModel.confirmed()
+                            if (ids.isNotEmpty()) onPicked(ids) else onDismiss()
+                        }
                     }
                 }
             }
@@ -170,6 +175,6 @@ fun FilePickerSheet(
 private fun PickerButton(label: String, enabled: Boolean, modifier: Modifier, onClick: () -> Unit) {
     val colors = SameSameTheme.colors
     Box(modifier.height(48.dp).clickable(enabled = enabled, onClick = onClick), contentAlignment = Alignment.Center) {
-        Text(label, style = SameSameText.Button, color = if (enabled) colors.textPrimary else colors.textTertiary)
+        Text(label, style = SameSameText.Button.capped(), color = if (enabled) colors.textPrimary else colors.textTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
