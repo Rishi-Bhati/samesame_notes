@@ -5,6 +5,7 @@ import android.graphics.pdf.PdfDocument
 import org.robolectric.RuntimeEnvironment
 import com.google.common.truth.Truth.assertThat
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.cos.COSName
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
@@ -163,6 +164,29 @@ class PdfExportTest {
         PDDocument.load(export(doc, emptyMap())).use { out ->
             assertThat(out.numberOfPages).isEqualTo(2)
             assertThat(out.getPage(1).rotation).isEqualTo(270)
+        }
+    }
+
+    @Test fun `inherited fonts survive import and overlay resources`() {
+        val bytes = PDDocument().use { d ->
+            val page = PDPage(PDRectangle(200f, 300f))
+            d.addPage(page)
+            PDPageContentStream(d, page).use { cs ->
+                cs.beginText()
+                cs.setFont(PDType1Font.HELVETICA, 14f)
+                cs.newLineAtOffset(20f, 250f)
+                cs.showText("INHERITED FONT")
+                cs.endText()
+            }
+            val parent = page.cosObject.getDictionaryObject(COSName.PARENT) as com.tom_roush.pdfbox.cos.COSDictionary
+            parent.setItem(COSName.RESOURCES, page.resources)
+            page.cosObject.removeItem(COSName.RESOURCES)
+            ByteArrayOutputStream().also { d.save(it) }.toByteArray()
+        }
+        val doc = NoteDocument(id = "n", pages = listOf(PageSpec("p", pdf = PdfBackground("media/src.pdf", 0))))
+        PDDocument.load(export(doc, mapOf("media/src.pdf" to bytes))).use { out ->
+            assertThat(PDFTextStripper().getText(out)).contains("INHERITED FONT")
+            assertThat(out.getPage(0).cosObject.containsKey(COSName.RESOURCES)).isTrue()
         }
     }
 }

@@ -2,9 +2,12 @@ package org.samesame.notes.core.export.render
 
 import android.graphics.pdf.PdfDocument
 import com.tom_roush.pdfbox.cos.COSName
+import com.tom_roush.pdfbox.cos.COSDictionary
+import com.tom_roush.pdfbox.multipdf.PDFCloneUtility
 import com.tom_roush.pdfbox.multipdf.LayerUtility
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.pdmodel.PDPage
+import com.tom_roush.pdfbox.pdmodel.PDResources
 import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.common.PDRectangle
 import com.tom_roush.pdfbox.pdmodel.graphics.color.PDColor
@@ -143,6 +146,10 @@ internal object PdfVectorExport {
                     val srcW = if (sideways) crop.height else crop.width
                     val srcH = if (sideways) crop.width else crop.height
                     page = target.importPage(src)
+                    // importPage omits resources inherited from the source page tree.
+                    src.resources?.let { resources ->
+                        page.resources = PDResources(PDFCloneUtility(target).cloneForNewDocument(resources.cosObject) as COSDictionary)
+                    }
                     stripSourceLinks(page)
                     toUser = PdfPageGeometry.displayedToUser(rot, crop.lowerLeftX, crop.lowerLeftY, crop.width, crop.height)
                     val form = layers.importPageAsForm(overlayDoc, i)
