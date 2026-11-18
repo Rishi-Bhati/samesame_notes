@@ -17,6 +17,7 @@ import org.samesame.notes.core.designsystem.theme.SameSameTheme
 import org.samesame.notes.core.model.AppSettings
 import org.samesame.notes.feature.files.FilesIntents
 import org.samesame.notes.feature.files.ReceiveEvent
+import org.samesame.notes.feature.files.ReceiveKind
 import org.samesame.notes.feature.files.ReceiveRouting
 import org.samesame.notes.feature.files.ReceivedItem
 import org.samesame.notes.feature.files.ShareReceiveSheet
@@ -41,6 +42,15 @@ class ShareReceiveActivity : FragmentActivity() {
         if (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0) { finish(); return }
         if (savedInstanceState == null) {
             val items = receivedItems(intent)
+            val first = items.firstOrNull()
+            if (intent.action == Intent.ACTION_VIEW && first != null && first.kind == ReceiveKind.Text) {
+                startActivity(
+                    TextDocActivity.intent(this, first.uri, first.name, writable = true)
+                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                )
+                finish()
+                return
+            }
             val shared = if (items.isEmpty()) sharedText(intent) else null
             if (shared != null) viewModel.startText(shared)
             else if (items.isEmpty()) {

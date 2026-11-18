@@ -79,6 +79,7 @@ class FolderUploaderTest {
         override suspend fun moveFiles(ids: List<FileId>, folderId: FileFolderId?) = Unit
         override suspend fun setFavorite(ids: List<FileId>, favorite: Boolean) = Unit
         override suspend fun updateMetadata(id: FileId, width: Int?, height: Int?, durationMs: Long?, pageCount: Int?) = Unit
+        override suspend fun updateContent(id: FileId, open: () -> java.io.InputStream): LibraryFile = error("unused")
         override fun observeTrash() = flowOf(FilesTrash(emptyList(), emptyList()))
         override suspend fun trash(fileIds: List<FileId>, folderIds: List<FileFolderId>) = Unit
         override suspend fun restore(fileIds: List<FileId>, folderIds: List<FileFolderId>) = Unit

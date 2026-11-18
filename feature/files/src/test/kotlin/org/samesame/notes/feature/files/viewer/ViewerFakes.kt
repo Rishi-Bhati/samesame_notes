@@ -62,6 +62,7 @@ internal class FakeFilesRepo : FilesRepository {
     override suspend fun setDescription(id: FileId, description: String) = Unit
     override suspend fun setTags(id: FileId, tags: List<String>) = Unit
     override suspend fun updateMetadata(id: FileId, width: Int?, height: Int?, durationMs: Long?, pageCount: Int?) { metadata += Triple(id, pageCount, durationMs) }
+    override suspend fun updateContent(id: FileId, open: () -> java.io.InputStream): LibraryFile = error("unused")
     override fun observeTrash(): Flow<FilesTrash> = files.map { l -> FilesTrash(emptyList(), l.filter { it.isInTrash }) }
     override suspend fun trash(fileIds: List<FileId>, folderIds: List<FileFolderId>) {
         files.value = files.value.map { if (it.id in fileIds) it.copy(trashedAt = 1L) else it }

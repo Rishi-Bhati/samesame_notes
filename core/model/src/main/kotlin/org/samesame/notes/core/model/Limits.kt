@@ -124,4 +124,10 @@ object Limits {
     const val MAX_MARKDOWN_TABLE_COLS = 50
     /** Characters of one code block the preview shows. */
     const val MAX_MARKDOWN_CODE_CHARS = 50_000
+    // Text documents (0.4.0 phase 3.1). Larger files open read-only so a cut-off copy never overwrites the original.
+    const val MAX_TEXTDOC_EDIT_BYTES = 5L * 1024 * 1024
+    /** Longest line the editor lays out at once; longer lines are cut into rows to keep Compose responsive. */
+    const val MAX_TEXTDOC_LINE_CHARS = 4000
+    /** Find stops after this many hits; the editor is not a full text search engine. */
+    const val MAX_TEXTDOC_FIND_MATCHES = 5000
 }

@@ -199,8 +199,7 @@ fun FileViewerRoute(
                     )
                 }
                 ViewerKind.Text -> {
-                    BackHandler(onBack = onClose)
-                    TextViewer(file = file, uri = uri, bar = bar, onOpenWith = { openWith(file) })
+                    TextViewer(file = file, uri = uri, bar = bar, onOpenWith = { openWith(file) }, onClose = onClose)
                 }
                 ViewerKind.Audio -> AudioSheet(
                     file = file, uri = uri,

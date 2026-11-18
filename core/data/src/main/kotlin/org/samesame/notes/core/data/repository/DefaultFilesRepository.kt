@@ -357,6 +357,25 @@ class DefaultFilesRepository @Inject internal constructor(
     override suspend fun updateMetadata(id: FileId, width: Int?, height: Int?, durationMs: Long?, pageCount: Int?) =
         dao.updateMetadata(id.value, width, height, durationMs, pageCount)
 
+    override suspend fun updateContent(id: FileId, open: () -> InputStream): LibraryFile = withContext(Dispatchers.IO) {
+        val old = dao.file(id.value) ?: throw FileNotFoundException("No such file")
+        if (old.trashedAt != null) throw FileNotFoundException("File is in the Recycle bin")
+        val staged = blobs.stage(open())
+        try {
+            commitLock.withLock {
+                blobs.commit(staged)
+                dao.updateContent(id.value, staged.sha256, staged.sizeBytes, clock.now())
+                // The old content can be shared with other files; only drop it once nothing references it.
+                if (old.sha256 != staged.sha256 && dao.countBySha(old.sha256) == 0) blobs.delete(old.sha256)
+            }
+        } catch (t: Throwable) {
+            blobs.discard(staged)
+            throw t
+        }
+        val row = dao.file(id.value) ?: throw FileNotFoundException("No such file")
+        row.asExternalModel(dao.tagsFor(listOf(row.id)).map { it.tag }.sorted())
+    }
+
     // ---------------------------------------------------------------- recycle bin
 
     override fun observeTrash(): Flow<FilesTrash> =

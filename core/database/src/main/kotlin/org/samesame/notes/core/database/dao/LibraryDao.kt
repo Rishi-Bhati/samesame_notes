@@ -119,6 +119,10 @@ interface LibraryDao {
     )
     suspend fun updateMetadata(id: String, width: Int?, height: Int?, durationMs: Long?, pageCount: Int?)
 
+    /** Replaces the stored content reference after an in-place edit (the blob is written by the repository). */
+    @Query("UPDATE library_files SET sha256 = :sha256, size_bytes = :sizeBytes, modified_at = :now WHERE id = :id")
+    suspend fun updateContent(id: String, sha256: String, sizeBytes: Long, now: Long)
+
     @Query("UPDATE library_files SET trashed_at = :trashedAt WHERE id IN (:ids) AND trashed_at IS NULL")
     suspend fun trashLiveFiles(ids: List<String>, trashedAt: Long)
 
