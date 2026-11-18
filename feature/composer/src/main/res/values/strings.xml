@@ -322,4 +322,12 @@
     <string name="feature_composer_files_slash_upload">Upload</string>
     <string name="feature_composer_files_slash_upload_failed">The files couldn\'t be added to Files.</string>
     <string name="composer_widget_cant_lock">A note shown on a widget can\'t be locked.</string>
+
+    <!-- Markdown conversion (0.4.0 Phase 3.3) -->
+    <string name="feature_composer_action_convert_to_note">Convert to rich text note</string>
+    <string name="feature_composer_action_convert_to_md">Convert to Markdown note</string>
+    <string name="feature_composer_convert_warning_title">Convert note format?</string>
+    <string name="feature_composer_convert_to_richtext_warning">Tables, code blocks, and advanced markdown formatting cannot be represented in a rich text note and will be converted to plain text.</string>
+    <string name="feature_composer_convert_to_md_warning">Handwriting, background colors, and page layouts will be removed or converted to static images.</string>
+    <string name="feature_composer_convert_confirm">Convert</string>
 </resources>

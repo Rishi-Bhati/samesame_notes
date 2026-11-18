@@ -48,4 +48,10 @@
     <string name="feature_share_locked_note_save">To save your note, you need to unlock it first.</string>
     <string name="feature_share_locked_notes_save">To save your notes, you need to unlock them first.</string>
     <string name="feature_share_remove_lock">Remove lock</string>
+
+    <!-- Markdown export and import options (0.4.0 Phase 3.3) -->
+    <string name="feature_share_option_md_zip">Include media in zip archive</string>
+    <string name="feature_share_option_dark_html">Use dark theme</string>
+    <string name="feature_share_import_as_md_note">Import as Markdown note</string>
+    <string name="feature_share_import_as_rich_note">Convert and import as note</string>
 </resources>

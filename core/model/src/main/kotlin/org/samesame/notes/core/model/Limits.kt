@@ -130,4 +130,10 @@ object Limits {
     const val MAX_TEXTDOC_LINE_CHARS = 4000
     /** Find stops after this many hits; the editor is not a full text search engine. */
     const val MAX_TEXTDOC_FIND_MATCHES = 5000
+
+    // Markdown export and conversion (Phase 3.3)
+    const val MARKDOWN_EXPORT_MAX_BYTES = 16L * 1024 * 1024 // 16 MiB
+    const val MARKDOWN_CONVERSION_TIMEOUT_MS = 10_000L // 10s
+    const val MARKDOWN_MAX_NESTING_DEPTH = 32
+    const val PDF_RENDER_TIMEOUT_MS = 30_000L // 30s
 }
