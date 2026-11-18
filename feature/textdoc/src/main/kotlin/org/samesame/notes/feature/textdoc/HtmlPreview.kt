@@ -15,17 +15,29 @@ fun HtmlPreview(html: String, modifier: Modifier = Modifier) {
         modifier = modifier,
         factory = { context ->
             WebView(context).apply {
-                settings.javaScriptEnabled = false
-                settings.allowFileAccess = false
-                settings.allowContentAccess = false
-                settings.domStorageEnabled = false
-                settings.blockNetworkLoads = true
-                settings.loadsImagesAutomatically = false
+                configureSandboxedWebView(this)
             }
         },
         update = { view ->
             // loadDataWithBaseURL with a null base URL keeps relative links from resolving to stored files.
             view.loadDataWithBaseURL(null, html, "text/html", "utf-8", null)
         },
+        onRelease = { view ->
+            runCatching {
+                view.stopLoading()
+                view.destroy()
+            }
+        },
     )
+}
+
+internal fun configureSandboxedWebView(webView: WebView) {
+    webView.settings.apply {
+        javaScriptEnabled = false
+        allowFileAccess = false
+        allowContentAccess = false
+        domStorageEnabled = false
+        blockNetworkLoads = true
+        loadsImagesAutomatically = false
+    }
 }
