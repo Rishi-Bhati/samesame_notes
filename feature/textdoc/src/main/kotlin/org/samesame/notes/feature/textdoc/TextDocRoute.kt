@@ -1,5 +1,6 @@
 package org.samesame.notes.feature.textdoc
 
+import android.content.res.Configuration
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -12,14 +13,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
@@ -41,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
@@ -53,14 +58,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.samesame.notes.core.designsystem.component.AppDialog
 import org.samesame.notes.core.designsystem.component.AppDropdownMenu
 import org.samesame.notes.core.designsystem.component.AppMenuItem
 import org.samesame.notes.core.designsystem.icon.AppIcons
+import org.samesame.notes.core.designsystem.theme.FontSectionScope
 import org.samesame.notes.core.designsystem.theme.SameSameText
 import org.samesame.notes.core.designsystem.theme.SameSameTheme
 import org.samesame.notes.core.designsystem.theme.capped
+import org.samesame.notes.core.model.FontSection
+import org.samesame.notes.core.richtext.markdown.MarkdownParser
+import org.samesame.notes.core.richtext.markdown.MarkdownPreview
 
 /**
  * The text document screen. [uri] is an external document; [libraryFileId] is a Files entry, which saves through the
@@ -77,6 +87,8 @@ fun TextDocRoute(
     showTopBar: Boolean = true,
     modifier: Modifier = Modifier,
     onBack: () -> Unit = {},
+    noteId: String? = null,
+    mimeType: String? = null,
     viewModel: TextDocViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -85,8 +97,8 @@ fun TextDocRoute(
     var finding by rememberSaveable { mutableStateOf(false) }
     var discard by rememberSaveable { mutableStateOf(false) }
 
-    LaunchedEffect(uri, libraryFileId, writable) {
-        viewModel.load(uri, libraryFileId, writable, displayName)
+    LaunchedEffect(uri, libraryFileId, writable, noteId) {
+        viewModel.load(uri, libraryFileId, writable, displayName, noteId, mimeType)
     }
 
     val saveAs = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { target ->
@@ -110,14 +122,34 @@ fun TextDocRoute(
         }
     }
 
-    BackHandler { if (state.isModified) discard = true else onBack() }
+    fun handleBack() {
+        if (noteId != null) {
+            if (state.isModified) {
+                scope.launch {
+                    viewModel.saveInPlace(context)
+                    onBack()
+                }
+            } else {
+                onBack()
+            }
+        } else if (state.isModified) {
+            discard = true
+        } else {
+            onBack()
+        }
+    }
+
+    BackHandler { handleBack() }
+
+    val config = LocalConfiguration.current
+    val isWideLandscape = config.screenWidthDp >= 600 && config.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     Column(modifier.fillMaxSize().background(SameSameTheme.colors.background)) {
         if (showTopBar) {
             TopBar(
                 title = state.title ?: stringResource(R.string.feature_textdoc_title),
                 state = state,
-                onBack = { if (state.isModified) discard = true else onBack() },
+                onBack = ::handleBack,
                 onSave = ::save,
                 onSaveAs = { saveAs.launch(saveAsName) },
                 onUndo = viewModel::undo,
@@ -126,6 +158,7 @@ fun TextDocRoute(
                 onMonospace = { viewModel.setMonospace(!state.isMonospace) },
                 onWrap = { viewModel.setWrap(!state.isWrap) },
                 onPreview = { viewModel.setHtmlPreview(!state.isHtmlPreview) },
+                onMarkdownPreview = { viewModel.setMarkdownPreview(!state.isMarkdownPreview) },
             )
         } else {
             ActionRow(
@@ -138,11 +171,12 @@ fun TextDocRoute(
                 onMonospace = { viewModel.setMonospace(!state.isMonospace) },
                 onWrap = { viewModel.setWrap(!state.isWrap) },
                 onPreview = { viewModel.setHtmlPreview(!state.isHtmlPreview) },
+                onMarkdownPreview = { viewModel.setMarkdownPreview(!state.isMarkdownPreview) },
             )
         }
         if (state.isReadOnly) {
             Text(
-                stringResource(R.string.feature_textdoc_read_only_notice),
+                stringResource(if (state.isLockedNote) R.string.feature_textdoc_locked_read_only else R.string.feature_textdoc_read_only_notice),
                 style = SameSameText.Caption,
                 color = SameSameTheme.colors.textSecondary,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp),
@@ -169,6 +203,43 @@ fun TextDocRoute(
                     Text(stringResource(R.string.feature_textdoc_open_failed), color = SameSameTheme.colors.textSecondary)
                 }
                 state.isHtmlPreview -> HtmlPreview(state.text, Modifier.fillMaxSize())
+                state.isMarkdownPreview && !isWideLandscape -> {
+                    Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 10.dp)) {
+                        MarkdownPreview(
+                            markdown = state.text,
+                            modifier = Modifier.fillMaxWidth(),
+                            onTaskCheckedChange = if (state.isReadOnly) null else { offset, checked ->
+                                viewModel.updateText(MarkdownParser.withTaskChecked(state.text, offset, checked))
+                            },
+                        )
+                    }
+                }
+                state.isMarkdownPreview && isWideLandscape -> {
+                    var previewText by remember { mutableStateOf(state.text) }
+                    LaunchedEffect(state.text) {
+                        if (previewText.isEmpty() && state.text.isNotEmpty()) {
+                            previewText = state.text
+                        } else {
+                            delay(300)
+                            previewText = state.text
+                        }
+                    }
+                    Row(Modifier.fillMaxSize()) {
+                        Box(Modifier.weight(1f).fillMaxHeight()) {
+                            Editor(state, onText = viewModel::updateText, modifier = Modifier.fillMaxSize())
+                        }
+                        Box(Modifier.width(1.dp).fillMaxHeight().background(SameSameTheme.colors.divider))
+                        Box(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 10.dp)) {
+                            MarkdownPreview(
+                                markdown = previewText,
+                                modifier = Modifier.fillMaxWidth(),
+                                onTaskCheckedChange = if (state.isReadOnly) null else { offset, checked ->
+                                    viewModel.updateText(MarkdownParser.withTaskChecked(state.text, offset, checked))
+                                },
+                            )
+                        }
+                    }
+                }
                 else -> Editor(state, onText = viewModel::updateText, modifier = Modifier.fillMaxSize())
             }
         }
@@ -200,6 +271,7 @@ private fun TopBar(
     onMonospace: () -> Unit,
     onWrap: () -> Unit,
     onPreview: () -> Unit,
+    onMarkdownPreview: () -> Unit,
 ) {
     val colors = SameSameTheme.colors
     Row(
@@ -217,7 +289,7 @@ private fun TopBar(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
         )
-        ActionButtons(state, onSave, onSaveAs, onUndo, onRedo, onFind, onMonospace, onWrap, onPreview)
+        ActionButtons(state, onSave, onSaveAs, onUndo, onRedo, onFind, onMonospace, onWrap, onPreview, onMarkdownPreview)
     }
 }
 
@@ -232,13 +304,14 @@ private fun ActionRow(
     onMonospace: () -> Unit,
     onWrap: () -> Unit,
     onPreview: () -> Unit,
+    onMarkdownPreview: () -> Unit,
 ) {
     Row(
         Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 12.dp),
         horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ActionButtons(state, onSave, onSaveAs, onUndo, onRedo, onFind, onMonospace, onWrap, onPreview)
+        ActionButtons(state, onSave, onSaveAs, onUndo, onRedo, onFind, onMonospace, onWrap, onPreview, onMarkdownPreview)
     }
 }
 
@@ -253,6 +326,7 @@ private fun ActionButtons(
     onMonospace: () -> Unit,
     onWrap: () -> Unit,
     onPreview: () -> Unit,
+    onMarkdownPreview: () -> Unit,
 ) {
     val colors = SameSameTheme.colors
     var menu by remember { mutableStateOf(false) }
@@ -264,6 +338,15 @@ private fun ActionButtons(
     }
     IconButton(onClick = onFind, modifier = Modifier.size(40.dp)) {
         Icon(AppIcons.Search, stringResource(R.string.feature_textdoc_action_find_replace), tint = colors.textPrimary)
+    }
+    if (state.isMarkdown) {
+        IconButton(onClick = onMarkdownPreview, modifier = Modifier.size(40.dp)) {
+            if (state.isMarkdownPreview) {
+                Icon(AppIcons.Pencil, stringResource(R.string.feature_textdoc_action_edit), tint = colors.textPrimary)
+            } else {
+                Icon(AppIcons.Eye, stringResource(R.string.feature_textdoc_action_preview), tint = colors.textPrimary)
+            }
+        }
     }
     IconButton(onClick = onSave, enabled = !state.isSaving, modifier = Modifier.size(40.dp)) {
         Icon(Icons.Outlined.Save, stringResource(R.string.feature_textdoc_action_save), tint = colors.textPrimary)
@@ -330,67 +413,69 @@ private fun FindBar(
     onPrevious: () -> Unit,
     onClose: () -> Unit,
 ) {
-    val colors = SameSameTheme.colors
-    Column(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)
-            .background(colors.card, androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
-            .padding(horizontal = 14.dp, vertical = 6.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            BasicTextField(
-                value = state.findQuery,
-                onValueChange = onQuery,
-                singleLine = true,
-                textStyle = SameSameText.ListBody.copy(color = colors.textPrimary, fontSize = 16.sp),
-                cursorBrush = SolidColor(colors.accent),
-                modifier = Modifier.weight(1f),
-                decorationBox = { inner ->
-                    Box {
-                        if (state.findQuery.isEmpty()) Text(stringResource(R.string.feature_textdoc_find_hint), color = colors.textTertiary)
-                        inner()
-                    }
-                },
-            )
-            if (state.findQuery.isNotEmpty()) {
-                Text(
-                    if (state.matchCount == 0) stringResource(R.string.feature_textdoc_find_none)
-                    else stringResource(R.string.feature_textdoc_find_position, state.activeMatchIndex + 1, state.matchCount),
-                    style = SameSameText.Caption,
-                    color = colors.textSecondary,
-                    modifier = Modifier.padding(horizontal = 8.dp),
-                )
-            }
-            IconButton(onClick = onPrevious, modifier = Modifier.size(36.dp)) {
-                Icon(AppIcons.ChevronUp, stringResource(R.string.feature_textdoc_find_previous), tint = colors.textPrimary)
-            }
-            IconButton(onClick = onNext, modifier = Modifier.size(36.dp)) {
-                Icon(AppIcons.ChevronDown, stringResource(R.string.feature_textdoc_find_next), tint = colors.textPrimary)
-            }
-            IconButton(onClick = onClose, modifier = Modifier.size(36.dp)) {
-                Icon(AppIcons.Close, stringResource(R.string.feature_textdoc_close), tint = colors.textPrimary)
-            }
-        }
-        if (!state.isReadOnly) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+    FontSectionScope(FontSection.Chrome) {
+        val colors = SameSameTheme.colors
+        Column(
+            Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 12.dp, vertical = 4.dp)
+                .background(colors.card, androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+                .padding(horizontal = 14.dp, vertical = 6.dp),
+        ) {
+            Row(Modifier.heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
                 BasicTextField(
-                    value = state.replaceQuery,
-                    onValueChange = onReplaceQuery,
+                    value = state.findQuery,
+                    onValueChange = onQuery,
                     singleLine = true,
                     textStyle = SameSameText.ListBody.copy(color = colors.textPrimary, fontSize = 16.sp),
                     cursorBrush = SolidColor(colors.accent),
                     modifier = Modifier.weight(1f),
                     decorationBox = { inner ->
                         Box {
-                            if (state.replaceQuery.isEmpty()) Text(stringResource(R.string.feature_textdoc_replace_hint), color = colors.textTertiary)
+                            if (state.findQuery.isEmpty()) Text(stringResource(R.string.feature_textdoc_find_hint), color = colors.textTertiary)
                             inner()
                         }
                     },
                 )
-                androidx.compose.material3.TextButton(onClick = onReplace) {
-                    Text(stringResource(R.string.feature_textdoc_action_replace), color = colors.accent)
+                if (state.findQuery.isNotEmpty()) {
+                    Text(
+                        if (state.matchCount == 0) stringResource(R.string.feature_textdoc_find_none)
+                        else stringResource(R.string.feature_textdoc_find_position, state.activeMatchIndex + 1, state.matchCount),
+                        style = SameSameText.Caption,
+                        color = colors.textSecondary,
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                    )
                 }
-                androidx.compose.material3.TextButton(onClick = onReplaceAll) {
-                    Text(stringResource(R.string.feature_textdoc_action_replace_all), color = colors.accent)
+                IconButton(onClick = onPrevious, modifier = Modifier.size(36.dp)) {
+                    Icon(AppIcons.ChevronUp, stringResource(R.string.feature_textdoc_find_previous), tint = colors.textPrimary)
+                }
+                IconButton(onClick = onNext, modifier = Modifier.size(36.dp)) {
+                    Icon(AppIcons.ChevronDown, stringResource(R.string.feature_textdoc_find_next), tint = colors.textPrimary)
+                }
+                IconButton(onClick = onClose, modifier = Modifier.size(36.dp)) {
+                    Icon(AppIcons.Close, stringResource(R.string.feature_textdoc_close), tint = colors.textPrimary)
+                }
+            }
+            if (!state.isReadOnly) {
+                Row(Modifier.heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+                    BasicTextField(
+                        value = state.replaceQuery,
+                        onValueChange = onReplaceQuery,
+                        singleLine = true,
+                        textStyle = SameSameText.ListBody.copy(color = colors.textPrimary, fontSize = 16.sp),
+                        cursorBrush = SolidColor(colors.accent),
+                        modifier = Modifier.weight(1f),
+                        decorationBox = { inner ->
+                            Box {
+                                if (state.replaceQuery.isEmpty()) Text(stringResource(R.string.feature_textdoc_replace_hint), color = colors.textTertiary)
+                                inner()
+                            }
+                        },
+                    )
+                    androidx.compose.material3.TextButton(onClick = onReplace) {
+                        Text(stringResource(R.string.feature_textdoc_action_replace), color = colors.accent)
+                    }
+                    androidx.compose.material3.TextButton(onClick = onReplaceAll) {
+                        Text(stringResource(R.string.feature_textdoc_action_replace_all), color = colors.accent)
+                    }
                 }
             }
         }

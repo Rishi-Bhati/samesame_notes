@@ -33,4 +33,7 @@
     <string name="feature_textdoc_find_next">Next match</string>
     <string name="feature_textdoc_close">Close</string>
     <string name="feature_textdoc_back">Back</string>
+    <string name="feature_textdoc_action_preview">Preview</string>
+    <string name="feature_textdoc_action_edit">Edit</string>
+    <string name="feature_textdoc_locked_read_only">Locked note \u00b7 Read-only</string>
 </resources>
