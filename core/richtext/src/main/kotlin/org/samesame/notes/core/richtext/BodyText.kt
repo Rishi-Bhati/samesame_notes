@@ -56,6 +56,9 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
     var typingStyle: CharStyle? = null
         private set
 
+    /** "Replace arrows as you type": `->` becomes `→`, `<-` `←`, `<->` `↔`, `=>` `⇒`, `<=>` `⇔`. */
+    var replaceArrows: Boolean = true
+
     /** Bumped on any change (text, spans, selection, composition). */
     var version: Long = 0
         private set
@@ -183,6 +186,7 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
     // ---------------------------------------------------------------- selection
 
     fun setSelection(start: Int, end: Int = start) {
+        lastArrow = null
         val s = start.coerceIn(0, length)
         val e = end.coerceIn(0, length)
         if (selection == TextSelection(s, e)) return
@@ -227,6 +231,7 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
 
     /** Types [text] over the selection. A lone `\n` behaves like Enter ([insertNewline]). */
     fun commitText(text: CharSequence) {
+        lastArrow = null
         if (text.toString() == "\n") insertNewline() else batch {
             if (composition != null || imeComposing) {
                 val sel = selection
@@ -247,6 +252,7 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
 
     /** Enter: new paragraph (list continues), or ends the list on an empty item. */
     fun insertNewline() = batch {
+        lastArrow = null
         val sel = selection
         val p = paragraphIndexAt(sel.min)
         val style = paragraphs[p]
@@ -268,10 +274,22 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
     fun deleteBackward() = batch {
         val sel = selection
         if (!sel.collapsed) {
+            lastArrow = null
             replace(sel.min, sel.max, "")
             return@batch
         }
         val caret = sel.min
+        val arrow = lastArrow
+        if (arrow != null && caret == arrow.position + arrow.arrow.length &&
+            arrow.position >= 0 && caret <= length &&
+            editable.subSequence(arrow.position, caret).toString() == arrow.arrow
+        ) {
+            editable.replace(arrow.position, caret, arrow.typed)
+            Selection.setSelection(editable, arrow.position + arrow.typed.length)
+            lastArrow = null
+            return@batch
+        }
+        lastArrow = null
         val p = paragraphIndexAt(caret)
         val range = paragraphRange(p)
         if (caret == range.first && ParagraphRules.backspaceRemovesMarker(paragraphs[p])) {
@@ -298,6 +316,7 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
     }
 
     fun deleteForward() = batch {
+        lastArrow = null
         val sel = selection
         if (!sel.collapsed) {
             replace(sel.min, sel.max, "")
@@ -313,6 +332,7 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
      * (head keeps its style, middle paragraphs take the fragment's, a plain last one continues).
      */
     fun insertRich(fragment: RichText) = batch {
+        lastArrow = null
         val frag = RichTextOps.normalise(fragment)
         val sel = selection
         val s = sel.min
@@ -339,7 +359,12 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
 
     private var lastConversion: TypedConversion? = null
 
-    /** Runs after a typed character: line-start markers and, on a space, inline `*bold*`-style markers. */
+    /** An arrow character that was just converted, so Backspace immediately after restores the typed ASCII text. */
+    private data class ArrowConversion(val position: Int, val arrow: String, val typed: String)
+
+    private var lastArrow: ArrowConversion? = null
+
+    /** Runs after a typed character: line-start markers, arrows, and on a space, inline `*bold*`-style markers. */
     private fun applyTypingShortcuts(typed: CharSequence) {
         val sel = selection
         if (!sel.collapsed || typed.isEmpty()) return
@@ -349,6 +374,7 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
         val prefix = editable.subSequence(range.first, caret).toString()
         TypingShortcuts.blockMarker(prefix)?.let { marker ->
             lastConversion = TypedConversion(p, marker.marker, paragraphs[p])
+            lastArrow = null
             editable.delete(range.first, caret)
             Selection.setSelection(editable, range.first)
             setParagraphsRaw(
@@ -359,6 +385,17 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
                 ),
             )
             return
+        }
+        lastArrow = null
+        if (replaceArrows && (typed.last() == '>' || typed.last() == '-')) {
+            val match = TypingShortcuts.arrow(prefix)
+            if (match != null) {
+                val pos = caret - match.length
+                editable.replace(pos, caret, match.arrow)
+                Selection.setSelection(editable, pos + match.arrow.length)
+                lastArrow = ArrowConversion(position = pos, arrow = match.arrow, typed = match.typed)
+                return
+            }
         }
         if (typed.length == 1 && typed[0] == ' ') applyInlineShortcut(range)
     }
@@ -386,6 +423,7 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
         Selection.setSelection(editable, end)
         typingStyle = null
         lastConversion = null
+        lastArrow = null
     }
 
     /** Leading spaces/tabs of paragraph [p] before [caret], for auto-indent. */
@@ -487,6 +525,7 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
             }
             accumulator.take()
             typingStyle = null
+            lastArrow = null
         }
         onExternalChange?.invoke()
     }
@@ -514,6 +553,7 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
             }
             accumulator.take()
             typingStyle = null
+            lastArrow = null
         }
         onExternalChange?.invoke()
     }
@@ -733,7 +773,10 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
         if (what is LinePitchSpan) return
         if (what === Selection.SELECTION_START || what === Selection.SELECTION_END) {
             val sel = selection
-            if (raw == null && !(sel.collapsed && sel.min == expectedCaret)) typingStyle = null
+            if (raw == null && !(sel.collapsed && sel.min == expectedCaret)) {
+                typingStyle = null
+                lastArrow = null
+            }
         } else if (what is CharStyleSpan || what is ParagraphSpan || what is InlineObjectSpan) {
             layoutVersion++
         }

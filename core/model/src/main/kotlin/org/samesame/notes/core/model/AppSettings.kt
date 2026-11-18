@@ -24,6 +24,8 @@ data class AppSettings(
     val calculateAsYouType: Boolean = true,
     /** Settings > Font size and style: app-wide scale, per-section scales and the font. */
     val font: FontSettings = FontSettings(),
+    /** "Replace arrows as you type": `->` becomes `→`, `<-` `←`, `<->` `↔`, `=>` `⇒`, `<=>` `⇔`. */
+    val replaceArrows: Boolean = true,
 )
 
 /** Settings > "When pasting a file link" (Files). Only links to pictures ask; other files always paste as links. */

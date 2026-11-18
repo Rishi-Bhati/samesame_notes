@@ -340,4 +340,43 @@ class BodyTextTest {
         b.insertObject("img-1")
         assertThat(b.plainTextWithListMarkers(0, b.length)).isEqualTo("  • a\n[ ] o")
     }
+
+    @Test fun typingArrowShortcutConvertsAndBackspaceRestores() {
+        val b = BodyText(RichText.of(""))
+        b.commitText("-")
+        b.commitText(">")
+        assertThat(b.toRichText().text).isEqualTo("→")
+        assertThat(b.selection.min).isEqualTo(1)
+
+        // Immediate Backspace restores typed text
+        b.deleteBackward()
+        assertThat(b.toRichText().text).isEqualTo("->")
+        assertThat(b.selection.min).isEqualTo(2)
+
+        // Next Backspace deletes normally
+        b.deleteBackward()
+        assertThat(b.toRichText().text).isEqualTo("-")
+        assertThat(b.selection.min).isEqualTo(1)
+    }
+
+    @Test fun replaceArrowsFalsePreventsConversion() {
+        val b = BodyText(RichText.of(""))
+        b.replaceArrows = false
+        b.commitText("-")
+        b.commitText(">")
+        assertThat(b.toRichText().text).isEqualTo("->")
+        assertThat(b.selection.min).isEqualTo(2)
+    }
+
+    @Test fun bidirectionalArrowConvertsAndRestores() {
+        val b = BodyText(RichText.of(""))
+        b.commitText("<")
+        b.commitText("-")
+        assertThat(b.toRichText().text).isEqualTo("←")
+        b.commitText(">")
+        assertThat(b.toRichText().text).isEqualTo("↔")
+        b.deleteBackward()
+        assertThat(b.toRichText().text).isEqualTo("<->")
+        assertThat(b.selection.min).isEqualTo(3)
+    }
 }

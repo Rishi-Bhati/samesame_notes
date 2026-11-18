@@ -171,6 +171,13 @@ class RichTextEditorState(
         }
     private var calculateAsYouTypeState by mutableStateOf(true)
 
+    /** "Replace arrows as you type": `->` becomes `→`, `<-` `←`, `<->` `↔`, `=>` `⇒`, `<=>` `⇔`. */
+    var replaceArrows: Boolean
+        get() = body.replaceArrows
+        set(v) {
+            body.replaceArrows = v
+        }
+
     /** Current inline math suggestion, or null. Not part of the text. */
     var mathGhost: MathSuggestion? by mutableStateOf(null)
         private set

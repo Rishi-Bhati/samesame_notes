@@ -47,6 +47,7 @@ private object SettingsKeys {
     val themeMode = stringPreferencesKey("theme_mode")
     val filePasteMode = stringPreferencesKey("file_paste_mode")
     val calculateAsYouType = booleanPreferencesKey("calculate_as_you_type")
+    val replaceArrows = booleanPreferencesKey("replace_arrows")
 }
 
 /**
@@ -84,6 +85,7 @@ internal fun Preferences.toAppSettings(): AppSettings {
         filePasteMode = enumOrDefault(this[SettingsKeys.filePasteMode], d.filePasteMode),
         calculateAsYouType = this[SettingsKeys.calculateAsYouType] ?: d.calculateAsYouType,
         font = toFontSettings(),
+        replaceArrows = this[SettingsKeys.replaceArrows] ?: d.replaceArrows,
         newNote = NewNoteStyle(
             pageMode = enumOrDefault(this[SettingsKeys.newPageMode], d.newNote.pageMode),
             ratio = enumOrDefault(this[SettingsKeys.newRatio], d.newNote.ratio),
@@ -108,6 +110,7 @@ internal fun MutablePreferences.writeAppSettings(s: AppSettings) {
     this[SettingsKeys.filePasteMode] = s.filePasteMode.name
     this[SettingsKeys.calculateAsYouType] = s.calculateAsYouType
     writeFontSettings(s.font)
+    this[SettingsKeys.replaceArrows] = s.replaceArrows
     this[SettingsKeys.newPageMode] = s.newNote.pageMode.name
     this[SettingsKeys.newRatio] = s.newNote.ratio.name
     this[SettingsKeys.newTemplate] = s.newNote.template.name
