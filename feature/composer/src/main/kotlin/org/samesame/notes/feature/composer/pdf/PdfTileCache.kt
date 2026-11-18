@@ -64,6 +64,9 @@ class PdfTileCache(
     val missCount: Int get() = lru.missCount()
     val poolSize: Int get() = pool.size
 
+    /** Forces a redraw (a renderer became available). */
+    fun touch() { version++ }
+
     fun get(key: PdfTileKey): Bitmap? = lru.get(key)
 
     fun put(key: PdfTileKey, bitmap: Bitmap) {

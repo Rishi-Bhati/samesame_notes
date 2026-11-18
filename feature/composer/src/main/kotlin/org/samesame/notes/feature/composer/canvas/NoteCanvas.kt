@@ -1,5 +1,7 @@
 package org.samesame.notes.feature.composer.canvas
 
+import org.samesame.notes.core.model.Limits
+import kotlin.math.roundToInt
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
@@ -436,6 +438,7 @@ private class PageDrawer(
         val recordsBefore = cache.recordCount
 
         // 1. backgrounds + templates (cached layers)
+        frameTileKeys.clear()
         for (i in visible) {
             val r = lay.pageRects[i]
             val layer = backgroundLayer(this, i)
@@ -452,6 +455,7 @@ private class PageDrawer(
                     coroutineScope = coroutineScope,
                 )
             }
+            if (spec.textMarkup.isNotEmpty()) drawTextMarkup(this, spec, r, viewport)
             if (pdfSearchMatches.isNotEmpty()) {
                 val pageMatches = pdfSearchMatches.filter { it.pageIndex == i }
                 if (pageMatches.isNotEmpty()) {
@@ -492,6 +496,7 @@ private class PageDrawer(
                 }
             }
         }
+        if (frameTileKeys.isNotEmpty() || pdfTileCache != null) pdfTileCache?.cancelStale(frameTileKeys)
         // 1b. objects set to "wrap text behind" sit under the body text
         for (i in visible) {
             val spec = d.pages[i]
@@ -692,7 +697,9 @@ private class PageDrawer(
         val pdfBg = spec.pdf ?: return
         val renderer = rendererProvider?.invoke(pdfBg.media)
         val widthPt = spec.size?.widthPt ?: 595f
-        val sc = viewport.scale
+        // Tiles render at a quantised scale (half steps), so one lod always means one pixel grid.
+        val lod = (viewport.scale * 2f).roundToInt().coerceAtLeast(1)
+        val sc = lod / 2f
         val tileSize = Limits.PDF_TILE_SIZE_PX
 
         val visibleDoc = pageRect.intersect(viewport.visibleDoc)
@@ -713,10 +720,9 @@ private class PageDrawer(
         val rowStart = kotlin.math.floor(minPxY / tileSize).toInt().coerceAtLeast(0)
         val rowEnd = kotlin.math.floor(maxPxY / tileSize).toInt()
 
-        val lod = (sc * 2).toInt()
-        val visibleKeys = mutableSetOf<org.samesame.notes.feature.composer.pdf.PdfTileKey>()
+        val visibleKeys = frameTileKeys
 
-        inPage(pageRect, viewport.origin, sc) {
+        inPage(pageRect, viewport.origin, viewport.scale) {
             clipRect(0f, 0f, pageRect.width, pageRect.height) {
                 for (c in colStart..colEnd) {
                     for (row in rowStart..rowEnd) {
@@ -744,7 +750,34 @@ private class PageDrawer(
                 }
             }
         }
-        cache.cancelStale(visibleKeys)
+    }
+
+    private val frameTileKeys = HashSet<org.samesame.notes.feature.composer.pdf.PdfTileKey>()
+
+    /** Highlights (translucent fill), underlines and strike-throughs of a PDF page, quads in unrotated page units. */
+    private fun drawTextMarkup(scope: DrawScope, spec: PageSpec, pageRect: Rect, viewport: Viewport) = with(scope) {
+        inPage(pageRect, viewport.origin, viewport.scale) {
+            for (m in spec.textMarkup) {
+                val argb = m.color.toInt()
+                val base = Color(argb)
+                for (q in m.quads) {
+                    val b = q.bounds
+                    when (m.kind) {
+                        org.samesame.notes.core.model.document.PdfMarkupKind.Highlight ->
+                            drawRect(
+                                if (base.alpha >= 0.99f) base.copy(alpha = 0.4f) else base,
+                                Offset(b.left, b.top), Size(b.right - b.left, b.bottom - b.top),
+                            )
+                        org.samesame.notes.core.model.document.PdfMarkupKind.Underline ->
+                            drawLine(base.copy(alpha = 1f), Offset(b.left, b.bottom), Offset(b.right, b.bottom), strokeWidth = 2f)
+                        org.samesame.notes.core.model.document.PdfMarkupKind.Strike -> {
+                            val y = (b.top + b.bottom) / 2f
+                            drawLine(base.copy(alpha = 1f), Offset(b.left, y), Offset(b.right, y), strokeWidth = 2f)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private fun drawPdfSearchHighlights(
