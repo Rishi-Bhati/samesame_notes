@@ -136,4 +136,17 @@ object Limits {
     const val MARKDOWN_CONVERSION_TIMEOUT_MS = 10_000L // 10s
     const val MARKDOWN_MAX_NESTING_DEPTH = 32
     const val PDF_RENDER_TIMEOUT_MS = 30_000L // 30s
+    // Automatic version history (0.3.2). A version is a copy of a note's packed container.
+    /** A new version is taken on save only when the newest one is at least this old (closing the note always takes one). */
+    const val VERSION_MIN_INTERVAL_MS = 5 * 60_000L
+    /** Versions kept per note; the oldest go first. */
+    const val MAX_VERSIONS_PER_NOTE = 50
+    /** Versions older than this are pruned, except the newest [VERSIONS_ALWAYS_KEPT] of a note. */
+    const val VERSION_RETENTION_DAYS = 30
+    /** The newest versions of a note that age never removes. */
+    const val VERSIONS_ALWAYS_KEPT = 5
+    /** All versions of all notes together; beyond it the oldest are removed (the newest of each note stays). */
+    const val MAX_VERSION_BYTES_TOTAL = 500L * 1024 * 1024
+    /** Characters of body text shown in the read-only version preview. */
+    const val VERSION_PREVIEW_CHARS = 20_000
 }

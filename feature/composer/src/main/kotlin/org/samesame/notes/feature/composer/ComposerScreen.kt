@@ -227,6 +227,7 @@ import org.samesame.notes.feature.share.SaveAsFileDialog
 import org.samesame.notes.feature.share.ShareFiles
 import org.samesame.notes.feature.share.ShareFormatDialog
 import org.samesame.notes.feature.composer.dialogs.TagsDialog
+import org.samesame.notes.feature.composer.dialogs.VersionHistoryDialog
 import org.samesame.notes.feature.composer.menus.InsertMenu
 import org.samesame.notes.feature.composer.menus.OverflowAction
 import org.samesame.notes.feature.composer.menus.OverflowMenu
@@ -340,6 +341,9 @@ fun ComposerRoute(
             onToggleFavorite = viewModel::toggleFavorite,
             onMoveToTrash = { viewModel.moveToTrash(onBack) },
             onLock = { token -> viewModel.lockNote(token, onBack) },
+            listVersions = viewModel::listVersions,
+            versionText = viewModel::versionText,
+            restoreVersion = viewModel::restoreVersion,
             insertPdf = viewModel::insertPdf,
             voiceNotices = viewModel.voiceNotices,
             voiceFile = viewModel::voiceFile,
@@ -430,6 +434,10 @@ internal fun ComposerEditor(
     onToggleFavorite: () -> Unit = {},
     onMoveToTrash: () -> Unit = {},
     onLock: (org.samesame.notes.core.security.LockToken) -> Unit = { it.close() },
+    /** Automatic version history: the list, one version's text for the preview, and a restore that reopens the editor. */
+    listVersions: suspend () -> List<org.samesame.notes.core.data.repository.NoteVersionInfo> = { emptyList() },
+    versionText: suspend (Long) -> org.samesame.notes.core.data.repository.NoteVersionText? = { null },
+    restoreVersion: (Long, (Boolean) -> Unit) -> Unit = { _, done -> done(false) },
     /** Insert > PDF: renders the file's pages after the page with the given id (returns the page count). */
     insertPdf: suspend (File, String) -> Int = { _, _ -> 0 },
     /** Outcome messages of voice recordings of this note. */
@@ -1252,6 +1260,7 @@ internal fun ComposerEditor(
     var linkFilesAsZip by remember { mutableStateOf(false) }
     var shareMenuOpen by rememberSaveable { mutableStateOf(false) }
     var tagsOpen by rememberSaveable { mutableStateOf(false) }
+    var versionHistoryOpen by rememberSaveable { mutableStateOf(false) }
     var searchOpen by rememberSaveable { mutableStateOf(false) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
     // ---- in-note search (R1): a debounced search over the body text; hits painted by the text layer
@@ -2622,6 +2631,7 @@ internal fun ComposerEditor(
                             )
                             ReadingAction.FullScreen -> session.dispatch(ToolbarIntent.SetFullScreen(true))
                             ReadingAction.Tags -> tagsOpen = true
+                            ReadingAction.VersionHistory -> versionHistoryOpen = true
                             ReadingAction.SaveAsFile -> if (locked) lockedSaveNotice = true else saveAsOpen = true
                             ReadingAction.Share -> if (locked) lockedSaveNotice = true else shareMenuOpen = true
                             ReadingAction.Lock -> when {
@@ -2654,6 +2664,7 @@ internal fun ComposerEditor(
                             OverflowAction.PageSettings -> session.dispatch(ToolbarIntent.OpenMenu(Menu.PageSettings))
                             OverflowAction.FullScreen -> session.dispatch(ToolbarIntent.SetFullScreen(true))
                             OverflowAction.Tags -> tagsOpen = true
+                            OverflowAction.VersionHistory -> versionHistoryOpen = true
                             OverflowAction.SaveAsFile -> if (locked) lockedSaveNotice = true else saveAsOpen = true
                             OverflowAction.DeletePage -> {
                                 val pageId = doc.pages.getOrNull(currentPage)?.id
@@ -2901,6 +2912,15 @@ internal fun ComposerEditor(
             }
         }
         if (tagsOpen) TagsDialog(onDismiss = { tagsOpen = false })
+        if (versionHistoryOpen) {
+            VersionHistoryDialog(
+                locked = locked,
+                loadVersions = listVersions,
+                loadText = versionText,
+                onRestore = restoreVersion,
+                onDismiss = { versionHistoryOpen = false },
+            )
+        }
 
     }
 }

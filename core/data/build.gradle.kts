@@ -17,6 +17,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.biometric)
+    implementation(libs.androidx.work.runtime)
     // Repository tests run real Room on the JVM against Robolectric's SQLite (no driver set).
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.room.runtime)

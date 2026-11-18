@@ -77,6 +77,9 @@ interface NoteDao {
     @Query("SELECT * FROM notes WHERE id = :id")
     suspend fun get(id: String): NoteEntity?
 
+    @Query("SELECT * FROM notes")
+    suspend fun getAll(): List<NoteEntity>
+
     @Upsert
     suspend fun upsert(note: NoteEntity)
 

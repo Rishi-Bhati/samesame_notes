@@ -1065,6 +1065,15 @@ class EditorSession(
         autosaver.stop()
         autosaver.flush(close = true)
     }
+
+    /**
+     * Stops autosave and saves + packs without closing the note. A restore replaces the container afterwards and must
+     * keep a locked note's key in memory; [finish] would drop it.
+     */
+    suspend fun finishForRestore() {
+        autosaver.stop()
+        autosaver.flush(close = false, force = true)
+    }
 }
 
 /** Items of the selection's more menu (see [EditorSession.objectMenuState]). */

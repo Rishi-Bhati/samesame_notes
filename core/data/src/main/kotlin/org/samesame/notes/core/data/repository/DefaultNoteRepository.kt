@@ -926,6 +926,43 @@ internal class DefaultNoteRepository @Inject constructor(
         deleteForeverUnguarded(noteDao.trashedBefore(cutoff).map(::NoteId))
     }
 
+    override suspend fun listVersions(id: NoteId): List<NoteVersionInfo> =
+        documents.listVersions(id.value).map { NoteVersionInfo(it.id, it.sizeBytes, it.title, it.preview, it.pages, it.locked) }
+
+    override suspend fun readVersion(id: NoteId, versionId: Long): NoteVersionText? = lockFor(id.value).withLock {
+        documents.readVersionText(id.value, versionId)?.let { NoteVersionText(it.title, it.body, it.pages) }
+    }
+
+    override suspend fun restoreVersion(id: NoteId, versionId: Long) = lockFor(id.value).withLock {
+        val row = noteDao.get(id.value) ?: throw java.io.FileNotFoundException("Note not found")
+        // A container locked while its row is not (a crash between the two writes) still counts as locked.
+        val locked = row.isLocked || documents.isLocked(id.value)
+        // Save and close the on-disk working copy first, so the undo version is exactly what the editor showed. A locked
+        // note is left open: closing it drops the key that its encrypted version needs to be read.
+        documents.flush(id.value, close = !locked)
+        documents.restoreVersion(id.value, versionId)
+        // Re-index the catalog from the restored content, the way a save does. The note is already restored on disk:
+        // a failure past this point only leaves the list's title and preview stale until the next save.
+        val doc = documents.readDocument(id.value)
+        val plain = doc.body.plainText()
+        noteDao.upsert(
+            row.copy(
+                title = doc.title,
+                previewText = if (locked) "" else plain.take(PREVIEW_LENGTH),
+                pageMode = doc.layout.mode,
+                modifiedAt = clock.now(),
+                isDirty = true,
+            ),
+        )
+        searchDao.replace(NoteSearchEntity(noteId = id.value, title = doc.title, body = if (locked) "" else plain, inkText = ""))
+        previewFailures.forget(id.value)
+        previewCache?.forget(id.value)
+        pagePictureIds.remove(id.value)
+        lastFileRefs.remove(id.value)
+        fileRefs?.let { sink -> runCatching { sink.replaceNoteRefs(id, noteFileRefs(id.value, doc)) } }
+        Unit
+    }
+
     override suspend fun lockNotes(ids: List<NoteId>, token: org.samesame.notes.core.security.LockToken) {
         // A note on a widget is never locked (the widget would keep its content); callers check first and show a message.
         widgetPins?.let { pins -> ids.filter(pins::isPinned).takeIf { it.isNotEmpty() }?.let { throw NotePinnedToWidgetException(it) } }
