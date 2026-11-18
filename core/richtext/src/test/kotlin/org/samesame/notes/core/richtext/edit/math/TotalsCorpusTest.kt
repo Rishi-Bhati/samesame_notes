@@ -91,7 +91,7 @@ class TotalsCorpusTest {
         "Distance and time 2 m 30 min\nTotal" to null,
         "Work 7h 30m\nWork 8h\nAverage" to " 7h 45m",
         "Refund -1h 30m\nWork 8h\nTotal" to null,
-        "First -₹1,00,000\nSecond ₹-1000\nTotal" to " ₹-1,01,000",
+        "First -₹1,00,000\nSecond ₹-1000\nTotal" to " -₹1,01,000",
         "Price 1,00\nSubtotal 100\nSubtotal 50\nGrand total" to " 150",
     )
 
@@ -104,7 +104,7 @@ class TotalsCorpusTest {
     @Test
     fun nonAmountsAlsoStayQuietWhenTheyAreTheOnlyItems() {
         val lines = listOf(
-            "7:30", "23:59", "12/11", "17-11", "2026-11", "2026-11-18", "17/11/2026", "17.11.2026", "12/3/20",
+            "7:30", "23:59", "11/17", "12/11", "17-11", "2026-11", "2026-11-18", "17/11/2026", "17.11.2026", "12/3/20",
             "9876543210", "555-1234", "(555) 123-4567", "+44 20 7946 0958", "011 234 5678",
             "1.2.3", "v1.2.3", "15%", "Flat 3B",
         )
@@ -174,5 +174,29 @@ class TotalsCorpusTest {
     fun totalsAreIndependentOfDeviceNumberConventions() {
         val text = "Rent ₹1,000.50\nWater ₹100.25\nTotal"
         assertEquals(" ₹1,100.75", MathDetector.suggest(text, text.length, MathConfig.CommaDecimal)?.text)
+    }
+
+    @Test
+    fun usOrderDateIsSkipped() {
+        val baseGhost = suggestion("Milk 60\nTotal")
+        val withDateGhost = suggestion("11/17\nMilk 60\nTotal")
+        assertEquals(baseGhost?.text, withDateGhost?.text)
+        assertEquals(" 60", withDateGhost?.text)
+    }
+
+    @Test
+    fun negativeCurrencyTotalPutsSignFirst() {
+        assertEquals(" -₹100", suggestion("Food ₹100\nRefund -₹200\nTotal")?.text)
+        assertEquals(" -$100", suggestion("Food $100\nRefund -$200\nTotal")?.text)
+    }
+
+    @Test
+    fun boundedScanAndLongLinesAbove() {
+        val longItem = "item ".repeat(60) // 300 characters
+        assertEquals(" 60", suggestion("$longItem\nMilk 60\nTotal")?.text)
+        assertEquals(" 60", suggestion("Milk 60\n$longItem\nTotal")?.text)
+
+        val longParagraph = "a".repeat(50_000)
+        assertNull(MathDetector.suggest(longParagraph, longParagraph.length, MathConfig.English))
     }
 }

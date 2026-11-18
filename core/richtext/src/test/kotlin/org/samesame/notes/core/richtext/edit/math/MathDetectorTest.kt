@@ -231,4 +231,10 @@ class MathDetectorTest {
         assertThat(MathDetector.calculateSelection("5 + 5\n6 + 6", en)).isNull()
         assertThat(MathDetector.calculateSelection("hello", en)).isNull()
     }
+
+    @Test
+    fun longParagraphWithoutNewlineReturnsNullWithoutException() {
+        val text = "a".repeat(50_000)
+        assertThat(MathDetector.suggest(text, text.length, en)).isNull()
+    }
 }
