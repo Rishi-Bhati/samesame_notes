@@ -96,7 +96,7 @@ import org.samesame.notes.core.designsystem.theme.fixedSp
 @Serializable
 data object SettingsKey : NavKey
 
-private enum class Page { Main, Style, Toolbar, About, Privacy, Licences, Unlock, Export }
+internal enum class Page { Main, Style, Toolbar, About, Privacy, Licences, Unlock, Export, Backup }
 
 @Composable
 fun SettingsRoute(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewModel()) {
@@ -110,6 +110,7 @@ fun SettingsRoute(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMod
     when (page) {
         Page.Main -> MainPage(settings, update, onBack = onBack, onOpen = { page = it }, onImport = importNotes)
         Page.Export -> ExportNotesPage(bulk, onBack = { page = parent })
+        Page.Backup -> BackupPage(onBack = { page = parent })
         Page.Unlock -> UnlockMethodsPage(onBack = { page = parent })
         Page.Style -> StylePage(settings, update, onBack = { page = parent })
         Page.Toolbar -> ToolbarPage(settings, update, onBack = { page = parent })
@@ -256,10 +257,12 @@ private fun MainPage(
                     RowDivider()
                 }
                 // the reference's General card has "Import notes" right before "Auto save notes"; ours opens the system
-                // file picker (bulk .sdocx / .ssnote / PDF). "Export notes" (bulk Save as file) is our addition.
+                // file picker (bulk .sdocx / .ssnote / PDF). "Export notes" and "Backup" are our additions.
                 SettingsRow(stringResource(R.string.feature_settings_import_notes), onClick = onImport)
                 RowDivider()
                 SettingsRow(stringResource(R.string.feature_settings_export_notes), onClick = { onOpen(Page.Export) })
+                RowDivider()
+                SettingsRow(stringResource(R.string.feature_settings_backup), onClick = { onOpen(Page.Backup) })
                 RowDivider()
                 SettingsRow(stringResource(R.string.feature_settings_auto_save), checked = settings.autoSaveNotes, onChecked = { v -> update { it.copy(autoSaveNotes = v) } })
             }
