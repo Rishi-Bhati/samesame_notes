@@ -6,6 +6,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.samesame.notes.core.model.Limits
 import org.samesame.notes.core.model.files.FileId
 import org.samesame.notes.core.model.textdoc.LineEnding
@@ -71,6 +74,7 @@ class TextDocViewModel @Inject constructor(
     private var writable = true
     private var savedText = ""
     private var matches: List<IntRange> = emptyList()
+    var ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 
     /** Loads [uri], or the Files entry [libraryFileId], or the note [noteId], or an empty untitled document when all are null. */
     fun load(
@@ -80,9 +84,10 @@ class TextDocViewModel @Inject constructor(
         displayName: String? = null,
         noteId: String? = null,
         mimeType: String? = null,
-    ) {
+    ): Job {
+        if (isSameDocumentLoaded(uri, libraryFileId, noteId)) return Job().apply { complete() }
         autosaveJob?.cancel()
-        viewModelScope.launch {
+        return viewModelScope.launch {
             currentNoteId = noteId
             this@TextDocViewModel.writable = writable
             _uiState.update { it.copy(isLoading = true, loadFailed = false) }
@@ -134,7 +139,9 @@ class TextDocViewModel @Inject constructor(
                 val doc = if (target == null) {
                     TextDocument("", TextEncoding.Utf8, LineEnding.Lf, hasBom = false)
                 } else {
-                    uris.read(target).use { TextDocumentCodec.read(it) }
+                    withContext(ioDispatcher) {
+                        uris.read(target).use { TextDocumentCodec.read(it) }
+                    }
                 }
                 savedText = doc.text
                 undoRedo.reset(doc.text)
@@ -188,14 +195,20 @@ class TextDocViewModel @Inject constructor(
     suspend fun saveInPlace(context: Context? = null): Boolean {
         val state = _uiState.value
         if (state.isReadOnly) return false
+        val textSaved = state.text
         val noteId = currentNoteId
         if (noteId != null) {
             autosaveJob?.cancel()
             return try {
                 _uiState.update { it.copy(isSaving = true) }
-                notes.writeMarkdown(noteId, state.text)
-                savedText = state.text
-                _uiState.update { it.copy(isModified = false, isSaving = false) }
+                notes.writeMarkdown(noteId, textSaved)
+                savedText = textSaved
+                _uiState.update { current ->
+                    current.copy(isModified = current.text != textSaved, isSaving = false)
+                }
+                if (_uiState.value.text != textSaved) {
+                    scheduleAutosave()
+                }
                 true
             } catch (c: CancellationException) {
                 throw c
@@ -215,8 +228,13 @@ class TextDocViewModel @Inject constructor(
                 if (context == null) return false
                 uris.write(target, bytes)
             }
-            savedText = state.text
-            _uiState.update { it.copy(isModified = false, isSaving = false) }
+            savedText = textSaved
+            _uiState.update { current ->
+                current.copy(isModified = current.text != textSaved, isSaving = false)
+            }
+            if (_uiState.value.text != textSaved) {
+                scheduleAutosave()
+            }
             true
         } catch (c: CancellationException) {
             throw c
@@ -312,7 +330,7 @@ class TextDocViewModel @Inject constructor(
         autosaveJob?.cancel()
         autosaveJob = viewModelScope.launch {
             delay(1000)
-            if (currentNoteId == noteId && _uiState.value.isModified) {
+            if (currentNoteId == noteId && (_uiState.value.isModified || _uiState.value.text != savedText)) {
                 saveInPlace()
             }
         }
@@ -323,6 +341,26 @@ class TextDocViewModel @Inject constructor(
         autosaveJob?.cancel()
     }
 
-    private fun bytes(state: TextDocUiState): ByteArray =
+    /** Flushes any unsaved edits immediately without waiting for autosave debounce. */
+    fun flushOnStop(context: Context? = null): Job? {
+        if (_uiState.value.isReadOnly) return null
+        if (!_uiState.value.isModified && _uiState.value.text == savedText) return null
+        autosaveJob?.cancel()
+        return viewModelScope.launch {
+            saveInPlace(context)
+        }
+    }
+
+    private suspend fun bytes(state: TextDocUiState): ByteArray = withContext(ioDispatcher) {
         TextDocumentCodec.roundTripBytes(state.text, state.encoding, state.lineEnding, state.hasBom)
+    }
+
+    private fun isSameDocumentLoaded(uri: Uri?, libraryFileId: String?, noteId: String?): Boolean {
+        if (_uiState.value.isLoading || _uiState.value.loadFailed) return false
+        if (noteId != null) return noteId == currentNoteId
+        val id = libraryFileId?.let(::FileId)?.takeIf { it.isWellFormed }
+        if (id != null) return id == this.libraryFileId
+        if (uri != null) return uri == this.documentUri
+        return currentNoteId == null && this.libraryFileId == null && this.documentUri == null
+    }
 }

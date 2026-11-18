@@ -21,7 +21,11 @@ object MarkdownHtmlExport {
     )
 
     private val parser = Parser.builder().extensions(extensions).build()
-    private val renderer = HtmlRenderer.builder().extensions(extensions).build()
+    private val renderer = HtmlRenderer.builder()
+        .escapeHtml(true)
+        .sanitizeUrls(true)
+        .extensions(extensions)
+        .build()
 
     fun render(markdown: String, title: String, darkTheme: Boolean = false): String {
         val document = parser.parse(markdown)

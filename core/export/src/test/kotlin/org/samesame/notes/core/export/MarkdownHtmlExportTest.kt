@@ -46,4 +46,29 @@ class MarkdownHtmlExportTest {
         assertThat(darkHtml).contains("--bg-color: #0d1117;")
         assertThat(darkHtml).contains("--text-color: #e6edf3;")
     }
+
+    @Test
+    fun escapesHtmlAndSanitizesJavascriptUrls() {
+        val dangerousMd = """
+            <script>alert('xss')</script>
+
+            <img src="x" onerror="alert(1)">
+
+            [malicious link](javascript:alert(1))
+
+            [safe link](https://example.com)
+        """.trimIndent()
+
+        val html = MarkdownHtmlExport.render(dangerousMd, "XSS Test")
+
+        assertThat(html).doesNotContain("<script>")
+        assertThat(html).doesNotContain("</script>")
+        assertThat(html).contains("&lt;script&gt;")
+
+        assertThat(html).doesNotContain("<img src=\"x\" onerror=\"alert(1)\">")
+        assertThat(html).contains("&lt;img")
+
+        assertThat(html).doesNotContain("href=\"javascript:")
+        assertThat(html).contains("href=\"https://example.com\"")
+    }
 }

@@ -130,6 +130,8 @@ object Limits {
     const val MAX_TEXTDOC_LINE_CHARS = 4000
     /** Find stops after this many hits; the editor is not a full text search engine. */
     const val MAX_TEXTDOC_FIND_MATCHES = 5000
+    /** Snapshot text memory (in bytes, chars * 2) kept across undo/redo history; older snapshots are dropped. */
+    const val MAX_TEXTDOC_UNDO_BYTES = 32L * 1024 * 1024
 
     // Markdown export and conversion (Phase 3.3)
     const val MARKDOWN_EXPORT_MAX_BYTES = 16L * 1024 * 1024 // 16 MiB

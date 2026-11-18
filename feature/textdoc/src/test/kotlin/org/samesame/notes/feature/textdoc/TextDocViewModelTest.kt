@@ -4,6 +4,7 @@ import android.net.Uri
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -49,9 +50,11 @@ class TextDocViewModelTest {
     @Before fun setUp() = Dispatchers.setMain(UnconfinedTestDispatcher())
     @After fun tearDown() = Dispatchers.resetMain()
 
+    private fun createViewModel() = TextDocViewModel(files, uris, noteStore).apply { ioDispatcher = Dispatchers.Main }
+
     @Test
     fun loadsAndSavesALibraryFileInPlace() = runTest {
-        val vm = TextDocViewModel(files, uris, noteStore)
+        val vm = createViewModel()
         vm.load(null, file.id.value, writable = true)
 
         assertThat(vm.uiState.value.text).isEqualTo("hello")
@@ -67,7 +70,7 @@ class TextDocViewModelTest {
 
     @Test
     fun undoAndRedoTrackModificationState() = runTest {
-        val vm = TextDocViewModel(files, uris, noteStore)
+        val vm = createViewModel()
         vm.load(null, file.id.value, writable = true)
 
         vm.updateText("hello!")
@@ -84,7 +87,7 @@ class TextDocViewModelTest {
     fun anExternalUriThatCannotBeWrittenFallsBackToSaveAs() = runTest {
         val source = Uri.parse("content://test/read-only.txt")
         uris.failWrite = true
-        val vm = TextDocViewModel(files, uris, noteStore)
+        val vm = createViewModel()
         vm.load(source, null, writable = true)
         vm.updateText("changed")
 
@@ -99,7 +102,7 @@ class TextDocViewModelTest {
 
     @Test
     fun aReadOnlyDocumentCannotBeEditedOrSavedInPlace() = runTest {
-        val vm = TextDocViewModel(files, uris, noteStore)
+        val vm = createViewModel()
         vm.load(null, file.id.value, writable = false)
 
         vm.updateText("changed")
@@ -109,7 +112,7 @@ class TextDocViewModelTest {
 
     @Test
     fun htmlPreviewToggles() = runTest {
-        val vm = TextDocViewModel(files, uris, noteStore)
+        val vm = createViewModel()
         vm.load(null, file.id.value, writable = true)
 
         assertThat(vm.uiState.value.isHtmlPreview).isFalse()
@@ -119,7 +122,7 @@ class TextDocViewModelTest {
 
     @Test
     fun findAndReplaceUpdatesTheDocument() = runTest {
-        val vm = TextDocViewModel(files, uris, noteStore)
+        val vm = createViewModel()
         vm.load(null, file.id.value, writable = true)
 
         vm.find("l")
@@ -137,7 +140,7 @@ class TextDocViewModelTest {
         noteStore.note = note
         noteStore.text = "- [ ] milk\n- [ ] eggs\n"
 
-        val vm = TextDocViewModel(files, uris, noteStore)
+        val vm = createViewModel()
         vm.load(noteId = "md-note", writable = true)
 
         assertThat(vm.uiState.value.text).isEqualTo("- [ ] milk\n- [ ] eggs\n")
@@ -154,12 +157,100 @@ class TextDocViewModelTest {
     }
 
     @Test
+    fun editTypedDuringSlowSaveIsSavedByNextAutosave() = runTest {
+        val vm = createViewModel()
+        vm.load(null, null, writable = true, noteId = "note-slow")
+        vm.updateText("first edit")
+
+        var secondEditTyped = false
+        noteStore.onWriteStarted = {
+            if (!secondEditTyped) {
+                secondEditTyped = true
+                noteStore.writeDelayMs = 0
+                vm.updateText("second edit")
+            }
+        }
+        noteStore.writeDelayMs = 500
+
+        val saveJob = launch { vm.saveInPlace() }
+        testScheduler.advanceTimeBy(600)
+        saveJob.join()
+
+        assertThat(vm.uiState.value.isModified).isTrue()
+        assertThat(noteStore.lastWrittenText).isEqualTo("first edit")
+
+        testScheduler.advanceTimeBy(1100)
+        assertThat(noteStore.lastWrittenText).isEqualTo("second edit")
+        assertThat(vm.uiState.value.isModified).isFalse()
+    }
+
+    @Test
+    fun reloadWhenSameDocumentAlreadyLoadedReturnsEarlyAndPreservesEdits() = runTest {
+        val note = sampleNote(id = "md-note", title = "Note")
+        noteStore.note = note
+        noteStore.text = "disk content"
+
+        val vm = createViewModel()
+        vm.load(noteId = "md-note", writable = true)
+        assertThat(vm.uiState.value.text).isEqualTo("disk content")
+
+        vm.updateText("unsaved user edits")
+        assertThat(vm.uiState.value.isModified).isTrue()
+
+        // Simulate config change reload with same noteId
+        vm.load(noteId = "md-note", writable = true)
+
+        // Must not wipe unsaved edits
+        assertThat(vm.uiState.value.text).isEqualTo("unsaved user edits")
+        assertThat(vm.uiState.value.isModified).isTrue()
+    }
+
+    @Test
+    fun reloadWithDifferentDocumentDoesReload() = runTest {
+        val note1 = sampleNote(id = "note-1", title = "Note 1")
+        noteStore.note = note1
+        noteStore.text = "content 1"
+
+        val vm = createViewModel()
+        vm.load(noteId = "note-1", writable = true)
+        assertThat(vm.uiState.value.text).isEqualTo("content 1")
+
+        val note2 = sampleNote(id = "note-2", title = "Note 2")
+        noteStore.note = note2
+        noteStore.text = "content 2"
+
+        vm.load(noteId = "note-2", writable = true)
+        assertThat(vm.uiState.value.text).isEqualTo("content 2")
+    }
+
+    @Test
+    fun flushOnStopSavesPendingEditsImmediately() = runTest {
+        val vm = createViewModel()
+        vm.load(noteId = "stop-note", writable = true)
+
+        vm.updateText("pending stop content")
+        assertThat(noteStore.writeCount).isEqualTo(0)
+
+        vm.flushOnStop()?.join()
+
+        assertThat(noteStore.writeCount).isEqualTo(1)
+        assertThat(noteStore.lastWrittenText).isEqualTo("pending stop content")
+        assertThat(vm.uiState.value.isModified).isFalse()
+    }
+
+    @Test
+    fun defaultIoDispatcherIsDispatchersIO() {
+        val vm = TextDocViewModel(files, uris, noteStore)
+        assertThat(vm.ioDispatcher).isEqualTo(Dispatchers.IO)
+    }
+
+    @Test
     fun lockedMarkdownNoteOpensReadOnlyWithNotice() = runTest {
         val note = sampleNote(id = "locked-md", title = "Secret note", isLocked = true)
         noteStore.note = note
         noteStore.text = "secret content"
 
-        val vm = TextDocViewModel(files, uris, noteStore)
+        val vm = createViewModel()
         vm.load(noteId = "locked-md", writable = true)
 
         assertThat(vm.uiState.value.title).isEqualTo("Secret note")
@@ -179,7 +270,7 @@ class TextDocViewModelTest {
         noteStore.note = note
         noteStore.text = "initial text"
 
-        val vm = TextDocViewModel(files, uris, noteStore)
+        val vm = createViewModel()
         vm.load(noteId = "debounced-note", writable = true)
 
         assertThat(noteStore.writeCount).isEqualTo(0)
@@ -234,9 +325,13 @@ class TextDocViewModelTest {
     ) : TextDocNoteStore {
         var writeCount = 0
         var lastWrittenText: String? = null
+        var onWriteStarted: (() -> Unit)? = null
+        var writeDelayMs: Long = 0
 
         override suspend fun readMarkdown(noteId: String): String? = text
         override suspend fun writeMarkdown(noteId: String, text: String) {
+            onWriteStarted?.invoke()
+            if (writeDelayMs > 0) kotlinx.coroutines.delay(writeDelayMs)
             this.text = text
             this.lastWrittenText = text
             writeCount++

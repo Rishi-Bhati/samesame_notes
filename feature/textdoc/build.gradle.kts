@@ -16,3 +16,7 @@ dependencies {
 
     testImplementation(libs.robolectric)
 }
+
+tasks.withType<Test>().configureEach {
+    jvmArgs("--add-opens=java.base/jdk.internal.access=ALL-UNNAMED")
+}

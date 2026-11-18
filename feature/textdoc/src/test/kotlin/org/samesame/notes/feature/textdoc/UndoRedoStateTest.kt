@@ -68,4 +68,28 @@ class UndoRedoStateTest {
         assertThat(state.canRedo).isFalse()
         assertThat(state.text).isEqualTo("fresh")
     }
+
+    @Test
+    fun undoStackDropsOldestSnapshotsWhenMemoryLimitExceeded() {
+        val state = UndoRedoState(limit = 200, maxBytes = 40L)
+        state.reset("start")
+
+        state.edit("A1234")
+        state.edit("B1234")
+        state.edit("C1234")
+        state.edit("D1234")
+
+        assertThat(state.snapshotBytes).isEqualTo(40L)
+
+        // Pushing another 10 bytes exceeds 40 bytes; oldest ("start") must be dropped
+        state.edit("E1234")
+
+        assertThat(state.snapshotBytes).isAtMost(40L)
+
+        assertThat(state.undo()).isEqualTo("D1234")
+        assertThat(state.undo()).isEqualTo("C1234")
+        assertThat(state.undo()).isEqualTo("B1234")
+        assertThat(state.undo()).isEqualTo("A1234")
+        assertThat(state.undo()).isNull()
+    }
 }

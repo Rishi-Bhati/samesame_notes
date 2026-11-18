@@ -16,7 +16,9 @@ import org.samesame.notes.core.model.NoteId
 import org.samesame.notes.core.model.files.FileId
 import org.samesame.notes.core.model.files.LibraryFile
 import java.io.FileNotFoundException
+import java.io.FileOutputStream
 import java.io.InputStream
+import java.io.OutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -57,12 +59,33 @@ internal class DefaultTextDocUriStore @Inject constructor(@param:ApplicationCont
 
     override suspend fun write(uri: Uri, bytes: ByteArray) = withContext(Dispatchers.IO) {
         val resolver = context.contentResolver
-        // "wt" truncates; a provider that only knows "w" still gets the whole buffer, which is at least as long as
-        // anything we wrote before only when it grows. Both are attempted so read-only providers fail with SecurityException.
-        val out = runCatching { resolver.openOutputStream(uri, "wt") }.getOrNull()
-            ?: runCatching { resolver.openOutputStream(uri, "w") }.getOrNull()
-            ?: throw FileNotFoundException("Can't write $uri")
-        out.use { it.write(bytes) }
+        var stream: OutputStream? = null
+        try {
+            stream = resolver.openOutputStream(uri, "wt")
+        } catch (s: SecurityException) {
+            throw s
+        } catch (_: Exception) {
+            // "wt" mode unsupported by provider; fallback to "w" with explicit truncation below
+        }
+        if (stream != null) {
+            stream.use { it.write(bytes) }
+            return@withContext
+        }
+        val pfd = try {
+            resolver.openFileDescriptor(uri, "w")
+        } catch (s: SecurityException) {
+            throw s
+        } ?: throw FileNotFoundException("Can't write $uri")
+
+        pfd.use { fd ->
+            val fos = FileOutputStream(fd.fileDescriptor)
+            try {
+                fos.channel.truncate(0)
+            } catch (_: Exception) {
+                // If channel truncation not supported
+            }
+            fos.use { it.write(bytes) }
+        }
     }
 }
 

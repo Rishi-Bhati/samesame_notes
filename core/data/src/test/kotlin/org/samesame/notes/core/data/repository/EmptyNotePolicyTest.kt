@@ -5,6 +5,7 @@ import org.junit.Test
 import org.samesame.notes.core.model.PageTemplate
 import org.samesame.notes.core.model.document.NoteDocument
 import org.samesame.notes.core.model.document.ImageObject
+import org.samesame.notes.core.model.document.MarkdownBody
 import org.samesame.notes.core.model.document.NoteRecording
 import org.samesame.notes.core.model.document.PageSize
 import org.samesame.notes.core.model.document.PageSpec
@@ -83,5 +84,15 @@ class EmptyNotePolicyTest {
     @Test fun `several blank pages with a built-in template are not content`() {
         val pages = List(5) { PageSpec("p$it", template = TemplateRef.Builtin(PageTemplate.GridMedium)) }
         assertThat(isNoteEmpty(note(pages = pages), List(5) { 0 })).isTrue()
+    }
+
+    @Test fun `markdown content is content even without title`() {
+        val doc = note().copy(markdown = MarkdownBody("# Title\nSome content"))
+        assertThat(isNoteEmpty(doc, listOf(0))).isFalse()
+    }
+
+    @Test fun `blank markdown content is empty`() {
+        val doc = note().copy(markdown = MarkdownBody("   \n\t  "))
+        assertThat(isNoteEmpty(doc, listOf(0))).isTrue()
     }
 }
