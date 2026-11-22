@@ -27,6 +27,8 @@ import org.samesame.notes.core.richtext.edit.TextSelection
 import org.samesame.notes.core.richtext.edit.InlineMarker
 import org.samesame.notes.core.richtext.edit.LinkTyping
 import org.samesame.notes.core.richtext.edit.TypingShortcuts
+import org.samesame.notes.core.richtext.spans.ArrowGlyphSpan
+import org.samesame.notes.core.richtext.spans.ArrowGlyphs
 import org.samesame.notes.core.richtext.spans.CharStyleSpan
 import org.samesame.notes.core.richtext.spans.InlineObjectSpan
 import org.samesame.notes.core.richtext.spans.LinePitchSpan
@@ -838,6 +840,8 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
             }
         }
         RichTextBridge.mergeCharStylesAt(editable, c.start, env)
+        // Display-only arrow glyphs; one character either side, as a following U+FE0F decides whether an arrow is styled.
+        ArrowGlyphs.refresh(editable, c.start - 1, c.start + c.inserted + 1)
         var pStart = c.start
         while (pStart > 0 && editable[pStart - 1] != '\n') pStart--
         rebuildParagraphSpans(c.firstParagraph, insertedNewlines + 1, pStart)
@@ -855,6 +859,8 @@ class BodyText(initial: RichText = RichText(), val env: TextRenderEnv = TextRend
         if (what === watcher) return
         // The template pitch span is layout machinery: no edit, no dirty flag, no relayout request.
         if (what is LinePitchSpan) return
+        // Arrow glyph spans follow text changes (onAfter bumps the layout version) and are never part of the model.
+        if (what is ArrowGlyphSpan) return
         if (what === Selection.SELECTION_START || what === Selection.SELECTION_END) {
             val sel = selection
             if (raw == null && !(sel.collapsed && sel.min == expectedCaret)) {
