@@ -16,7 +16,16 @@ import kotlinx.coroutines.flow.consumeAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.samesame.notes.core.data.repository.FilesRepository
+import org.samesame.notes.core.data.transfer.FileConversionService
+import org.samesame.notes.core.model.Limits
+import org.samesame.notes.core.model.io.LimitedInputStream
+import org.samesame.notes.core.model.io.readBytesLimited
+import org.samesame.notes.core.model.saveas.SaveAsOptions
+import org.samesame.notes.core.model.saveas.SaveOption
+import org.samesame.notes.core.model.textimport.TextImport
 import org.samesame.notes.core.data.transfer.ImportSource
 import org.samesame.notes.core.data.transfer.NoteImportService
 import org.samesame.notes.core.model.files.DuplicatePolicy
@@ -31,22 +40,27 @@ data class ReceivedItem(val uri: Uri, val name: String, val mimeType: String?, v
 
 sealed interface ReceivePhase {
     data object Choosing : ReceivePhase
-    data class Saving(val progress: ImportProgress?) : ReceivePhase
+    /** [elsewhere]: a copy or a PDF is being written to a picked location (not Files). */
+    data class Saving(val progress: ImportProgress?, val elsewhere: Boolean = false) : ReceivePhase
     /** Files were saved. [opened] is the file the Open button hands to the system (the single one saved). */
     data class Done(val saved: Int, val failures: List<ImportFailure>, val opened: LibraryFile?) : ReceivePhase
 }
 
 data class ReceiveUiState(
     val items: List<ReceivedItem> = emptyList(),
-    val toNewNote: Boolean = false,
+    /** Where Save puts the items: one of [options]. */
+    val destination: SaveOption = SaveOption.SaveToFiles,
     val folderId: FileFolderId? = null,
     val phase: ReceivePhase = ReceivePhase.Choosing,
     val duplicates: List<ImportResult.Duplicate> = emptyList(),
     val folders: List<FileFolder> = emptyList(),
 ) {
+    val toNewNote: Boolean get() = destination == SaveOption.SaveAsNote
     val canNewNote: Boolean get() = items.isNotEmpty() && items.all { ReceiveRouting.canBecomeNote(it.kind) }
     /** Some item can't go into a note, so the sheet says it will be saved to Files. */
     val hasFilesOnly: Boolean get() = items.any { it.kind == ReceiveKind.Other }
+    /** The destinations the sheet offers for these items (Files, New note, Save a copy, PDF), in order. */
+    val options: List<SaveOption> get() = ReceiveRouting.options(items)
 }
 
 sealed interface ReceiveEvent {
@@ -54,6 +68,10 @@ sealed interface ReceiveEvent {
     data object NoteFailed : ReceiveEvent
     /** Text files over the size cap were kept in Files instead of becoming notes. */
     data object TextTooLarge : ReceiveEvent
+    /** The copy or the PDF was written to the picked location. */
+    data object SavedElsewhere : ReceiveEvent
+    /** The copy or the PDF could not be written ([tooLarge]: over a size cap). */
+    data class SaveElsewhereFailed(val tooLarge: Boolean) : ReceiveEvent
 }
 
 @HiltViewModel
@@ -63,6 +81,7 @@ class ShareReceiveViewModel @Inject constructor(
     private val noteImporter: NoteImportService,
     private val notes: org.samesame.notes.core.data.repository.NoteRepository,
     private val prefs: FilesPreferences,
+    private val conversion: FileConversionService,
 ) : ViewModel() {
 
     private val state = MutableStateFlow(ReceiveUiState())
@@ -84,7 +103,7 @@ class ShareReceiveViewModel @Inject constructor(
         val last = prefs.lastFolderId?.takeIf { it.isNotEmpty() }?.let(::FileFolderId)
         state.value = ReceiveUiState(
             items = items.take(FilesImporter.MAX_ITEMS),
-            toNewNote = ReceiveRouting.defaultToNewNote(items.map { it.kind }),
+            destination = if (ReceiveRouting.defaultToNewNote(items.map { it.kind })) SaveOption.SaveAsNote else SaveOption.SaveToFiles,
             folderId = last,
         )
         // The remembered folder may be gone by now.
@@ -105,15 +124,86 @@ class ShareReceiveViewModel @Inject constructor(
     }
 
     fun rename(index: Int, name: String) = state.update { s -> s.copy(items = s.items.mapIndexed { i, it -> if (i == index) it.copy(name = name) else it }) }
-    fun setNewNote(value: Boolean) = state.update { it.copy(toNewNote = value && it.canNewNote) }
+    fun setNewNote(value: Boolean) = setDestination(if (value) SaveOption.SaveAsNote else SaveOption.SaveToFiles)
+    fun setDestination(option: SaveOption) = state.update { if (option in it.options) it.copy(destination = option) else it }
     fun setFolder(id: FileFolderId?) = state.update { it.copy(folderId = id) }
 
     fun cancel() { job?.cancel(); job = null; state.update { it.copy(phase = ReceivePhase.Choosing) } }
 
+    /** Save for Files and New note; Save a copy and PDF go through the file picker first (see [saveElsewhere]). */
     fun save() {
         val s = state.value
         if (s.items.isEmpty() || job?.isActive == true) return
         if (s.toNewNote && s.canNewNote) saveAsNotes(s) else saveToFiles(s)
+    }
+
+    /** The file name and MIME type the file picker suggests for the current destination (Save a copy or PDF). */
+    fun pickerTarget(): Pair<String, String>? {
+        val s = state.value
+        val first = s.items.firstOrNull() ?: return null
+        return when (s.destination) {
+            SaveOption.SaveCopy -> SaveAsOptions.suggestedName(first.name) to (first.mimeType?.substringBefore(';')?.trim()?.takeIf { it.contains('/') && it != "*/*" } ?: "application/octet-stream")
+            SaveOption.ExportPdf -> SaveAsOptions.suggestedName(if (s.items.size == 1) first.name else null, "pdf") to "application/pdf"
+            else -> null
+        }
+    }
+
+    /** Writes the single item ([SaveOption.SaveCopy]) or the PDF of the items ([SaveOption.ExportPdf]) to [target]. */
+    fun saveElsewhere(target: Uri) {
+        val s = state.value
+        if (s.items.isEmpty() || job?.isActive == true) return
+        val destination = s.destination
+        if (destination != SaveOption.SaveCopy && destination != SaveOption.ExportPdf) return
+        state.update { it.copy(phase = ReceivePhase.Saving(null, elsewhere = true)) }
+        job = viewModelScope.launch {
+            val ok = runCatching {
+                withContext(Dispatchers.IO) {
+                    val resolver = context.contentResolver
+                    val out = resolver.openOutputStream(target, "w") ?: throw java.io.FileNotFoundException("Can't write the picked file")
+                    out.use { if (destination == SaveOption.SaveCopy) copyItem(s.items.single(), it) else writePdf(s.items, it) }
+                }
+            }
+            val error = ok.exceptionOrNull()
+            if (error is kotlinx.coroutines.CancellationException) {
+                withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { deleteQuietly(target) }
+                throw error
+            }
+            if (error == null) {
+                eventChannel.send(ReceiveEvent.SavedElsewhere)
+            } else {
+                withContext(Dispatchers.IO) { deleteQuietly(target) }
+                val tooLarge = error is org.samesame.notes.core.model.io.InputTooLargeException
+                state.update { it.copy(phase = ReceivePhase.Choosing) }
+                eventChannel.send(ReceiveEvent.SaveElsewhereFailed(tooLarge))
+            }
+        }
+    }
+
+    private fun copyItem(item: ReceivedItem, out: java.io.OutputStream) {
+        val input = context.contentResolver.openInputStream(item.uri) ?: throw java.io.FileNotFoundException("Can't read the shared file")
+        LimitedInputStream(input, Limits.MAX_LIBRARY_FILE_BYTES, "Shared file").use { it.copyTo(out) }
+    }
+
+    private suspend fun writePdf(items: List<ReceivedItem>, out: java.io.OutputStream) {
+        val text = items.singleOrNull()?.takeIf { it.kind == ReceiveKind.Text }
+        if (text != null) {
+            val body = TextImport.decode(readText(text))
+            val markdown = SaveAsOptions.isMarkdown(text.name, text.mimeType)
+            conversion.exportText(body, SaveAsOptions.noteTitle(text.name), markdown, org.samesame.notes.core.export.ExportFormat.PDF, out)
+            return
+        }
+        val pictures = items.filter { it.kind == ReceiveKind.Image }
+        conversion.imagesToPdf(pictures.size, { i -> pictures[i].let { ReceivedMedia.image(context, it.uri, it.name, it.mimeType, null)?.bytes } }, out)
+    }
+
+    /** At most the text cap of [item] (one byte more fails with InputTooLargeException). */
+    private fun readText(item: ReceivedItem): ByteArray =
+        (context.contentResolver.openInputStream(item.uri) ?: throw java.io.FileNotFoundException("Can't read the shared file")).use {
+            it.readBytesLimited(Limits.MAX_TEXT_IMPORT_BYTES, "Text file")
+        }
+
+    private fun deleteQuietly(target: Uri) {
+        runCatching { android.provider.DocumentsContract.deleteDocument(context.contentResolver, target) }
     }
 
     private fun saveToFiles(s: ReceiveUiState) {
@@ -173,6 +263,14 @@ class ShareReceiveViewModel @Inject constructor(
                     if (id == null) failed++ else if (firstId == null) firstId = id
                     return@forEach
                 }
+                if (item.kind == ReceiveKind.Text && SaveAsOptions.isMarkdown(item.name, item.mimeType)) {
+                    when (val id = importMarkdownItem(item)) {
+                        null -> tooLarge += item
+                        "" -> failed++
+                        else -> if (firstId == null) firstId = id
+                    }
+                    return@forEach
+                }
                 val source = ImportSource(item.name, item.mimeType, item.uri.lastPathSegment) {
                     context.contentResolver.openInputStream(item.uri) ?: throw java.io.FileNotFoundException(item.uri.toString())
                 }
@@ -213,6 +311,23 @@ class ShareReceiveViewModel @Inject constructor(
         if (prepared.isEmpty()) return null
         val title = if (pictures.size == 1) pictures[0].name.substringBeforeLast('.', pictures[0].name).trim() else ""
         return runCatching { notes.importImages(prepared, title).value }.getOrNull()
+    }
+
+    /**
+     * A Markdown file as a Markdown note, its source kept as written (line breaks become LF, like the editor).
+     * Returns the note id, null when over the text cap, "" when it could not be read or saved.
+     */
+    private suspend fun importMarkdownItem(item: ReceivedItem): String? {
+        val bytes = try {
+            withContext(Dispatchers.IO) { readText(item) }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: org.samesame.notes.core.model.io.InputTooLargeException) {
+            return null
+        } catch (_: Exception) {
+            return ""
+        }
+        return runCatching { notes.importMarkdown(TextImport.decode(bytes), SaveAsOptions.noteTitle(item.name)).value }.getOrDefault("")
     }
 
     private suspend fun importAudioItem(s: ReceiveUiState, item: ReceivedItem): String? {

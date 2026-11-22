@@ -1,5 +1,8 @@
 package org.samesame.notes.feature.files
 
+import android.content.ActivityNotFoundException
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -21,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -34,6 +38,8 @@ import org.samesame.notes.core.designsystem.theme.SameSameText
 import org.samesame.notes.core.designsystem.theme.SameSameTheme
 import org.samesame.notes.core.designsystem.theme.capped
 import org.samesame.notes.core.model.files.LibraryFile
+import org.samesame.notes.core.model.saveas.SaveOption
+import org.samesame.notes.feature.share.CreateTypedDocument
 
 /**
  * The "Save to SameSame" sheet of the share and Open-with receiver: editable names, Files or New note, the target
@@ -58,7 +64,7 @@ fun ShareReceiveSheet(
             confirmLabel = phase.progress?.let { stringResource(R.string.feature_files_importing_count, it.index, it.total) } ?: "",
             confirmEnabled = false, onConfirm = {},
             onDismissClick = { viewModel.cancel(); onFinish() },
-            title = stringResource(R.string.feature_files_importing), atBottom = true,
+            title = stringResource(if (phase.elsewhere) R.string.feature_files_receive_saving else R.string.feature_files_importing), atBottom = true,
         ) {
             Text(phase.progress?.name.orEmpty(), style = SameSameText.DialogMessage.capped(), color = colors.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             val p = phase.progress
@@ -104,12 +110,23 @@ fun ShareReceiveSheet(
 private fun ChoosingSheet(viewModel: ShareReceiveViewModel, state: ReceiveUiState, onFinish: () -> Unit) {
     val colors = SameSameTheme.colors
     var folderMenu by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    // Save a copy and PDF: the user picks where; the shared file's grant lasts while this sheet is open.
+    val picker = rememberLauncherForActivityResult(CreateTypedDocument()) { target -> if (target != null) viewModel.saveElsewhere(target) }
     AppDialog(
         onDismissRequest = onFinish,
         dismissLabel = stringResource(R.string.feature_files_cancel),
         confirmLabel = stringResource(R.string.feature_files_receive_save),
         confirmEnabled = state.items.isNotEmpty() && state.items.all { it.name.isNotBlank() },
-        onConfirm = viewModel::save,
+        onConfirm = {
+            val target = viewModel.pickerTarget()
+            if (target == null) viewModel.save()
+            else try {
+                picker.launch(target)
+            } catch (_: ActivityNotFoundException) {
+                Toast.makeText(context, R.string.feature_files_receive_no_picker, Toast.LENGTH_LONG).show()
+            }
+        },
         title = stringResource(R.string.feature_files_receive_title),
         atBottom = true,
     ) {
@@ -127,17 +144,20 @@ private fun ChoosingSheet(viewModel: ShareReceiveViewModel, state: ReceiveUiStat
                 },
             )
         }
-        if (state.canNewNote) {
-            DestinationRow(stringResource(R.string.feature_files_receive_files), !state.toNewNote) { viewModel.setNewNote(false) }
-            DestinationRow(stringResource(R.string.feature_files_receive_new_note), state.toNewNote) { viewModel.setNewNote(true) }
+        val options = state.options
+        if (options.size > 1) {
+            options.forEach { option ->
+                DestinationRow(stringResource(destinationLabel(option)), state.destination == option) { viewModel.setDestination(option) }
+            }
         }
-        if (state.hasFilesOnly && !state.toNewNote) {
+        val toFiles = state.destination == SaveOption.SaveToFiles
+        if (state.hasFilesOnly && toFiles) {
             Text(
                 stringResource(R.string.feature_files_receive_cannot_note),
                 style = SameSameText.ListBody, color = colors.textSecondary, modifier = Modifier.padding(top = 10.dp),
             )
         }
-        if (!state.toNewNote) {
+        if (toFiles) {
             Box(Modifier.padding(top = 12.dp)) {
                 Row(Modifier.fillMaxWidth().clickable { folderMenu = true }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(AppIcons.Folder, null, tint = colors.iconMuted, modifier = Modifier.size(22.dp))
@@ -161,6 +181,13 @@ private fun ChoosingSheet(viewModel: ShareReceiveViewModel, state: ReceiveUiStat
             }
         }
     }
+}
+
+private fun destinationLabel(option: SaveOption): Int = when (option) {
+    SaveOption.SaveAsNote -> R.string.feature_files_receive_new_note
+    SaveOption.SaveCopy -> R.string.feature_files_receive_copy
+    SaveOption.ExportPdf -> R.string.feature_files_receive_pdf
+    else -> R.string.feature_files_receive_files
 }
 
 @Composable

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Save options of a document opened from another app (0.4.0). -->
+    <string name="feature_textdoc_save_title">Save</string>
+    <string name="feature_textdoc_save_in_place">Save changes to this file</string>
+    <string name="feature_textdoc_save_as_note">Save as note</string>
+    <string name="feature_textdoc_save_as_markdown_note">Save as Markdown note</string>
+    <string name="feature_textdoc_save_to_files">Save to Files</string>
+    <string name="feature_textdoc_save_copy">Save a copy…</string>
+    <string name="feature_textdoc_save_pdf">Save as PDF (.pdf)</string>
+    <string name="feature_textdoc_save_html">Save as HTML (.html)</string>
+    <string name="feature_textdoc_save_docx">Save as Word (.docx)</string>
+    <string name="feature_textdoc_saving">Saving…</string>
+    <string name="feature_textdoc_saved_note">Saved as a note</string>
+    <string name="feature_textdoc_saved_files">Saved to Files as %1$s</string>
+    <string name="feature_textdoc_save_too_large">This file is too large to save this way</string>
+    <string name="feature_textdoc_save_no_space">Not enough storage space</string>
+    <string name="feature_textdoc_save_unreadable">Couldn\'t read the original file</string>
+    <string name="feature_textdoc_save_no_picker">No app can create a file here</string>
+</resources>

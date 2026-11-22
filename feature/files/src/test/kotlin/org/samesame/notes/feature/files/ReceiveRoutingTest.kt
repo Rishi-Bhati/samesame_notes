@@ -2,6 +2,7 @@ package org.samesame.notes.feature.files
 
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
+import org.samesame.notes.core.model.saveas.SaveSourceKind
 
 class ReceiveRoutingTest {
     @Test fun kinds() {
@@ -44,5 +45,14 @@ class ReceiveRoutingTest {
         assertThat(ReceiveRouting.audioExtension("x.opus", null)).isEqualTo("opus")
         assertThat(ReceiveRouting.audioExtension("x", "audio/mpeg")).isEqualTo("mp3")
         assertThat(ReceiveRouting.audioExtension("x", null)).isEqualTo("m4a")
+    }
+
+    @Test fun saveKinds() {
+        assertThat(ReceiveRouting.saveKindOf(ReceiveKind.Text, "a.md", "application/octet-stream")).isEqualTo(SaveSourceKind.Markdown)
+        assertThat(ReceiveRouting.saveKindOf(ReceiveKind.Text, "notes", "text/markdown")).isEqualTo(SaveSourceKind.Markdown)
+        assertThat(ReceiveRouting.saveKindOf(ReceiveKind.Text, "a.txt", "text/markdown")).isEqualTo(SaveSourceKind.Text)
+        assertThat(ReceiveRouting.saveKindOf(ReceiveKind.Image, "a.png", null)).isEqualTo(SaveSourceKind.Image)
+        assertThat(ReceiveRouting.saveKindOf(ReceiveKind.Other, "a.apk", null)).isEqualTo(SaveSourceKind.Other)
+        assertThat(ReceiveRouting.saveKindOf(ReceiveKind.NoteFile, "a.sdocx", null)).isEqualTo(SaveSourceKind.NoteFile)
     }
 }

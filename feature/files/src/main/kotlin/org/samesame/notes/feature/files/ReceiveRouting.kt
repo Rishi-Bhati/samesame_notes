@@ -1,6 +1,9 @@
 package org.samesame.notes.feature.files
 
 import org.samesame.notes.core.model.files.FileNames
+import org.samesame.notes.core.model.saveas.SaveAsOptions
+import org.samesame.notes.core.model.saveas.SaveOption
+import org.samesame.notes.core.model.saveas.SaveSourceKind
 import org.samesame.notes.core.model.textimport.TextImport
 
 /** What a received file is, for the share-receive sheet (docs/architecture/files-feature.md 2.7 and 3.3). */
@@ -57,6 +60,19 @@ object ReceiveRouting {
     /** True when a file of this kind can be offered "New note" (the existing note importer reads it). */
     fun canBecomeNote(kind: ReceiveKind) = kind == ReceiveKind.NoteFile || kind == ReceiveKind.Pdf || kind == ReceiveKind.Text ||
         kind == ReceiveKind.Image || kind == ReceiveKind.Audio
+
+    /** What [SaveAsOptions] calls a received item: Text splits into Markdown and other text by name and type. */
+    fun saveKindOf(kind: ReceiveKind, name: String?, mimeType: String?): SaveSourceKind = when (kind) {
+        ReceiveKind.NoteFile -> SaveSourceKind.NoteFile
+        ReceiveKind.Pdf -> SaveSourceKind.Pdf
+        ReceiveKind.Text -> if (SaveAsOptions.isMarkdown(name, mimeType)) SaveSourceKind.Markdown else SaveSourceKind.Text
+        ReceiveKind.Image -> SaveSourceKind.Image
+        ReceiveKind.Audio -> SaveSourceKind.Audio
+        ReceiveKind.Other -> SaveSourceKind.Other
+    }
+
+    /** The sheet's destinations for [items] (Files, New note, Save a copy, PDF), in display order. */
+    fun options(items: List<ReceivedItem>): List<SaveOption> = SaveAsOptions.forReceived(items.map { saveKindOf(it.kind, it.name, it.mimeType) })
 
     /** Default destination: note, text, picture and audio files open as notes; everything else is kept in Files. */
     // Text, images and audio become notes; Other files stay in Files.

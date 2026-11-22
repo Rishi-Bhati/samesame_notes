@@ -11,6 +11,7 @@ dependencies {
     implementation(projects.core.designsystem)
     implementation(projects.core.data)
     implementation(projects.core.richtext)
+    implementation(projects.feature.share)
     implementation(libs.androidx.activity.compose)
     implementation(libs.kotlinx.coroutines.core)
 

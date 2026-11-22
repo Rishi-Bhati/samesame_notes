@@ -11,4 +11,5 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(projects.core.files)
     implementation(projects.feature.textdoc)
+    implementation(projects.feature.share)
 }
