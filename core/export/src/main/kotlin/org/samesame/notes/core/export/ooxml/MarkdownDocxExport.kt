@@ -29,6 +29,7 @@ import org.commonmark.node.StrongEmphasis
 import org.commonmark.node.Text
 import org.commonmark.parser.Parser
 import java.io.OutputStream
+import org.samesame.notes.core.export.text.MarkdownTrees
 import org.samesame.notes.core.model.richtext.LinkSchemes
 
 /**
@@ -56,7 +57,7 @@ object MarkdownDocxExport {
     private val parser = Parser.builder().extensions(extensions).build()
 
     fun write(markdown: String, title: String, out: OutputStream) {
-        val documentNode = parser.parse(markdown)
+        val documentNode = MarkdownTrees.parse(parser, markdown)
         val hyperlinks = LinkedHashMap<String, String>() // destination -> rId
         val decimalNumIds = ArrayList<Int>() // allocated numIds for ordered lists
         val bodyXml = StringBuilder()

@@ -28,7 +28,7 @@ object MarkdownHtmlExport {
         .build()
 
     fun render(markdown: String, title: String, darkTheme: Boolean = false): String {
-        val document = parser.parse(markdown)
+        val document = MarkdownTrees.parse(parser, markdown)
         val renderedContent = renderer.render(document)
 
         val displayTitle = title.trim()

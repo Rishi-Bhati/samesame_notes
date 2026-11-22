@@ -54,6 +54,16 @@ class MarkdownParserTest {
         assertThat(MarkdownParser.parse("a".repeat(Limits.MAX_MARKDOWN_CHARS))).isNotNull()
     }
 
+    @Test fun `nesting thousands of levels deep does not crash`() {
+        for (md in listOf("> ".repeat(200_000) + "deep\n", "*".repeat(100_000) + "deep" + "*".repeat(100_000))) {
+            val doc = MarkdownParser.parse(md)!!
+            var depth = 0
+            var n: Node? = doc
+            while (n?.firstChild != null) { n = n.firstChild; depth++ }
+            assertThat(depth).isAtMost(Limits.MAX_MARKDOWN_AST_DEPTH)
+        }
+    }
+
     @Test fun `nesting deeper than the cap is cut off`() {
         val doc = MarkdownParser.parse("> ".repeat(500) + "deep\n")!!
         var depth = 0
