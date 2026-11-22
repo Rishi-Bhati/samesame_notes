@@ -4,6 +4,7 @@ import androidx.datastore.preferences.core.mutablePreferencesOf
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 import org.samesame.notes.core.model.AppSettings
+import org.samesame.notes.core.model.MarkdownEditMode
 import org.samesame.notes.core.model.NewNoteStyle
 import org.samesame.notes.core.model.PageMode
 import org.samesame.notes.core.model.PageRatio
@@ -28,6 +29,16 @@ class AppSettingsTest {
         assertThat(s.newNote.pdfPageSize).isEqualTo(PdfPageSize.Original)
         assertThat(s.themeMode).isEqualTo(ThemeMode.System)
         assertThat(s.replaceArrows).isTrue()
+        assertThat(s.markdownEditMode).isEqualTo(MarkdownEditMode.Live)
+    }
+
+    @Test
+    fun markdownEditModeRoundTrips() {
+        val prefs = mutablePreferencesOf()
+        MarkdownEditMode.entries.forEach { mode ->
+            prefs.writeAppSettings(AppSettings(markdownEditMode = mode))
+            assertThat(prefs.toAppSettings().markdownEditMode).isEqualTo(mode)
+        }
     }
 
     @Test

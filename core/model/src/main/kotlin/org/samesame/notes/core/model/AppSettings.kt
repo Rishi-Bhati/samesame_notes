@@ -44,7 +44,18 @@ data class AppSettings(
     val backupLastNoteCount: Int? = null,
     /** Error of the last backup attempt, or null when it succeeded or none ran yet. */
     val backupLastError: String? = null,
+    /** "Markdown editing": how Markdown opens in the text editor when the document has no choice of its own. */
+    val markdownEditMode: MarkdownEditMode = MarkdownEditMode.Live,
 )
+
+/** Settings > "Markdown editing". */
+enum class MarkdownEditMode {
+    /** Syntax is styled in place as you type; markers show on the caret's line. */
+    Live,
+
+    /** Plain text, no styling. */
+    Source,
+}
 
 /** How often automatic backups run. */
 enum class BackupSchedule { Off, Daily, Weekly }

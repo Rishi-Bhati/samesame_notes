@@ -57,6 +57,7 @@ private object SettingsKeys {
     val backupLastTime = longPreferencesKey("backup_last_time")
     val backupLastNoteCount = androidx.datastore.preferences.core.intPreferencesKey("backup_last_note_count")
     val backupLastError = stringPreferencesKey("backup_last_error")
+    val markdownEditMode = stringPreferencesKey("markdown_edit_mode")
 }
 
 /**
@@ -111,6 +112,7 @@ internal fun Preferences.toAppSettings(): AppSettings {
         backupLastTime = this[SettingsKeys.backupLastTime],
         backupLastNoteCount = this[SettingsKeys.backupLastNoteCount],
         backupLastError = this[SettingsKeys.backupLastError],
+        markdownEditMode = enumOrDefault(this[SettingsKeys.markdownEditMode], d.markdownEditMode),
     )
 }
 
@@ -148,6 +150,7 @@ internal fun MutablePreferences.writeAppSettings(s: AppSettings) {
     if (lastCount == null) remove(SettingsKeys.backupLastNoteCount) else this[SettingsKeys.backupLastNoteCount] = lastCount
     val lastError = s.backupLastError
     if (lastError.isNullOrBlank()) remove(SettingsKeys.backupLastError) else this[SettingsKeys.backupLastError] = lastError
+    this[SettingsKeys.markdownEditMode] = s.markdownEditMode.name
 }
 
 @Singleton

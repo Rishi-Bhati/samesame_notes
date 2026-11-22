@@ -149,6 +149,9 @@
     </plurals>
     <string name="feature_settings_file_paste">When pasting a file link</string>
     <string name="feature_settings_file_paste_ask">Ask</string>
+    <string name="feature_settings_markdown_editing">Markdown editing</string>
+    <string name="feature_settings_markdown_live">Live</string>
+    <string name="feature_settings_markdown_source">Source</string>
     <string name="feature_settings_file_paste_link">Always paste as link</string>
     <string name="feature_settings_file_paste_show">Always show in note</string>
 
