@@ -1547,6 +1547,14 @@ internal fun ComposerEditor(
 
     fun undo() { val e = editor; if (e != null) e.undo() else scope.launch { session.undo() } }
     fun redo() { val e = editor; if (e != null) e.redo() else scope.launch { session.redo() } }
+    // Hardware keyboard Ctrl+Z / Ctrl+Y and Ctrl+B/I/U reach the body and the edited box through their editor states.
+    SideEffect {
+        for (st in listOfNotNull(textState, editor?.state)) {
+            st.onUndo = { undo(); true }
+            st.onRedo = { redo(); true }
+            st.onBeforeFormat = { editor?.breakTypingBurst() ?: session.breakTypingBurst() }
+        }
+    }
     // Insert > Text box: an empty box at the 16 dp margin of the current page, edited at once (the reference switches to text mode too).
     // The Insert menu has no paste position, so the box takes the margin corner (the reference ContextMenuAddTextBox fallback).
     fun insertTextBox() {

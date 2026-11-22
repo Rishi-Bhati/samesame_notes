@@ -51,6 +51,27 @@ interface InputHost {
 
     /** Called when the user deletes backwards with Backspace / IME delete. */
     fun onUserBackspace(pageBefore: Int, caretBefore: Int, caretAfter: Int) = Unit
+
+    /** Ctrl+Z. True when the host has an undo history and took the key. */
+    fun undo(): Boolean = false
+
+    /** Ctrl+Y / Ctrl+Shift+Z. */
+    fun redo(): Boolean = false
+
+    /** Ctrl+A: true when the host selected (with its handles); false selects the body plainly. */
+    fun selectAll(): Boolean = false
+
+    /** Ctrl+B / Ctrl+I / Ctrl+U. True when applied. */
+    fun toggleStyle(style: KeyStyle): Boolean = false
+
+    /**
+     * Up/Down: the offset [lines] visual lines from [offset] and the x it keeps as the goal column ([goalX] null = the
+     * caret's own x). Null when the layout is not known (the key is then not handled).
+     */
+    fun lineMove(offset: Int, lines: Int, goalX: Float?): Pair<Int, Float>? = null
+
+    /** Home/End: the start / end of the visual line holding [offset]; null = the start / end of the body. */
+    fun lineEdge(offset: Int, end: Boolean): Int? = null
 }
 
 /**
@@ -62,6 +83,8 @@ class RichTextInputConnection(
     view: View,
     private val body: BodyText,
     private val host: InputHost,
+    /** Shared with the hardware keyboard path ([TextInputNode]); the editor state owns it. */
+    private val keys: RichTextKeyHandler = RichTextKeyHandler(body, host),
 ) : BaseInputConnection(view, true) {
 
     init { ImeTrace.init(view.context) }
@@ -178,49 +201,9 @@ class RichTextInputConnection(
         }
 
     override fun sendKeyEvent(event: KeyEvent): Boolean = edit("sendKeyEvent", "action=${event.action} key=${KeyEvent.keyCodeToString(event.keyCode)} meta=${event.metaState}") {
-        if (event.action != KeyEvent.ACTION_DOWN) return@edit true
-        val sel = body.selection
-        when (event.keyCode) {
-            KeyEvent.KEYCODE_DEL -> {
-                val caretBefore = sel.max
-                val pageBefore = host.currentCaretPage()
-                host.ghostDoubleSpace.onDelete(SystemClock.uptimeMillis())
-                body.deleteBackward()
-                val caretAfter = body.selection.start
-                if (caretAfter < caretBefore) host.onUserBackspace(pageBefore, caretBefore, caretAfter)
-            }
-            KeyEvent.KEYCODE_FORWARD_DEL -> body.deleteForward()
-            KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
-                if (!host.slashEnterFromIme()) enter()
-            }
-            KeyEvent.KEYCODE_TAB -> {
-                val ghost = host.mathGhostAtCaret()
-                if (ghost != null) {
-                    ImeTrace.logMath("ime key TAB anchor=${ghost.anchor} caret=${sel.start},${sel.end}")
-                    host.acceptMathGhostFromIme("tab")
-                } else {
-                    if (event.isShiftPressed) body.outdent() else body.indent()
-                }
-            }
-            KeyEvent.KEYCODE_DPAD_LEFT -> body.setSelection(if (sel.collapsed) (sel.min - 1).coerceAtLeast(0) else sel.min)
-            KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                val ghost = host.mathGhostAtCaret()
-                if (ghost != null) {
-                    ImeTrace.logMath("ime key DPAD_RIGHT anchor=${ghost.anchor} caret=${sel.start},${sel.end}")
-                    host.acceptMathGhostFromIme("dpad_right")
-                } else {
-                    body.setSelection(if (sel.collapsed) (sel.max + 1).coerceAtMost(body.length) else sel.max)
-                }
-            }
-            KeyEvent.KEYCODE_MOVE_HOME -> body.setSelection(0)
-            KeyEvent.KEYCODE_MOVE_END -> body.setSelection(body.length)
-            else -> {
-                val c = event.getUnicodeChar(event.metaState)
-                if (c != 0 && !Character.isISOControl(c)) body.commitText(String(Character.toChars(c)))
-                else return@edit false
-            }
-        }
-        true
+        // Not forwarded to the view (no super call): the hardware path in TextInputNode never sees IME keys.
+        if (event.action == KeyEvent.ACTION_UP) return@edit true
+        keys.onKey(event, fromIme = true)
     }
 
     override fun performContextMenuAction(id: Int): Boolean = edit("performContextMenuAction", "$id") {
