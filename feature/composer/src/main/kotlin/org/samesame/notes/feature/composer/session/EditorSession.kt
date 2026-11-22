@@ -55,6 +55,7 @@ import org.samesame.notes.core.model.document.SizePu
 import org.samesame.notes.core.model.document.ViewState
 import org.samesame.notes.core.model.richtext.ParagraphStyle
 import org.samesame.notes.core.model.richtext.RichText
+import org.samesame.notes.core.model.richtext.RichTextOps
 import org.samesame.notes.feature.composer.history.AddElements
 import org.samesame.notes.feature.composer.voice.VoiceRecording
 import org.samesame.notes.feature.composer.history.BodyTextTarget
@@ -70,6 +71,7 @@ import org.samesame.notes.feature.composer.history.ReplaceElements
 import org.samesame.notes.feature.composer.history.Reorder
 import org.samesame.notes.feature.composer.history.RecordingsChange
 import org.samesame.notes.feature.composer.history.TextEdit
+import org.samesame.notes.feature.composer.pages.PageTextRanges
 import org.samesame.notes.feature.composer.history.TextSel
 import org.samesame.notes.feature.composer.history.UndoManager
 import org.samesame.notes.feature.composer.history.PagePasteChange
@@ -841,12 +843,44 @@ class EditorSession(
         return true
     }
 
-    /** Removes pages (their layers are kept in the command for undo). Suspends to load layers not resident. */
-    suspend fun deletePages(ids: Set<String>) {
+    /**
+     * Removes pages (their layers are kept in the command for undo). Suspends to load layers not resident.
+     *
+     * [textRanges] are the body offsets (`[start, end)`) laid out on those pages: the reference deletes a page's typed
+     * text together with the page. Without that the text would still need as many pages and the editor would append a
+     * page right back, so a page holding text could never be deleted. Text and pages go in one undo step.
+     */
+    suspend fun deletePages(ids: Set<String>, textRanges: List<IntRange> = emptyList()) {
         val before = holder.current.pages
         if (before.none { it.id in ids } || before.all { it.id in ids }) return // a note keeps at least one page
         val detached = ids.mapNotNull { pages.await(it) }
-        applyPageList(before, before.filter { it.id !in ids }, detached)
+        history.breakBurst()
+        history.group {
+            removeBodyRanges(textRanges)
+            applyPageList(before, before.filter { it.id !in ids }, detached)
+        }
+    }
+
+    /** Deletes the body ranges (last first, so earlier offsets stay valid), each recorded as a [TextEdit]. */
+    private fun removeBodyRanges(ranges: List<IntRange>) {
+        if (ranges.isEmpty()) return
+        val target = boundBody
+        var text = target.toRichText()
+        for (r in PageTextRanges.normalise(ranges, text.text)) {
+            val removed = RichTextOps.slice(text, r.first, r.last + 1)
+            val inserted = RichTextOps.slice(text, r.first, r.first)
+            val sel = TextSel(r.first)
+            val cmd = TextEdit(r.first, removed, inserted, sel, sel)
+            applyingHistory = true
+            try {
+                cmd.redo(this)
+            } finally {
+                applyingHistory = false
+            }
+            history.record(cmd)
+            text = target.toRichText()
+        }
+        bodyChanged()
     }
 
     /** Reorders pages (page sorter). */

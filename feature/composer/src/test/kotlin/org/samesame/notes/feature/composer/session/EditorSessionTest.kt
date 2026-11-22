@@ -175,6 +175,60 @@ class EditorSessionTest {
         assertThat(s.content("p2")!!.elements.map { it.id.value }).containsExactly(7L)
     }
 
+    // ---- 0.4.0 regression: "Delete page does not delete the page" (a page holding typed text came straight back)
+
+    @Test fun deletingAPageTakesItsTextAndIsOneUndoStep() = runTest {
+        val s = session("p1", "p2", "p3")
+        runCurrent()
+        s.typeText("one\ntwo\nthree")
+        s.pages.await("p2")
+        s.addElements("p2", listOf(fakeElement(7)))
+        s.deletePages(setOf("p2"), listOf(4..7)) // "two\n" is laid out on page 2
+        assertThat(s.holder.current.pages.map { it.id }).containsExactly("p1", "p3").inOrder()
+        assertThat(s.body.toRichText().text).isEqualTo("one\nthree")
+
+        // Closing and reopening: the saved document no longer has the page or its text.
+        s.flush()
+        val saved = storage.saved.last().document
+        assertThat(saved.pages.map { it.id }).containsExactly("p1", "p3").inOrder()
+        assertThat(saved.body.text).isEqualTo("one\nthree")
+
+        s.undo()
+        assertThat(s.holder.current.pages.map { it.id }).containsExactly("p1", "p2", "p3").inOrder()
+        assertThat(s.body.toRichText().text).isEqualTo("one\ntwo\nthree")
+        assertThat(s.content("p2")!!.elements.map { it.id.value }).containsExactly(7L)
+
+        s.redo()
+        assertThat(s.holder.current.pages.map { it.id }).containsExactly("p1", "p3").inOrder()
+        assertThat(s.body.toRichText().text).isEqualTo("one\nthree")
+
+        // One undo step brings page and text back; the next one undoes the ink, the one after the typing.
+        s.undo(); s.undo(); s.undo()
+        assertThat(s.body.toRichText().text).isEmpty()
+        assertThat(s.holder.current.pages.map { it.id }).containsExactly("p1", "p2", "p3").inOrder()
+    }
+
+    @Test fun deletingTheLastTextPageDropsTheLineBreakBeforeIt() = runTest {
+        val s = session("p1", "p2")
+        runCurrent()
+        s.typeText("one\ntwo")
+        s.deletePages(setOf("p2"), listOf(4..6))
+        assertThat(s.holder.current.pages.map { it.id }).containsExactly("p1")
+        assertThat(s.body.toRichText().text).isEqualTo("one")
+        s.undo()
+        assertThat(s.body.toRichText().text).isEqualTo("one\ntwo")
+        assertThat(s.holder.current.pages.map { it.id }).containsExactly("p1", "p2").inOrder()
+    }
+
+    @Test fun theOnlyPageIsNeverDeletedNorItsText() = runTest {
+        val s = session("p1")
+        runCurrent()
+        s.typeText("keep")
+        s.deletePages(setOf("p1"), listOf(0..3))
+        assertThat(s.holder.current.pages.map { it.id }).containsExactly("p1")
+        assertThat(s.body.toRichText().text).isEqualTo("keep")
+    }
+
     @Test fun eraseResultStyleDeltaUndoes() = runTest {
         val s = session()
         runCurrent()

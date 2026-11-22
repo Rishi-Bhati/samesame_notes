@@ -13,6 +13,8 @@ class MathDetectorTest {
     private val positives: List<Pair<String, String>> = listOf(
         // arithmetic
         "1 + 1 =" to " 2",
+        // 0.4.0: a text label before the expression no longer blocks it (owner bug "Udupi -> manglore: 100*7 =").
+        "note 5 + 5 =" to " 10",
         "1+1 =" to " 2",
         "2 + 3 =" to " 5",
         "10 - 4 =" to " 6",
@@ -173,7 +175,6 @@ class MathDetectorTest {
         "5 + ",
         "5 + 5",
         "https://example.com =",
-        "note 5 + 5 =",
         "5 % 3 =",
         "5,5,5 + 1 =",
         "5..5 + 1 =",

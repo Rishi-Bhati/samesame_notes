@@ -272,7 +272,7 @@
     <string name="feature_composer_bookmark">Bookmark</string>
     <string name="feature_composer_delete_page">Delete</string>
     <string name="feature_composer_delete_page_title">Delete this page?</string>
-    <string name="feature_composer_delete_page_message">Handwriting, pictures and other items on this page will be deleted. Typed text stays in the note and moves to the next pages.</string>
+    <string name="feature_composer_delete_page_message">Everything on this page will be deleted, including typed text, handwriting and pictures.</string>
     <string name="feature_composer_page_of">%1$d/%2$d</string>
 
     <!-- Full screen (#61) -->

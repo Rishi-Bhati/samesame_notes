@@ -75,19 +75,94 @@ object MathDetector {
         }
         val body = trimmed.dropLast(1).trim()
         if (body.isEmpty() || body.length > Limits.MATH_MAX_EXPRESSION_LENGTH) return null
-        if (body.any { it == '=' }) return null
-        if (listMarker.containsMatchIn(prefix)) return null
-        if (!plausible(body)) return null
+        // An assignment ("x = 5 =") never triggers; "=>" is only a label separator ("Trip => 100*7 =").
+        if (body.indices.any { body[it] == '=' && body.getOrNull(it + 1) != '>' }) return null
+        val marker = listMarker.find(body)?.range?.last?.plus(1) ?: -1
 
-        val conversion = splitConversion(body)
-        val converted = conversion?.let { (source, target) -> MathEvaluator.convert(source, target, config) }
-        val result = converted ?: MathEvaluator.evaluate(body, config) ?: return null
+        val whole = if (marker < 0 && plausible(body)) {
+            val conversion = splitConversion(body)
+            conversion?.let { (source, target) -> MathEvaluator.convert(source, target, config) }
+                ?: MathEvaluator.evaluate(body, config)
+        } else null
         // A lone number or quantity is not a calculation: "5 =" and "5 km =" stay quiet.
-        if (result.ops == 0) return null
+        val result = whole?.takeIf { it.ops > 0 } ?: trailingArithmetic(body, marker, config) ?: return null
 
         val lead = if (prefix.length == trimmed.length) " " else ""
         return MathSuggestion(end, lead + result.text)
     }
+
+    /**
+     * The arithmetic at the end of [body] after a text label: `Udupi → Mangalore: 100*7`, `Room 4: 100*7`,
+     * `Taxi - ₹1,200 / 3`. Also a bare expression the evaluator cannot read on its own (`100 x 7`, `₹100 * 7`).
+     * [marker] is where a list marker ends (-1 when there is none): the expression must start after it.
+     */
+    private fun trailingArithmetic(body: String, marker: Int, config: MathConfig): MathResult? {
+        val start = arithmeticStart(body)
+        if (start >= body.length || start < marker) return null
+        val label = body.substring(maxOf(marker, 0), start)
+        var expr = body.substring(start).trim()
+        if (label.isNotBlank()) {
+            if (label.none { it.isLetter() }) return null
+            // "A4 x 2", "abc5+1": the number belongs to the word, there is no label.
+            if (label.last().isLetter() && !body[start].isWhitespace() && body[start] !in ",-\u2212") return null
+            // "at 10:30 + 5": a time's minutes are not an expression.
+            val l = label.length
+            if (label.last() == ':' && l >= 2 && label[l - 2].isDigit() && body[start].isDigit()) return null
+            // Separators the scan kept: "Udupi - 100*7", "Udupi, 100*7", "Udupi. 100*7".
+            if (expr.length > 1 && expr[0] in SEPARATOR_DASHES && expr[1].isWhitespace()) expr = expr.drop(1).trim()
+            else if (expr.startsWith(',')) expr = expr.drop(1).trim()
+            else if (expr.length > 1 && expr[0] == '.' && expr[1].isWhitespace()) expr = expr.drop(1).trim()
+        }
+        if (expr.isEmpty() || !expr.first().let { it.isDigit() || it == '(' || it == '-' || it == '+' || it.isCurrency() || it == '.' }) return null
+        if (!plausible(expr)) return null
+        val currencies = expr.filter { it.isCurrency() }.toSet()
+        if (currencies.size > 1) return null
+        val plain = normaliseOperators(expr.filterNot { it.isCurrency() })
+        if (!plausible(plain)) return null
+        val result = MathEvaluator.evaluate(plain, config)?.takeIf { it.ops > 0 } ?: return null
+        val currency = currencies.firstOrNull() ?: return result
+        val text = if (result.text.startsWith('-')) "-$currency${result.text.drop(1)}" else "$currency${result.text}"
+        return result.copy(text = text)
+    }
+
+    /** Where the run of arithmetic characters that ends [body] starts (scanning back over digits, operators, `x`, `of`). */
+    private fun arithmeticStart(body: String): Int {
+        var i = body.length
+        while (i > 0) {
+            val c = body[i - 1]
+            when {
+                c.isDigit() || c in ARITHMETIC || c.isCurrency() -> i--
+                // A standalone "x" multiplies ("100 x 7"); inside a word ("Box") it ends the scan.
+                (c == 'x' || c == 'X') && body.getOrNull(i - 2)?.isLetter() != true && body.getOrNull(i)?.isLetter() != true -> i--
+                // "15% of 80".
+                (c == 'f' || c == 'F') && i >= 2 && body[i - 2].equals('o', ignoreCase = true) &&
+                    body.getOrNull(i - 3)?.isLetter() != true && body.getOrNull(i)?.isLetter() != true -> i -= 2
+                else -> break
+            }
+        }
+        return i
+    }
+
+    /** `x` / `X` between operands and the minus sign (U+2212) as the evaluator spells them. */
+    private fun normaliseOperators(expr: String): String {
+        val out = StringBuilder(expr.length)
+        for (i in expr.indices) {
+            val c = expr[i]
+            out.append(
+                when {
+                    c == '\u2212' -> '-'
+                    (c == 'x' || c == 'X') && expr.getOrNull(i - 1)?.isLetter() != true && expr.getOrNull(i + 1)?.isLetter() != true -> '*'
+                    else -> c
+                },
+            )
+        }
+        return out.toString()
+    }
+
+    private fun Char.isCurrency(): Boolean = Character.getType(this) == Character.CURRENCY_SYMBOL.toInt()
+
+    private const val ARITHMETIC = " \t.,+-*/^%()×÷\u2212\u00A0\u202F"
+    private const val SEPARATOR_DASHES = "-\u2212"
 
     /**
      * "Calculate" in the selection menu: the text to put in place of [selected] (`5 + 5` or `5 + 5 =` become
@@ -111,9 +186,7 @@ object MathDetector {
         if (dateIso.matches(body) || dateShort.matches(body)) return false
         val dayMonth = dateDayMonth.matchEntire(body)
         if (dayMonth != null) {
-            val first = dayMonth.groupValues[1].toIntOrNull() ?: 0
-            val second = dayMonth.groupValues[2].toIntOrNull() ?: 0
-            if (first > 12 || second > 12) return false
+            if (isDayMonthDate(dayMonth.groupValues[1], dayMonth.groupValues[2])) return false
         }
         if (version.matches(body)) return false
         if (timeOfDay.containsMatchIn(body)) return false
@@ -207,4 +280,15 @@ object MathDetector {
         }
         return depth
     }
+}
+
+/**
+ * `a/b` or `a-b` read as a date: a side can only be a day, month or year ("17/11", "2026-11"), never "1/2", and both
+ * sides must fit a date ("700 / 7" is a division).
+ */
+internal fun isDayMonthDate(firstText: String, secondText: String): Boolean {
+    val first = firstText.toIntOrNull() ?: 0
+    val second = secondText.toIntOrNull() ?: 0
+    if (first <= 12 && second <= 12) return false
+    return (first <= 31 && second <= 12) || (first <= 12 && second <= 31) || (firstText.length == 4 && second in 1..12)
 }

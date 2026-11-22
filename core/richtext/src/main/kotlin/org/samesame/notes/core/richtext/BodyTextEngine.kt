@@ -213,6 +213,15 @@ class BodyTextEngine(
 
     fun pageSlices() = pagination().slices
 
+    /** Body offsets laid out on page [pageIndex] (inclusive range); null when no text line falls on that page. */
+    fun pageTextRange(pageIndex: Int): IntRange? {
+        val slice = pagination().slices.getOrNull(pageIndex) ?: return null
+        if (slice.isEmpty || slice.firstLine >= layout.lineCount) return null
+        val start = layout.getLineStart(slice.firstLine)
+        val end = minOf(layout.getLineEnd(minOf(slice.lastLine, layout.lineCount - 1)), body.length)
+        return if (end > start) start until end else null
+    }
+
     // ---------------------------------------------------------------- geometry
 
     /** Index of the page at (or nearest to) a document point, among existing and required pages. */

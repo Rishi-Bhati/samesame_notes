@@ -515,6 +515,15 @@ internal fun ComposerEditor(
     val textState = rememberRichTextEditorState(body, layout, preparedText)
     textState.sensitive = locked
 
+    // Deleting pages takes the typed text laid out on them too (one undo step, as the reference does): body text flows
+    // across pages, so leaving it would make the text need as many pages as before and a page would be appended again.
+    suspend fun deletePagesWithText(ids: Set<String>) {
+        val pages = session.holder.current.pages
+        val ranges = if (doc.layout.mode == PageMode.Infinite || body.length == 0) emptyList()
+        else pages.indices.filter { pages[it].id in ids }.mapNotNull { textState.engine.pageTextRange(it) }
+        session.deletePages(ids, ranges)
+    }
+
     fun requestDeletePage(pageId: String) {
         scope.launch {
             val pages = session.holder.current.pages
@@ -533,7 +542,7 @@ internal fun ComposerEditor(
                 bookmarked = page.isBookmarked,
             )
             if (facts.isEmpty && index > lastTextPage) {
-                session.deletePages(setOf(pageId))
+                deletePagesWithText(setOf(pageId))
             } else {
                 deletePageConfirmId = pageId
             }
@@ -2777,7 +2786,7 @@ internal fun ComposerEditor(
                 searchPages = { q ->
                     SearchNavigator.pagesWithHits(org.samesame.notes.core.richtext.TextSearch.find(body.editable, q)) { o -> textState.engine.caret(o).pageIndex }
                 },
-                onDeleteSelected = { ids -> scope.launch { session.deletePages(ids) } },
+                onDeleteSelected = { ids -> scope.launch { deletePagesWithText(ids) } },
                 // Copy / Paste use the app clipboard; the locked-note notice covers Share / Save / Copy like the editor's.
                 canPaste = { !locked && session.clipboard.hasPages },
                 onPaste = { afterIndex -> session.clipboard.pages?.let { clip -> scope.launch { session.pastePages(afterIndex, clip) } } },
@@ -2859,7 +2868,7 @@ internal fun ComposerEditor(
                     val id = deletePageConfirmId
                     deletePageConfirmId = null
                     if (id != null) {
-                        scope.launch { session.deletePages(setOf(id)) }
+                        scope.launch { deletePagesWithText(setOf(id)) }
                     }
                 },
                 atBottom = true,
