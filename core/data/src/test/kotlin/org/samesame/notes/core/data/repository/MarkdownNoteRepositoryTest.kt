@@ -3,6 +3,7 @@ package org.samesame.notes.core.data.repository
 import androidx.room.Room
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -85,6 +86,21 @@ class MarkdownNoteRepositoryTest {
         assertThat(updatedNote!!.previewText).isEqualTo(markdownText.take(300))
         assertThat(updatedNote.previewText.length).isEqualTo(300)
         assertThat(updatedNote.modifiedAt).isEqualTo(2_000_000L)
+    }
+
+    @Test
+    fun importMarkdownMakesAMarkdownNoteWithTheSourceKeptExactly() = runBlocking {
+        val source = "# Plan\n\n- [ ] one\n- [x] two\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n<script>x</script>  \ntrailing  \n"
+        val id = notes.importMarkdown(source, "Plan", null)
+
+        val note = notes.getNote(id)!!
+        assertThat(note.kind).isEqualTo(NoteKind.Markdown)
+        assertThat(note.title).isEqualTo("Plan")
+        assertThat(note.previewText).isEqualTo(source.take(300))
+        assertThat(notes.readMarkdown(id)).isEqualTo(source)
+        assertThat(documents.readDocument(id.value).markdown?.content).isEqualTo(source)
+        // It is found by its text like any other note.
+        assertThat(notes.search("Plan").first().map { it.id }).contains(id)
     }
 
     @Test

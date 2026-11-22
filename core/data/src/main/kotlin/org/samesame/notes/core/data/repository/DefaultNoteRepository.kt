@@ -545,6 +545,36 @@ internal class DefaultNoteRepository @Inject constructor(
     override suspend fun importText(text: String, title: String, folderId: FolderId?): NoteId =
         importRichText(org.samesame.notes.core.model.richtext.RichText.of(text), title, folderId)
 
+    override suspend fun importMarkdown(markdown: String, title: String, folderId: FolderId?): NoteId {
+        val id = UUID.randomUUID().toString()
+        val settings = appSettings.settings.first()
+        val style = settings.newNote
+        var created = false
+        try {
+            val base = documents.create(
+                id, style.pageMode, title = title, ratio = style.ratio, template = style.template,
+                backgroundColor = style.backgroundColor, adjustForDarkMode = settings.adjustColourInDarkMode,
+            )
+            created = true
+            documents.writeDocument(base.copy(markdown = MarkdownBody(content = markdown)))
+            documents.flush(id)
+            val now = clock.now()
+            noteDao.upsert(
+                NoteEntity(
+                    id = id, title = title, previewText = markdown.take(PREVIEW_LENGTH), folderId = folderId?.value,
+                    isFavorite = false, isLocked = false, pageMode = base.layout.mode, backgroundColor = style.backgroundColor ?: 0,
+                    createdAt = now, modifiedAt = now, lastOpenedAt = now, trashedAt = null, isDirty = true,
+                    kind = NoteKind.Markdown,
+                ),
+            )
+            searchDao.replace(NoteSearchEntity(noteId = id, title = title, body = markdown, inkText = ""))
+            return NoteId(id)
+        } catch (e: Throwable) {
+            if (created) runCatching { documents.delete(id) }
+            throw e
+        }
+    }
+
     override suspend fun importRichText(body: org.samesame.notes.core.model.richtext.RichText, title: String, folderId: FolderId?): NoteId {
         val id = UUID.randomUUID().toString()
         val settings = appSettings.settings.first()

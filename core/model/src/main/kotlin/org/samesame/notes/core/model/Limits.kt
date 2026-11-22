@@ -151,4 +151,8 @@ object Limits {
     const val MAX_VERSION_BYTES_TOTAL = 500L * 1024 * 1024
     /** Characters of body text shown in the read-only version preview. */
     const val VERSION_PREVIEW_CHARS = 20_000
+
+    // Save options for files opened with the app (0.4.0)
+    /** Pixels one picture keeps when pictures are saved as a PDF (an A4 page at 300 dpi); larger ones are downsampled. */
+    const val MAX_IMAGE_TO_PDF_PIXELS = 2480 * 3508
 }

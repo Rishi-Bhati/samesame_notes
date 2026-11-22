@@ -177,6 +177,13 @@ interface NoteRepository {
         throw UnsupportedOperationException("importText")
 
     /**
+     * A new Markdown note (`NoteKind.Markdown`) whose source is [markdown], kept exactly as given, titled [title]:
+     * "Save as note" of a Markdown file opened from another app. Atomic like [importText].
+     */
+    suspend fun importMarkdown(markdown: String, title: String, folderId: FolderId? = null): NoteId =
+        throw UnsupportedOperationException("importMarkdown")
+
+    /**
      * A new note whose body is [body] (formatting and checklist paragraphs kept), titled [title]: the quick-capture sheet's
      * save. Atomic like [importText]: the note exists completely or not at all.
      */
