@@ -39,6 +39,7 @@ Open any text file, a text and Markdown editor with live formatting, Markdown no
 
 - Delete page now really removes the page. The typed text on that page is removed with it, and Undo brings both back.
 - Calculations work after a label: 'Udupi -> Mangalore: 100*7 =' shows 700. Currency in front ('Rent: ₹1,000 * 12 =') is kept. Times, dates and phone numbers are still ignored.
+- Arrows (→ ← ↔ ⇒ ⇔ and the rest) are drawn a little bigger and bolder in notes. The saved text doesn't change.
 - Hardware keyboards work in notes: typing, Enter, Backspace, arrows with Shift to select, and Ctrl+Z, Y, A, C, X, V, B, I and U.
 
 ### Security
