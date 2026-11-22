@@ -34,8 +34,7 @@ class TextDocActivity : FragmentActivity() {
             finish()
             return
         }
-        val writable = intent.getBooleanExtra(EXTRA_WRITABLE, false) ||
-            intent.flags and Intent.FLAG_GRANT_WRITE_URI_PERMISSION != 0
+        val writable = isWritable(intent)
         // Opened straight from another app (no Save to SameSame hop): the name and type come from the provider.
         val incoming = uri?.let { IncomingFileResolver(contentResolver).resolve(it, intent.type) }
         val displayName = intent.getStringExtra(EXTRA_DISPLAY_NAME) ?: incoming?.displayName
@@ -79,6 +78,12 @@ class TextDocActivity : FragmentActivity() {
             val uri = intent.data ?: return false
             return IncomingFileResolver.isForeignContent(uri, ownPackage)
         }
+
+        /**
+         * Editable only when the sender granted write access. [EXTRA_WRITABLE] is not trusted: any app can set it, and
+         * the editor would then write with this app's own access (a persisted backup folder grant, for one).
+         */
+        fun isWritable(intent: Intent): Boolean = intent.flags and Intent.FLAG_GRANT_WRITE_URI_PERMISSION != 0
 
         /** Opens [uri] from inside/outside the app. The flags are forwarded so the editor may write the document. */
         fun intent(context: Context, uri: Uri, displayName: String?, writable: Boolean): Intent {
