@@ -236,7 +236,7 @@ fun TextDocRoute(
                             markdown = state.text,
                             modifier = Modifier.fillMaxWidth(),
                             onTaskCheckedChange = if (state.isReadOnly) null else { offset, checked ->
-                                viewModel.updateText(MarkdownParser.withTaskChecked(state.text, offset, checked))
+                                viewModel.replaceText(MarkdownParser.withTaskChecked(state.text, offset, checked))
                             },
                         )
                     }
@@ -266,7 +266,7 @@ fun TextDocRoute(
                                 markdown = previewText,
                                 modifier = Modifier.fillMaxWidth(),
                                 onTaskCheckedChange = if (state.isReadOnly) null else { offset, checked ->
-                                    viewModel.updateText(MarkdownParser.withTaskChecked(state.text, offset, checked))
+                                    viewModel.replaceText(MarkdownParser.withTaskChecked(state.text, offset, checked))
                                 },
                             )
                         }

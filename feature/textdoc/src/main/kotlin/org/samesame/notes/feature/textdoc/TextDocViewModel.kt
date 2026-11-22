@@ -39,6 +39,14 @@ data class TextDocUiState(
     val isMonospace: Boolean = false,
     val isWrap: Boolean = true,
     val isHtmlPreview: Boolean = false,
+    /**
+     * Counts text changes that did not come from typing in the editor (opening, undo, redo, replace, a task ticked in
+     * the preview). The editor adopts [text] only when this changes: otherwise [text] can be a few keystrokes behind
+     * what the editor already shows, and copying it back would wipe the newer input.
+     */
+    val externalEdits: Int = 0,
+    /** Counts find navigation (find, next, previous, replace): the editor selects the active match when it changes. */
+    val findMoves: Int = 0,
     /** The Markdown view; only meaningful when [isMarkdown]. */
     val markdownMode: MarkdownViewMode = MarkdownViewMode.Source,
     /** The editing view (Live or Source) used next to the preview and when leaving it. */
@@ -129,6 +137,7 @@ class TextDocViewModel @Inject constructor(
                     undoRedo.reset(text)
                     matches = emptyList()
                     _uiState.value = TextDocUiState(
+                        externalEdits = _uiState.value.externalEdits + 1,
                         text = text,
                         encoding = TextEncoding.Utf8,
                         lineEnding = LineEnding.Lf,
@@ -182,6 +191,7 @@ class TextDocViewModel @Inject constructor(
                     MarkdownViewMode.Source to MarkdownViewMode.Source
                 }
                 _uiState.value = TextDocUiState(
+                    externalEdits = _uiState.value.externalEdits + 1,
                     text = doc.text,
                     encoding = doc.encoding,
                     lineEnding = doc.lineEnding,
@@ -212,14 +222,22 @@ class TextDocViewModel @Inject constructor(
         applyText(newText)
     }
 
+    /** A change made outside the editor (a task ticked in the preview); the editor adopts it. */
+    fun replaceText(newText: String) {
+        val state = _uiState.value
+        if (state.isReadOnly || newText == state.text) return
+        undoRedo.edit(newText)
+        applyText(newText, external = true)
+    }
+
     fun undo() {
         if (_uiState.value.isReadOnly) return
-        undoRedo.undo()?.let(::applyText)
+        undoRedo.undo()?.let { applyText(it, external = true) }
     }
 
     fun redo() {
         if (_uiState.value.isReadOnly) return
-        undoRedo.redo()?.let(::applyText)
+        undoRedo.redo()?.let { applyText(it, external = true) }
     }
 
     fun setReplaceQuery(value: String) = _uiState.update { it.copy(replaceQuery = value) }
@@ -354,6 +372,7 @@ class TextDocViewModel @Inject constructor(
                 findQuery = query,
                 matchCount = matches.size,
                 activeMatchIndex = if (matches.isEmpty()) -1 else 0,
+                findMoves = it.findMoves + 1,
             )
         }
     }
@@ -367,7 +386,7 @@ class TextDocViewModel @Inject constructor(
         val match = matches.getOrNull(state.activeMatchIndex) ?: return
         val text = FindReplace.replaceCurrent(state.text, match, state.replaceQuery)
         undoRedo.edit(text)
-        applyText(text, keepIndex = state.activeMatchIndex)
+        applyText(text, keepIndex = state.activeMatchIndex, external = true, findMove = true)
     }
 
     fun replaceAll() {
@@ -376,17 +395,25 @@ class TextDocViewModel @Inject constructor(
         val text = FindReplace.replaceAll(state.text, state.findQuery, state.replaceQuery)
         if (text == state.text) return
         undoRedo.edit(text)
-        applyText(text, keepIndex = 0)
+        applyText(text, keepIndex = 0, external = true, findMove = true)
     }
 
     private fun step(forward: Boolean) {
         val state = _uiState.value
         val next = FindReplace.step(state.activeMatchIndex, matches.size, forward)
-        _uiState.update { it.copy(activeMatchIndex = next) }
+        _uiState.update { it.copy(activeMatchIndex = next, findMoves = it.findMoves + 1) }
     }
 
-    /** Applies a text change (typing, undo, replace) and refreshes the find hits. */
-    private fun applyText(text: String, keepIndex: Int = _uiState.value.activeMatchIndex) {
+    /**
+     * Applies a text change and refreshes the find hits. [external] is false only for the editor's own input, which
+     * the editor already shows.
+     */
+    private fun applyText(
+        text: String,
+        keepIndex: Int = _uiState.value.activeMatchIndex,
+        external: Boolean = false,
+        findMove: Boolean = false,
+    ) {
         matches = FindReplace.matches(text, _uiState.value.findQuery)
         val modified = text != savedText
         _uiState.update {
@@ -401,6 +428,8 @@ class TextDocViewModel @Inject constructor(
                 },
                 canUndo = undoRedo.canUndo,
                 canRedo = undoRedo.canRedo,
+                externalEdits = if (external) it.externalEdits + 1 else it.externalEdits,
+                findMoves = if (findMove) it.findMoves + 1 else it.findMoves,
             )
         }
         if (modified) scheduleAutosave()

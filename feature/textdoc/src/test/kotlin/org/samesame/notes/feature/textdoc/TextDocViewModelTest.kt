@@ -156,6 +156,27 @@ class TextDocViewModelTest {
     }
 
     @Test
+    fun onlyChangesFromOutsideTheEditorCountAsExternalEdits() = runTest {
+        val vm = createViewModel()
+        vm.load(null, file.id.value, writable = true)
+        val opened = vm.uiState.value.externalEdits
+        vm.updateText("hello!")
+        vm.updateText("hello!!")
+        assertThat(vm.uiState.value.externalEdits).isEqualTo(opened)
+        vm.undo()
+        assertThat(vm.uiState.value.externalEdits).isEqualTo(opened + 1)
+        vm.redo()
+        vm.replaceText("- [x] done")
+        assertThat(vm.uiState.value.externalEdits).isEqualTo(opened + 3)
+        vm.find("done")
+        val moves = vm.uiState.value.findMoves
+        vm.updateText("- [x] done done")
+        assertThat(vm.uiState.value.findMoves).isEqualTo(moves)
+        vm.nextMatch()
+        assertThat(vm.uiState.value.findMoves).isEqualTo(moves + 1)
+    }
+
+    @Test
     fun markdownOpensInTheSettingsDefaultView() = runTest {
         noteStore.note = sampleNote(id = "md-note", title = "List")
         noteStore.text = "# hi\n"
