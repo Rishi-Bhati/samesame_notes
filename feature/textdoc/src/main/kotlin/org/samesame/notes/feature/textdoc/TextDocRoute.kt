@@ -93,6 +93,8 @@ fun TextDocRoute(
     onBack: () -> Unit = {},
     noteId: String? = null,
     mimeType: String? = null,
+    /** Opens the note that Save as note made (markdown = a Markdown note); null leaves the user in the editor. */
+    onOpenNote: ((noteId: String, markdown: Boolean) -> Unit)? = null,
     viewModel: TextDocViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -100,6 +102,9 @@ fun TextDocRoute(
     val scope = rememberCoroutineScope()
     var finding by rememberSaveable { mutableStateOf(false) }
     var discard by rememberSaveable { mutableStateOf(false) }
+    // A document from another app: Save offers every way of keeping it (TextDocSaveHost).
+    val foreign = uri != null && noteId == null && libraryFileId == null
+    var saveOptions by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(uri, libraryFileId, writable, noteId) {
         viewModel.load(uri, libraryFileId, writable, displayName, noteId, mimeType)
@@ -127,7 +132,7 @@ fun TextDocRoute(
         }
     }
     val saveAsName = state.title ?: stringResource(R.string.feature_textdoc_untitled)
-    fun save() {
+    fun saveInPlace() {
         if (state.isReadOnly) {
             saveAs.launch(saveAsName)
             return
@@ -140,6 +145,10 @@ fun TextDocRoute(
                 saveAs.launch(saveAsName)
             }
         }
+    }
+    fun save() {
+        if (!foreign) saveInPlace()
+        else if (!state.isLoading && !state.loadFailed) saveOptions = true
     }
 
     fun handleBack() {
@@ -267,6 +276,19 @@ fun TextDocRoute(
                 else -> Editor(state, onText = viewModel::updateText, modifier = Modifier.fillMaxSize())
             }
         }
+    }
+
+    if (foreign) {
+        TextDocSaveSupport(
+            visible = saveOptions,
+            onDismiss = { saveOptions = false },
+            state = state,
+            displayName = displayName,
+            mimeType = mimeType,
+            uri = uri,
+            onSaveInPlace = ::saveInPlace,
+            onOpenNote = onOpenNote,
+        )
     }
 
     if (discard) {

@@ -36,7 +36,10 @@ class TextDocActivity : FragmentActivity() {
         }
         val writable = intent.getBooleanExtra(EXTRA_WRITABLE, false) ||
             intent.flags and Intent.FLAG_GRANT_WRITE_URI_PERMISSION != 0
-        val displayName = intent.getStringExtra(EXTRA_DISPLAY_NAME)
+        // Opened straight from another app (no Save to SameSame hop): the name and type come from the provider.
+        val incoming = uri?.let { IncomingFileResolver(contentResolver).resolve(it, intent.type) }
+        val displayName = intent.getStringExtra(EXTRA_DISPLAY_NAME) ?: incoming?.displayName
+        val mimeType = incoming?.mimeType
 
         val launchTheme = ThemeModeCache.read(this)
         enableEdgeToEdge()
@@ -52,7 +55,13 @@ class TextDocActivity : FragmentActivity() {
                     displayName = displayName,
                     writable = writable,
                     noteId = null,
+                    mimeType = mimeType,
                     onBack = { finish() },
+                    onOpenNote = { id, markdown ->
+                        startActivity(
+                            if (markdown) NoteTextDocActivity.noteIntent(this, id) else ComposerActivity.intent(this, id),
+                        )
+                    },
                 )
             }
         }
