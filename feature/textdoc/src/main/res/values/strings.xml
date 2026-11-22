@@ -18,6 +18,8 @@
     <string name="feature_textdoc_toggle_rendered">Rendered</string>
     <string name="feature_textdoc_toggle_source">Source</string>
     <string name="feature_textdoc_read_only_notice">Showing first 5 MB \u00b7 Read-only</string>
+    <string name="feature_textdoc_read_only">Read-only</string>
+    <string name="feature_textdoc_edit_as_note">Edit as note</string>
     <string name="feature_textdoc_toast_saved">Saved</string>
     <string name="feature_textdoc_toast_save_failed">Couldn\'t save file</string>
     <string name="feature_textdoc_toast_cant_save_here">Can\'t save here, use Save as</string>

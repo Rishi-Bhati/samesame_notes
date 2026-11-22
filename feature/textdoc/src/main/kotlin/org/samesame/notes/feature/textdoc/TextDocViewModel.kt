@@ -28,6 +28,21 @@ import javax.inject.Inject
 /** How a Markdown document is shown: styled while editing, plain source, or the read-only rendered preview. */
 enum class MarkdownViewMode { Live, Source, Preview }
 
+/** The line under the toolbar of a read-only document. */
+enum class ReadOnlyNotice {
+    /** Editable: no line. */
+    None,
+
+    /** Complete but not writable (the sender granted read access only): "Read-only". */
+    ReadOnly,
+
+    /** Cut at the editor's 5 MB cap: "Showing first 5 MB · Read-only". */
+    Truncated,
+
+    /** A locked Markdown note: "Locked note · Read-only". */
+    LockedNote,
+}
+
 /** Everything the text document screen draws. */
 data class TextDocUiState(
     val text: String = "",
@@ -36,6 +51,8 @@ data class TextDocUiState(
     val hasBom: Boolean = false,
     val isModified: Boolean = false,
     val isReadOnly: Boolean = false,
+    /** Only the first 5 MB were read (the file is longer); always read-only. */
+    val isTruncated: Boolean = false,
     val isMonospace: Boolean = false,
     val isWrap: Boolean = true,
     val isHtmlPreview: Boolean = false,
@@ -74,6 +91,15 @@ data class TextDocUiState(
 
     /** True when the editor styles Markdown in place (a Markdown document in the Live view). */
     val isLiveMarkdown: Boolean get() = isMarkdown && markdownMode == MarkdownViewMode.Live
+
+    /** What the read-only line says: "Showing first 5 MB" only when the file really was cut. */
+    val readOnlyNotice: ReadOnlyNotice
+        get() = when {
+            !isReadOnly -> ReadOnlyNotice.None
+            isLockedNote -> ReadOnlyNotice.LockedNote
+            isTruncated -> ReadOnlyNotice.Truncated
+            else -> ReadOnlyNotice.ReadOnly
+        }
 }
 
 /**
@@ -197,6 +223,7 @@ class TextDocViewModel @Inject constructor(
                     lineEnding = doc.lineEnding,
                     hasBom = doc.hasBom,
                     isReadOnly = doc.isReadOnly || !writable,
+                    isTruncated = doc.isTruncated,
                     isModified = false,
                     activeMatchIndex = -1,
                     matchCount = 0,
@@ -355,7 +382,7 @@ class TextDocViewModel @Inject constructor(
             currentNoteId = null
             documentKey = "uri:$targetUri"
             savedText = state.text
-            _uiState.update { it.copy(isModified = false, isSaving = false, isReadOnly = false) }
+            _uiState.update { it.copy(isModified = false, isSaving = false, isReadOnly = false, isTruncated = false) }
             true
         } catch (c: CancellationException) {
             throw c
