@@ -3,7 +3,6 @@ package org.samesame.notes.feature.textdoc
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.os.SystemClock
 import android.widget.Toast
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -53,6 +52,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -342,14 +342,14 @@ private fun hit(
 }
 
 private fun isOpenable(target: String): Boolean {
-    val scheme = Uri.parse(target).scheme?.lowercase() ?: return false
+    val scheme = target.toUri().scheme?.lowercase() ?: return false
     return scheme in OPENABLE_SCHEMES
 }
 
 private fun openLink(context: Context, target: String) {
     if (!isOpenable(target)) return
     try {
-        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(target)).addCategory(Intent.CATEGORY_BROWSABLE))
+        context.startActivity(Intent(Intent.ACTION_VIEW, target.toUri()).addCategory(Intent.CATEGORY_BROWSABLE))
     } catch (_: ActivityNotFoundException) {
         Toast.makeText(context, R.string.feature_textdoc_link_cant_open, Toast.LENGTH_SHORT).show()
     } catch (_: SecurityException) {

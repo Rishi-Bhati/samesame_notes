@@ -2,6 +2,7 @@ package org.samesame.notes.feature.textdoc
 
 import android.content.Context
 import android.net.Uri
+import androidx.core.content.edit
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -128,15 +129,16 @@ internal class DefaultTextDocMarkdownModeStore @Inject constructor(
 
     override suspend fun setModeFor(documentKey: String, mode: MarkdownViewMode) = withContext(Dispatchers.IO) {
         val key = hash(documentKey)
-        val editor = prefs.edit()
         val all = prefs.all
-        if (all.size >= MAX_DOCUMENTS && key !in all) {
-            all.entries
-                .sortedBy { (it.value as? String)?.substringAfter('|')?.toLongOrNull() ?: 0L }
-                .take(all.size - MAX_DOCUMENTS + 1 + TRIM_EXTRA)
-                .forEach { editor.remove(it.key) }
+        prefs.edit {
+            if (all.size >= MAX_DOCUMENTS && key !in all) {
+                all.entries
+                    .sortedBy { (it.value as? String)?.substringAfter('|')?.toLongOrNull() ?: 0L }
+                    .take(all.size - MAX_DOCUMENTS + 1 + TRIM_EXTRA)
+                    .forEach { remove(it.key) }
+            }
+            putString(key, "${mode.name}|${System.currentTimeMillis()}")
         }
-        editor.putString(key, "${mode.name}|${System.currentTimeMillis()}").apply()
     }
 
     private fun hash(documentKey: String): String =
