@@ -43,6 +43,7 @@ import org.commonmark.node.SoftLineBreak
 import org.commonmark.node.StrongEmphasis
 import org.commonmark.node.Text
 import org.commonmark.parser.Parser
+import org.samesame.notes.core.export.text.MarkdownTrees
 import org.samesame.notes.core.model.Limits
 import java.io.ByteArrayOutputStream
 
@@ -69,7 +70,7 @@ object MarkdownCardPreview {
     fun render(source: String, targetWidthPx: Int, darkTheme: Boolean): ByteArray? {
         try {
             if (source.isBlank()) return null
-            val document = parser.parse(source)
+            val document = MarkdownTrees.parse(parser, source)
 
             val widthPx = targetWidthPx.coerceIn(64, 4096)
             val heightPx = (widthPx * BASE_PAGE_HEIGHT / BASE_PAGE_WIDTH).toInt().coerceIn(64, 8192)

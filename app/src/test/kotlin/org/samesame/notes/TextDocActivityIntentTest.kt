@@ -43,6 +43,18 @@ class TextDocActivityIntentTest {
     }
 
     @Test
+    fun onlyAWriteGrantMakesTheDocumentEditable() {
+        val forged = Intent(Intent.ACTION_EDIT).setData(sampleUri).putExtra(TextDocActivity.EXTRA_WRITABLE, true)
+        assertThat(TextDocActivity.isWritable(forged)).isFalse()
+
+        val granted = Intent(Intent.ACTION_EDIT).setData(sampleUri).addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        assertThat(TextDocActivity.isWritable(granted)).isTrue()
+
+        assertThat(TextDocActivity.isWritable(TextDocActivity.intent(context, sampleUri, "a.txt", writable = true))).isTrue()
+        assertThat(TextDocActivity.isWritable(TextDocActivity.intent(context, sampleUri, "a.txt", writable = false))).isFalse()
+    }
+
+    @Test
     fun textDocActivityRejectsInternalExtrasAndPrivateUris() {
         val withNoteId = Intent().setData(sampleUri).putExtra(TextDocActivity.EXTRA_NOTE_ID, "note-1")
         assertThat(TextDocActivity.isValidIntent(withNoteId, ownPackage)).isFalse()

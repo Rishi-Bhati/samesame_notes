@@ -5,8 +5,11 @@ import org.commonmark.ext.gfm.tables.TablesExtension
 import org.commonmark.ext.autolink.AutolinkExtension
 import org.commonmark.ext.task.list.items.TaskListItemsExtension
 import org.commonmark.node.Block
+import org.commonmark.node.Document
 import org.commonmark.node.ListItem
 import org.commonmark.node.Node
+import org.commonmark.node.Paragraph
+import org.commonmark.node.Text
 import org.commonmark.parser.IncludeSourceSpans
 import org.commonmark.parser.Parser
 import org.samesame.notes.core.model.Limits
@@ -35,13 +38,22 @@ object MarkdownParser {
     /**
      * The document node, or null when the text is over [Limits.MAX_MARKDOWN_CHARS] (the host then offers plain
      * editing without a preview). Nesting deeper than [Limits.MAX_MARKDOWN_AST_DEPTH] is cut off, so a hostile file
-     * of `> > > > ...` cannot overflow the stack of the renderer.
+     * of `> > > > ...` cannot overflow the stack of the renderer. Parsing itself recurses per level too (the autolink
+     * post-processor walks the tree): when it overflows, the text is shown as plain paragraphs instead.
      */
     fun parse(markdown: String): Node? {
         if (isTooLarge(markdown)) return null
-        val document = parser.parse(markdown)
+        val document = try {
+            parser.parse(markdown)
+        } catch (_: StackOverflowError) {
+            plain(markdown)
+        }
         prune(document, 1, IntArray(1))
         return document
+    }
+
+    private fun plain(markdown: String): Node = Document().apply {
+        markdown.lineSequence().filter { it.isNotBlank() }.forEach { line -> appendChild(Paragraph().apply { appendChild(Text(line)) }) }
     }
 
     /**

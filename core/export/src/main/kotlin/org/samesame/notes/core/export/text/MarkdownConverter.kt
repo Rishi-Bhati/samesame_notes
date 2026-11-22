@@ -67,7 +67,7 @@ object MarkdownConverter {
             features += LossyFeature.MATH
         }
 
-        val document = parser.parse(markdown)
+        val document = MarkdownTrees.parse(parser, markdown)
         fun walk(node: Node) {
             when (node) {
                 is TableBlock -> features += LossyFeature.TABLES
@@ -88,7 +88,7 @@ object MarkdownConverter {
     fun markdownToRichText(markdown: String): RichText {
         if (markdown.isEmpty()) return RichText()
 
-        val document = parser.parse(markdown)
+        val document = MarkdownTrees.parse(parser, markdown)
         val paragraphs = ArrayList<ParaBuilder>()
 
         fun processBlock(node: Node, indent: Int = 0) {

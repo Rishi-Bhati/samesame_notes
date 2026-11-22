@@ -10,6 +10,7 @@ import org.samesame.notes.core.model.Limits
 import org.samesame.notes.core.model.document.ImageObject
 import org.samesame.notes.core.model.document.NoteDocument
 import org.samesame.notes.core.model.document.VoiceObject
+import org.samesame.notes.core.model.richtext.LinkSchemes
 import org.samesame.notes.core.model.richtext.ListKind
 import org.samesame.notes.core.model.richtext.RichText
 import org.samesame.notes.core.model.richtext.TextAlign
@@ -136,7 +137,7 @@ object DocxExport {
                         else -> Unit
                     }
                 } else if (span.text.isNotEmpty()) {
-                    val uri = span.style.link?.takeIf { it.isNotEmpty() }
+                    val uri = span.style.link?.takeIf { it.isNotEmpty() && LinkSchemes.isExportable(it, allowRelative = false) }
                     if (uri == null) sb.append(run(span.text, span))
                     else {
                         val rid = hyperlinks.getOrPut(uri) { "rIdLink${hyperlinks.size + 1}" }

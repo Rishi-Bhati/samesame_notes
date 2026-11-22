@@ -26,8 +26,17 @@ maintain fixes for older releases.
 - Optional biometric unlock releases a key held in the Android Keystore.
 - Android backups include the catalog and note files but never the key for a locked note, so a
   restored locked note cannot be opened without the original key.
+- Backups to a folder (Settings > Backup) are written to the folder the user picks, which other apps with
+  storage access may be able to read. Locked notes stay encrypted there and their titles are left out; every
+  other note and the Files library are stored as they are. Version history keeps encrypted copies of locked
+  notes, and the older plain copies are deleted when a note is locked.
 - Files received from other apps are copied into app storage; sharing and export go through a
   content provider limited to the app's own cache and share directories.
-- Release builds are minified and not debuggable. Only the main activity, the share target, the widget configuration activities and the widget receivers are exported; all other components are not.
+- Release builds are minified and not debuggable. Only the main activity, the share target, the text editor for files opened from other apps (VIEW and EDIT of
+  `content://` URIs; it writes back only when the sender granted write access), the widget configuration activities and
+  the widget receivers are exported; all other components are not.
+- Text, Markdown and HTML files from other apps are untrusted: HTML is previewed without JavaScript, network, file
+  access or navigation; a link in Markdown opens only http, https or mailto targets, and a web link in a note opens
+  only in apps that accept browser links. Exports (HTML, Word, PowerPoint) drop script and file links.
 - Dependency versions and checksums are pinned; the Gradle wrapper and the dependency
   verification metadata are committed and validated in continuous integration.

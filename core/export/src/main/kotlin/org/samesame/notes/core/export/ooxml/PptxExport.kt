@@ -5,6 +5,7 @@ import org.samesame.notes.core.export.text.toParagraphs
 import org.samesame.notes.core.model.document.NoteDocument
 import java.io.OutputStream
 import kotlin.math.roundToLong
+import org.samesame.notes.core.model.richtext.LinkSchemes
 
 /**
  * Minimal PresentationML package, one slide per page. The page render is a PNG picture filling the
@@ -85,7 +86,9 @@ object PptxExport {
         fun collectLinks(rt: org.samesame.notes.core.model.richtext.RichText) {
             for (p in rt.toParagraphs()) for (sp in p.spans) {
                 val uri = sp.style.link
-                if (!uri.isNullOrEmpty() && sp.text.isNotBlank() && !sp.isObject) linkTargets.putIfAbsent(sp.text.trim(), uri)
+                if (!uri.isNullOrEmpty() && LinkSchemes.isExportable(uri, allowRelative = false) && sp.text.isNotBlank() && !sp.isObject) {
+                    linkTargets.putIfAbsent(sp.text.trim(), uri)
+                }
             }
         }
         collectLinks(doc.body)

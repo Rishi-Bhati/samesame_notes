@@ -40,8 +40,7 @@ class TextDocActivity : FragmentActivity() {
             finish()
             return
         }
-        val writable = intent.getBooleanExtra(EXTRA_WRITABLE, false) ||
-            intent.flags and Intent.FLAG_GRANT_WRITE_URI_PERMISSION != 0
+        val writable = isWritable(intent)
         // Provider queries and the first bytes are read off the main thread. A binary file goes to the
         // "Save to SameSame" sheet instead of the editor.
         lifecycleScope.launch {
@@ -130,6 +129,12 @@ class TextDocActivity : FragmentActivity() {
             val uri = intent.data ?: return false
             return IncomingFileResolver.isForeignContent(uri, ownPackage)
         }
+
+        /**
+         * Editable only when the sender granted write access. [EXTRA_WRITABLE] is not trusted: any app can set it, and
+         * the editor would then write with this app's own access (a persisted backup folder grant, for one).
+         */
+        fun isWritable(intent: Intent): Boolean = intent.flags and Intent.FLAG_GRANT_WRITE_URI_PERMISSION != 0
 
         /** Opens [uri] from inside/outside the app. The flags are forwarded so the editor may write the document. */
         fun intent(context: Context, uri: Uri, displayName: String?, writable: Boolean): Intent {
