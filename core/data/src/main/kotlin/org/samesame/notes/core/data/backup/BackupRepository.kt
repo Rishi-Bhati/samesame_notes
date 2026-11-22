@@ -23,6 +23,7 @@ import org.samesame.notes.core.database.entity.NoteSearchEntity
 import org.samesame.notes.core.document.NoteDocumentStore
 import org.samesame.notes.core.files.BlobStore
 import org.samesame.notes.core.model.BackupSchedule
+import org.samesame.notes.core.model.files.FileNames
 import java.io.File
 import java.io.IOException
 import java.io.OutputStream
@@ -394,7 +395,8 @@ class BackupRepository @Inject constructor(
 
     private suspend fun installNote(folder: BackupFolder, notePath: String, entry: BackupNoteEntry, folderPathIds: Map<List<String>, String>): Boolean {
         return try {
-            val tmp = File(context.cacheDir, "restore-${entry.id}.ssnote")
+            // entry.id comes from the backup's manifest: never part of a path before the store has checked it.
+            val tmp = File(context.cacheDir, "restore-${UUID.randomUUID()}.ssnote")
             try {
                 folder.openInput(notePath).use { input -> tmp.outputStream().use { input.copyTo(it) } }
                 val (locked, doc) = documents.installBackupContainer(tmp, entry.id, rewriteNoteId = false)
@@ -568,12 +570,13 @@ class BackupRepository @Inject constructor(
             val folderId = entry.folderPath.let { folderPathIds[it] }
             val existingById = libraryDao.file(entry.id)
             val id = if (existingById == null) entry.id else java.util.UUID.randomUUID().toString()
-            val name = if (existingById == null) entry.displayName else entry.displayName
+            // The same name rules as any import: a manifest may carry separators, control characters or a huge name.
+            val name = FileNames.sanitize(entry.displayName)
             val entity = LibraryFileEntity(
                 id = id,
                 folderId = folderId,
                 displayName = name,
-                ext = entry.ext,
+                ext = FileNames.extensionOf(name),
                 mimeType = entry.mimeType.ifBlank { "application/octet-stream" },
                 category = runCatching { org.samesame.notes.core.model.files.FileCategory.valueOf(entry.category) }.getOrDefault(org.samesame.notes.core.model.files.FileCategory.Other),
                 sizeBytes = entry.sizeBytes,
