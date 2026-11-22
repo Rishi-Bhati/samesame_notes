@@ -5,6 +5,51 @@ All notable user-facing changes to SameSame notes are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses
 pre-release alpha versions.
 
+## 0.4.0-alpha (unreleased)
+
+Open any text file, a text and Markdown editor with live formatting, Markdown notes, save options for every file you open, automatic version history and folder backups. It includes 0.3.2, which was never released on its own. It installs over 0.3.1-alpha with the same signing key and keeps your notes.
+
+### Open any file
+
+- Text, Markdown, CSV, JSON, XML, YAML, code and HTML files open in a text editor, from the Files app or "Open with". Save writes back to the file when the other app allows it.
+- Find and replace, undo and redo, line wrap and monospace.
+- HTML files can be shown rendered. Links in rendered HTML don't open other apps.
+- Files that aren't text, such as a PDF or a picture, go to the "Save to SameSame" sheet instead of showing raw bytes.
+- The debug build is called "SameSame debug", so it can be told apart from the real app in "Open with".
+
+### Markdown
+
+- Live formatting as you type: headings, bold, italic, strikethrough, code, quotes, lists, task boxes, links, rules and tables. The marks hide when you leave the line and come back when you edit it. A heading needs a space: '# hello'. '#hello' stays as text.
+- Tap a task box to tick it. Tap a link to open or edit it.
+- Choose Live, Source or Preview from the toolbar or ⋮. Each document remembers its view. Settings > Advanced > Markdown editing sets the default.
+- Markdown notes: ⋮ > New Markdown note on the home screen. They are listed, searched, locked and trashed like other notes. Locked Markdown notes open read-only.
+- Export Markdown as HTML, PDF or Word.
+
+### Save options for files you open
+
+- Save in the text editor offers: save changes, save as a note (Markdown files become Markdown notes), save to Files, save a copy, and export as PDF, HTML or Word.
+- Files shared to SameSame can be saved to Files, as a new note, as a copy, or (text and pictures) as a PDF. Several pictures become one PDF.
+
+### Safety
+
+- Automatic version history: earlier versions of a note can be viewed and restored.
+- Backup to a folder you choose, on a schedule, with restore. Locked notes stay encrypted in backups and history.
+
+### Fixes
+
+- Delete page now really removes the page. The typed text on that page is removed with it, and Undo brings both back.
+- Calculations work after a label: 'Udupi -> Mangalore: 100*7 =' shows 700. Currency in front ('Rent: ₹1,000 * 12 =') is kept. Times, dates and phone numbers are still ignored.
+- Hardware keyboards work in notes: typing, Enter, Backspace, arrows with Shift to select, and Ctrl+Z, Y, A, C, X, V, B, I and U.
+
+### Security
+
+- A security review of this version found no critical or high issues. Two medium and five low issues were fixed: links in HTML preview, very deeply nested Markdown, unsafe link types in Markdown and exports, edit access for files from other apps, and restore file names.
+
+### Upgrading
+
+- Installs over 0.3.1-alpha with the same signing key and keeps your notes.
+- The database gets a note-type column, added automatically. The note format moves to version 10, and older notes are still read.
+
 ## 0.3.1-alpha (2026-11-18)
 
 Typing shortcuts for arrows and files, smarter totals, checklist progress, tap-to-act for addresses, deleting pages, and a font size and style page. It installs over 0.3.0-alpha with the same signing key and keeps your notes.
