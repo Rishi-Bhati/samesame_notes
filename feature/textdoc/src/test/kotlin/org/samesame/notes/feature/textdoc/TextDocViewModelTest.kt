@@ -16,6 +16,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import org.samesame.notes.core.model.MarkdownEditMode
 import org.samesame.notes.core.model.Note
 import org.samesame.notes.core.model.NoteId
 import org.samesame.notes.core.model.NoteKind
@@ -45,12 +46,13 @@ class TextDocViewModelTest {
     private val files = FakeFileStore(file, "hello")
     private val uris = FakeUriStore("hello")
     private val noteStore = FakeNoteStore()
+    private val modeStore = FakeModeStore()
     private val context = RuntimeEnvironment.getApplication()
 
     @Before fun setUp() = Dispatchers.setMain(UnconfinedTestDispatcher())
     @After fun tearDown() = Dispatchers.resetMain()
 
-    private fun createViewModel() = TextDocViewModel(files, uris, noteStore).apply { ioDispatcher = Dispatchers.Main }
+    private fun createViewModel() = TextDocViewModel(files, uris, noteStore, modeStore).apply { ioDispatcher = Dispatchers.Main }
 
     @Test
     fun loadsAndSavesALibraryFileInPlace() = runTest {
@@ -132,6 +134,66 @@ class TextDocViewModelTest {
 
         assertThat(vm.uiState.value.text).isEqualTo("heLLo")
         assertThat(vm.uiState.value.isModified).isTrue()
+    }
+
+    @Test
+    fun markdownOpensInTheSettingsDefaultView() = runTest {
+        noteStore.note = sampleNote(id = "md-note", title = "List")
+        noteStore.text = "# hi\n"
+        val vm = createViewModel()
+        vm.load(noteId = "md-note", writable = true)
+        assertThat(vm.uiState.value.markdownMode).isEqualTo(MarkdownViewMode.Live)
+        assertThat(vm.uiState.value.isLiveMarkdown).isTrue()
+
+        modeStore.default = MarkdownEditMode.Source
+        val other = createViewModel()
+        other.load(noteId = "md-note", writable = true)
+        assertThat(other.uiState.value.markdownMode).isEqualTo(MarkdownViewMode.Source)
+        assertThat(other.uiState.value.isLiveMarkdown).isFalse()
+    }
+
+    @Test
+    fun markdownViewIsRememberedPerDocument() = runTest {
+        noteStore.note = sampleNote(id = "md-note", title = "List")
+        noteStore.text = "text"
+        val vm = createViewModel()
+        vm.load(noteId = "md-note", writable = true)
+        vm.setMarkdownMode(MarkdownViewMode.Preview)
+        assertThat(vm.uiState.value.isMarkdownPreview).isTrue()
+        assertThat(vm.uiState.value.markdownEditMode).isEqualTo(MarkdownViewMode.Live)
+        assertThat(modeStore.stored["note:md-note"]).isEqualTo(MarkdownViewMode.Preview)
+
+        val reopened = createViewModel()
+        reopened.load(noteId = "md-note", writable = true)
+        assertThat(reopened.uiState.value.markdownMode).isEqualTo(MarkdownViewMode.Preview)
+        reopened.setMarkdownPreview(false)
+        assertThat(reopened.uiState.value.markdownMode).isEqualTo(MarkdownViewMode.Live)
+        reopened.setMarkdownMode(MarkdownViewMode.Source)
+        reopened.setMarkdownPreview(true)
+        reopened.setMarkdownPreview(false)
+        assertThat(reopened.uiState.value.markdownMode).isEqualTo(MarkdownViewMode.Source)
+    }
+
+    @Test
+    fun plainTextFilesNeverStyleMarkdown() = runTest {
+        val vm = createViewModel()
+        vm.load(null, file.id.value, writable = true)
+        assertThat(vm.uiState.value.isMarkdown).isFalse()
+        assertThat(vm.uiState.value.isLiveMarkdown).isFalse()
+        vm.setMarkdownMode(MarkdownViewMode.Live)
+        assertThat(vm.uiState.value.isLiveMarkdown).isFalse()
+        assertThat(modeStore.stored).isEmpty()
+    }
+
+    @Test
+    fun liveModeDoesNotChangeTheSavedText() = runTest {
+        noteStore.note = sampleNote(id = "md-note", title = "List")
+        noteStore.text = "# a\n- [ ] b\n"
+        val vm = createViewModel()
+        vm.load(noteId = "md-note", writable = true)
+        vm.updateText("# a\n- [ ] b\n**c**")
+        assertThat(vm.saveInPlace()).isTrue()
+        assertThat(noteStore.text).isEqualTo("# a\n- [ ] b\n**c**")
     }
 
     @Test
@@ -240,7 +302,7 @@ class TextDocViewModelTest {
 
     @Test
     fun defaultIoDispatcherIsDispatchersIO() {
-        val vm = TextDocViewModel(files, uris, noteStore)
+        val vm = TextDocViewModel(files, uris, noteStore, modeStore)
         assertThat(vm.ioDispatcher).isEqualTo(Dispatchers.IO)
     }
 
@@ -318,6 +380,16 @@ class TextDocViewModelTest {
         trashedAt = null,
         kind = kind,
     )
+
+    private class FakeModeStore : TextDocMarkdownModeStore {
+        var default = MarkdownEditMode.Live
+        val stored = mutableMapOf<String, MarkdownViewMode>()
+        override suspend fun defaultMode() = default
+        override suspend fun modeFor(documentKey: String) = stored[documentKey]
+        override suspend fun setModeFor(documentKey: String, mode: MarkdownViewMode) {
+            stored[documentKey] = mode
+        }
+    }
 
     private class FakeNoteStore(
         var note: Note? = null,
