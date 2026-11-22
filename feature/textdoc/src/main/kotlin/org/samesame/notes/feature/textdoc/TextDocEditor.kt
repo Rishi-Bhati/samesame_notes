@@ -28,7 +28,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -66,6 +66,7 @@ import org.samesame.notes.core.richtext.markdown.LiveMarkdownView
 import org.samesame.notes.core.richtext.markdown.MarkdownParser
 import org.samesame.notes.core.richtext.markdown.decorations
 import org.samesame.notes.core.richtext.markdown.drawLiveDecorations
+import org.samesame.notes.core.richtext.markdown.drawLiveStrikes
 import org.samesame.notes.core.richtext.markdown.styled
 import org.samesame.notes.core.richtext.markdown.taskBoxRect
 import org.samesame.notes.core.richtext.markdown.touchesPrefix
@@ -230,9 +231,11 @@ internal fun TextDocEditor(
         decorationBox = { inner ->
             Box(
                 Modifier
-                    .drawBehind {
+                    .drawWithContent {
                         val l = layout
                         if (decorations != null && l != null && !decorations.isEmpty) drawLiveDecorations(l, decorations, colors)
+                        drawContent()
+                        if (decorations != null && l != null && decorations.hasStrikes) drawLiveStrikes(l, decorations, colors)
                     }
                     .pointerInput(Unit) {
                         awaitEachGesture {
