@@ -75,6 +75,18 @@ class ShareReceiveActivity : FragmentActivity() {
                         ReceiveEvent.NoteFailed -> Toast.makeText(
                             this@ShareReceiveActivity, org.samesame.notes.feature.files.R.string.feature_files_receive_note_failed, Toast.LENGTH_LONG,
                         ).show()
+                        ReceiveEvent.SavedElsewhere -> {
+                            Toast.makeText(
+                                this@ShareReceiveActivity, org.samesame.notes.feature.files.R.string.feature_files_receive_saved_elsewhere, Toast.LENGTH_SHORT,
+                            ).show()
+                            finish()
+                        }
+                        is ReceiveEvent.SaveElsewhereFailed -> Toast.makeText(
+                            this@ShareReceiveActivity,
+                            if (event.tooLarge) org.samesame.notes.feature.files.R.string.feature_files_receive_save_too_large
+                            else org.samesame.notes.feature.files.R.string.feature_files_receive_save_failed,
+                            Toast.LENGTH_LONG,
+                        ).show()
                     }
                 }
             }
