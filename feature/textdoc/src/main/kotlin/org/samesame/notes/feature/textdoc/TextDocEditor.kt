@@ -76,7 +76,8 @@ import kotlin.math.abs
  * The text editor. With [live] the Markdown syntax is styled in place: the text field keeps the exact source (an
  * identity [VisualTransformation] only adds styles), markers are hidden except on the caret's line or code block,
  * and bullets, task boxes, quote bars, code backgrounds and rules are drawn behind the text. Tapping a drawn task box
- * toggles it in the source; tapping a link on a line that is not being edited asks before opening it.
+ * toggles it in the source; tapping a link on a line that is not being edited asks before opening it. A read-only
+ * document is styled the same way, but its task boxes don't toggle (links still ask before opening).
  *
  * Without [live] it is the plain source editor.
  */
@@ -142,7 +143,8 @@ internal fun TextDocEditor(
         val budget = (TOKEN_WORK_BUDGET / doc.lineCount.coerceAtLeast(1)).coerceIn(MIN_TOKENS, MAX_TOKENS)
         windowed = doc.tokenCount > budget
         val window = doc.window(doc.lineAt((centerOffset * WINDOW_BUCKET_CHARS).coerceAtMost(doc.text.length)), budget)
-        val selection = if (focused) field.selection else null
+        // Markers show on the caret's line for editing; a read-only document never shows them.
+        val selection = if (focused && !state.isReadOnly) field.selection else null
         val revealed = if (selection != null) doc.revealLines(selection.min, selection.max) else IntRange.EMPTY
         LiveMarkdownView(window, revealed, selection)
     }
@@ -268,7 +270,8 @@ internal fun TextDocEditor(
         val openable = isOpenable(link.target)
         AppDialog(
             onDismissRequest = { pendingLink = null },
-            dismissLabel = stringResource(R.string.feature_textdoc_action_edit),
+            // A read-only document has nothing to edit: the second button just closes.
+            dismissLabel = stringResource(if (state.isReadOnly) R.string.feature_textdoc_cancel else R.string.feature_textdoc_action_edit),
             confirmLabel = stringResource(R.string.feature_textdoc_link_open),
             onConfirm = {
                 pendingLink = null
@@ -277,10 +280,12 @@ internal fun TextDocEditor(
             title = stringResource(R.string.feature_textdoc_link_title),
             confirmEnabled = openable,
             onDismissClick = {
-                // Edit: put the caret into the link, which shows its syntax.
                 pendingLink = null
-                field = field.copy(selection = TextRange(link.start))
-                focusRequester.requestFocus()
+                if (!state.isReadOnly) {
+                    // Edit: put the caret into the link, which shows its syntax.
+                    field = field.copy(selection = TextRange(link.start))
+                    focusRequester.requestFocus()
+                }
             },
         ) {
             Text(

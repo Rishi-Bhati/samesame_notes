@@ -99,6 +99,8 @@ fun TextDocRoute(
     // A document from another app: Save offers every way of keeping it (TextDocSaveHost).
     val foreign = uri != null && noteId == null && libraryFileId == null
     var saveOptions by rememberSaveable { mutableStateOf(false) }
+    // "Edit as note" in the read-only line: runs Save as note once (cleared when it starts, so a rotation can't repeat it).
+    var editAsNote by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(uri, libraryFileId, writable, noteId) {
         viewModel.load(uri, libraryFileId, writable, displayName, noteId, mimeType)
@@ -201,14 +203,17 @@ fun TextDocRoute(
                 onMarkdownMode = viewModel::setMarkdownMode,
             )
         }
-        if (state.isReadOnly) {
-            Text(
-                stringResource(if (state.isLockedNote) R.string.feature_textdoc_locked_read_only else R.string.feature_textdoc_read_only_notice),
-                style = SameSameText.Caption,
-                color = SameSameTheme.colors.textSecondary,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp),
-            )
-        }
+        ReadOnlyBanner(
+            notice = state.readOnlyNotice,
+            // A complete document from another app that may not be written: one tap makes an editable note of it.
+            onEditAsNote = if (foreign && onOpenNote != null && !state.isLoading && !state.loadFailed &&
+                state.readOnlyNotice == ReadOnlyNotice.ReadOnly
+            ) {
+                { editAsNote = true }
+            } else {
+                null
+            },
+        )
         if (finding) {
             FindBar(
                 state = state,
@@ -287,6 +292,8 @@ fun TextDocRoute(
             uri = uri,
             onSaveInPlace = ::saveInPlace,
             onOpenNote = onOpenNote,
+            saveAsNoteNow = editAsNote,
+            onSaveAsNoteStarted = { editAsNote = false },
         )
     }
 
@@ -299,6 +306,38 @@ fun TextDocRoute(
             title = stringResource(R.string.feature_textdoc_discard_title),
         ) {
             Text(stringResource(R.string.feature_textdoc_discard_message), color = SameSameTheme.colors.textPrimary)
+        }
+    }
+}
+
+/** The line under the toolbar of a read-only document, with "Edit as note" when [onEditAsNote] is given. */
+@Composable
+internal fun ReadOnlyBanner(notice: ReadOnlyNotice, onEditAsNote: (() -> Unit)?) {
+    val label = when (notice) {
+        ReadOnlyNotice.None -> return
+        ReadOnlyNotice.ReadOnly -> R.string.feature_textdoc_read_only
+        ReadOnlyNotice.Truncated -> R.string.feature_textdoc_read_only_notice
+        ReadOnlyNotice.LockedNote -> R.string.feature_textdoc_locked_read_only
+    }
+    val colors = SameSameTheme.colors
+    Row(
+        Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp).heightIn(min = 28.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            stringResource(label),
+            style = SameSameText.Caption,
+            color = colors.textSecondary,
+            modifier = Modifier.weight(1f).padding(vertical = 6.dp),
+        )
+        if (onEditAsNote != null) {
+            androidx.compose.material3.TextButton(
+                onClick = onEditAsNote,
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                modifier = Modifier.heightIn(min = 36.dp),
+            ) {
+                Text(stringResource(R.string.feature_textdoc_edit_as_note), style = SameSameText.Caption, color = colors.accent)
+            }
         }
     }
 }

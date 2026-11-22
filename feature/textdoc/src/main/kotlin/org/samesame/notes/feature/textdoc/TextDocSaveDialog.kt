@@ -52,6 +52,8 @@ internal fun TextDocSaveSupport(
     uri: android.net.Uri?,
     onSaveInPlace: () -> Unit,
     onOpenNote: ((noteId: String, markdown: Boolean) -> Unit)?,
+    saveAsNoteNow: Boolean = false,
+    onSaveAsNoteStarted: () -> Unit = {},
 ) {
     var edited by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(state.isModified) { if (state.isModified) edited = true }
@@ -76,6 +78,8 @@ internal fun TextDocSaveSupport(
         },
         onSaveInPlace = onSaveInPlace,
         onOpenNote = onOpenNote,
+        saveAsNoteNow = saveAsNoteNow,
+        onSaveAsNoteStarted = onSaveAsNoteStarted,
     )
 }
 
@@ -94,6 +98,9 @@ internal fun TextDocSaveHost(
     source: () -> TextDocSaveSource,
     onSaveInPlace: () -> Unit,
     onOpenNote: ((noteId: String, markdown: Boolean) -> Unit)?,
+    /** Runs Save as note without the dialog (the read-only line's "Edit as note"); [onSaveAsNoteStarted] clears it. */
+    saveAsNoteNow: Boolean = false,
+    onSaveAsNoteStarted: () -> Unit = {},
     viewModel: TextDocSaveViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -142,6 +149,13 @@ internal fun TextDocSaveHost(
         } catch (_: ActivityNotFoundException) {
             pending = null
             Toast.makeText(context, R.string.feature_textdoc_save_no_picker, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    LaunchedEffect(saveAsNoteNow) {
+        if (saveAsNoteNow) {
+            onSaveAsNoteStarted()
+            viewModel.saveAsNote(currentSource())
         }
     }
 
