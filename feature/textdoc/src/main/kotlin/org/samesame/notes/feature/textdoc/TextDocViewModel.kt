@@ -17,12 +17,16 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.samesame.notes.core.model.Limits
+import org.samesame.notes.core.model.MarkdownEditMode
 import org.samesame.notes.core.model.files.FileId
 import org.samesame.notes.core.model.textdoc.LineEnding
 import org.samesame.notes.core.model.textdoc.TextDocument
 import org.samesame.notes.core.model.textdoc.TextDocumentCodec
 import org.samesame.notes.core.model.textdoc.TextEncoding
 import javax.inject.Inject
+
+/** How a Markdown document is shown: styled while editing, plain source, or the read-only rendered preview. */
+enum class MarkdownViewMode { Live, Source, Preview }
 
 /** Everything the text document screen draws. */
 data class TextDocUiState(
@@ -35,7 +39,10 @@ data class TextDocUiState(
     val isMonospace: Boolean = false,
     val isWrap: Boolean = true,
     val isHtmlPreview: Boolean = false,
-    val isMarkdownPreview: Boolean = false,
+    /** The Markdown view; only meaningful when [isMarkdown]. */
+    val markdownMode: MarkdownViewMode = MarkdownViewMode.Source,
+    /** The editing view (Live or Source) used next to the preview and when leaving it. */
+    val markdownEditMode: MarkdownViewMode = MarkdownViewMode.Live,
     val isMarkdown: Boolean = false,
     val isLockedNote: Boolean = false,
     val findQuery: String = "",
@@ -49,7 +56,12 @@ data class TextDocUiState(
     val loadFailed: Boolean = false,
     /** The file's name, when the caller knows it. */
     val title: String? = null,
-)
+) {
+    val isMarkdownPreview: Boolean get() = isMarkdown && markdownMode == MarkdownViewMode.Preview
+
+    /** True when the editor styles Markdown in place (a Markdown document in the Live view). */
+    val isLiveMarkdown: Boolean get() = isMarkdown && markdownMode == MarkdownViewMode.Live
+}
 
 /**
  * The text editor. Text is held as one string with `\n` endings; encoding, line ending and byte-order mark are kept so
@@ -61,6 +73,7 @@ class TextDocViewModel @Inject constructor(
     private val files: TextDocFileStore,
     private val uris: TextDocUriStore,
     private val notes: TextDocNoteStore,
+    private val markdownModes: TextDocMarkdownModeStore,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(TextDocUiState())
@@ -70,6 +83,8 @@ class TextDocViewModel @Inject constructor(
     private var documentUri: Uri? = null
     private var libraryFileId: FileId? = null
     private var currentNoteId: String? = null
+    /** Identifies the document for its remembered Markdown view; null for an untitled one. */
+    private var documentKey: String? = null
     private var autosaveJob: Job? = null
     private var writable = true
     private var savedText = ""
@@ -103,6 +118,8 @@ class TextDocViewModel @Inject constructor(
                     }
                     val isLocked = note.isLocked
                     val text = if (isLocked) "" else (notes.readMarkdown(noteId) ?: "")
+                    documentKey = "note:$noteId"
+                    val (mode, editMode) = initialMarkdownModes(documentKey)
                     savedText = text
                     undoRedo.reset(text)
                     matches = emptyList()
@@ -119,6 +136,8 @@ class TextDocViewModel @Inject constructor(
                         title = note.title.ifBlank { displayName },
                         isMarkdown = true,
                         isLockedNote = isLocked,
+                        markdownMode = mode,
+                        markdownEditMode = editMode,
                     )
                 } catch (c: CancellationException) {
                     throw c
@@ -147,6 +166,16 @@ class TextDocViewModel @Inject constructor(
                 undoRedo.reset(doc.text)
                 matches = emptyList()
                 val isMd = MarkdownDetection.isMarkdown(name, mimeType)
+                documentKey = when {
+                    id != null -> "file:${id.value}"
+                    target != null -> "uri:$target"
+                    else -> null
+                }
+                val (mode, editMode) = if (isMd) {
+                    initialMarkdownModes(documentKey)
+                } else {
+                    MarkdownViewMode.Source to MarkdownViewMode.Source
+                }
                 _uiState.value = TextDocUiState(
                     text = doc.text,
                     encoding = doc.encoding,
@@ -159,6 +188,8 @@ class TextDocViewModel @Inject constructor(
                     isLoading = false,
                     title = name,
                     isMarkdown = isMd,
+                    markdownMode = mode,
+                    markdownEditMode = editMode,
                 )
             } catch (c: CancellationException) {
                 throw c
@@ -189,7 +220,51 @@ class TextDocViewModel @Inject constructor(
     fun setMonospace(value: Boolean) = _uiState.update { it.copy(isMonospace = value) }
     fun setWrap(value: Boolean) = _uiState.update { it.copy(isWrap = value) }
     fun setHtmlPreview(value: Boolean) = _uiState.update { it.copy(isHtmlPreview = value) }
-    fun setMarkdownPreview(value: Boolean) = _uiState.update { it.copy(isMarkdownPreview = value) }
+    fun setMarkdownPreview(value: Boolean) =
+        setMarkdownMode(if (value) MarkdownViewMode.Preview else _uiState.value.markdownEditMode)
+
+    /** Switches the Markdown view and remembers it for this document. */
+    fun setMarkdownMode(mode: MarkdownViewMode) {
+        val state = _uiState.value
+        if (state.markdownMode == mode) return
+        _uiState.update {
+            it.copy(markdownMode = mode, markdownEditMode = if (mode == MarkdownViewMode.Preview) it.markdownEditMode else mode)
+        }
+        val key = documentKey ?: return
+        if (!state.isMarkdown) return
+        viewModelScope.launch {
+            try {
+                markdownModes.setModeFor(key, mode)
+            } catch (c: CancellationException) {
+                throw c
+            } catch (_: Exception) {
+                // Remembering the view is a convenience; the switch itself already happened.
+            }
+        }
+    }
+
+    /** The document's remembered view and the editing view to go with it; else the Settings default. */
+    private suspend fun initialMarkdownModes(key: String?): Pair<MarkdownViewMode, MarkdownViewMode> {
+        val default = try {
+            when (markdownModes.defaultMode()) {
+                MarkdownEditMode.Live -> MarkdownViewMode.Live
+                MarkdownEditMode.Source -> MarkdownViewMode.Source
+            }
+        } catch (c: CancellationException) {
+            throw c
+        } catch (_: Exception) {
+            MarkdownViewMode.Live
+        }
+        val stored = try {
+            key?.let { markdownModes.modeFor(it) }
+        } catch (c: CancellationException) {
+            throw c
+        } catch (_: Exception) {
+            null
+        }
+        val mode = stored ?: default
+        return mode to (if (mode == MarkdownViewMode.Preview) default else mode)
+    }
 
     /** @return true when the file was written; false means the caller should offer Save as. */
     suspend fun saveInPlace(context: Context? = null): Boolean {
@@ -254,6 +329,7 @@ class TextDocViewModel @Inject constructor(
             documentUri = targetUri
             libraryFileId = null
             currentNoteId = null
+            documentKey = "uri:$targetUri"
             savedText = state.text
             _uiState.update { it.copy(isModified = false, isSaving = false, isReadOnly = false) }
             true

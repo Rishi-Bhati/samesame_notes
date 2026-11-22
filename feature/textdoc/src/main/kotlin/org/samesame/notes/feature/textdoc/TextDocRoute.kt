@@ -7,7 +7,6 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,7 +17,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -49,10 +47,6 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
@@ -182,7 +176,7 @@ fun TextDocRoute(
                 onMonospace = { viewModel.setMonospace(!state.isMonospace) },
                 onWrap = { viewModel.setWrap(!state.isWrap) },
                 onPreview = { viewModel.setHtmlPreview(!state.isHtmlPreview) },
-                onMarkdownPreview = { viewModel.setMarkdownPreview(!state.isMarkdownPreview) },
+                onMarkdownMode = viewModel::setMarkdownMode,
             )
         } else {
             ActionRow(
@@ -195,7 +189,7 @@ fun TextDocRoute(
                 onMonospace = { viewModel.setMonospace(!state.isMonospace) },
                 onWrap = { viewModel.setWrap(!state.isWrap) },
                 onPreview = { viewModel.setHtmlPreview(!state.isHtmlPreview) },
-                onMarkdownPreview = { viewModel.setMarkdownPreview(!state.isMarkdownPreview) },
+                onMarkdownMode = viewModel::setMarkdownMode,
             )
         }
         if (state.isReadOnly) {
@@ -250,7 +244,12 @@ fun TextDocRoute(
                     }
                     Row(Modifier.fillMaxSize()) {
                         Box(Modifier.weight(1f).fillMaxHeight()) {
-                            Editor(state, onText = viewModel::updateText, modifier = Modifier.fillMaxSize())
+                            TextDocEditor(
+                                state,
+                                live = state.markdownEditMode == MarkdownViewMode.Live,
+                                onText = viewModel::updateText,
+                                modifier = Modifier.fillMaxSize(),
+                            )
                         }
                         Box(Modifier.width(1.dp).fillMaxHeight().background(SameSameTheme.colors.divider))
                         Box(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 10.dp)) {
@@ -264,7 +263,7 @@ fun TextDocRoute(
                         }
                     }
                 }
-                else -> Editor(state, onText = viewModel::updateText, modifier = Modifier.fillMaxSize())
+                else -> TextDocEditor(state, live = state.isLiveMarkdown, onText = viewModel::updateText, modifier = Modifier.fillMaxSize())
             }
         }
     }
@@ -295,7 +294,7 @@ private fun TopBar(
     onMonospace: () -> Unit,
     onWrap: () -> Unit,
     onPreview: () -> Unit,
-    onMarkdownPreview: () -> Unit,
+    onMarkdownMode: (MarkdownViewMode) -> Unit,
 ) {
     val colors = SameSameTheme.colors
     Row(
@@ -313,7 +312,7 @@ private fun TopBar(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
         )
-        ActionButtons(state, onSave, onSaveAs, onUndo, onRedo, onFind, onMonospace, onWrap, onPreview, onMarkdownPreview)
+        ActionButtons(state, onSave, onSaveAs, onUndo, onRedo, onFind, onMonospace, onWrap, onPreview, onMarkdownMode)
     }
 }
 
@@ -328,14 +327,14 @@ private fun ActionRow(
     onMonospace: () -> Unit,
     onWrap: () -> Unit,
     onPreview: () -> Unit,
-    onMarkdownPreview: () -> Unit,
+    onMarkdownMode: (MarkdownViewMode) -> Unit,
 ) {
     Row(
         Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 12.dp),
         horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ActionButtons(state, onSave, onSaveAs, onUndo, onRedo, onFind, onMonospace, onWrap, onPreview, onMarkdownPreview)
+        ActionButtons(state, onSave, onSaveAs, onUndo, onRedo, onFind, onMonospace, onWrap, onPreview, onMarkdownMode)
     }
 }
 
@@ -350,7 +349,7 @@ private fun ActionButtons(
     onMonospace: () -> Unit,
     onWrap: () -> Unit,
     onPreview: () -> Unit,
-    onMarkdownPreview: () -> Unit,
+    onMarkdownMode: (MarkdownViewMode) -> Unit,
 ) {
     val colors = SameSameTheme.colors
     var menu by remember { mutableStateOf(false) }
@@ -364,11 +363,18 @@ private fun ActionButtons(
         Icon(AppIcons.Search, stringResource(R.string.feature_textdoc_action_find_replace), tint = colors.textPrimary)
     }
     if (state.isMarkdown) {
-        IconButton(onClick = onMarkdownPreview, modifier = Modifier.size(40.dp)) {
-            if (state.isMarkdownPreview) {
-                Icon(AppIcons.Pencil, stringResource(R.string.feature_textdoc_action_edit), tint = colors.textPrimary)
-            } else {
-                Icon(AppIcons.Eye, stringResource(R.string.feature_textdoc_action_preview), tint = colors.textPrimary)
+        // Live / Source / Preview: the button opens the three-way choice (also in the More menu).
+        var modeMenu by remember { mutableStateOf(false) }
+        Box {
+            IconButton(onClick = { modeMenu = true }, modifier = Modifier.size(40.dp)) {
+                Icon(
+                    if (state.isMarkdownPreview) AppIcons.Eye else AppIcons.Pencil,
+                    stringResource(R.string.feature_textdoc_markdown_view),
+                    tint = colors.textPrimary,
+                )
+            }
+            AppDropdownMenu(expanded = modeMenu, onDismissRequest = { modeMenu = false }, offset = DpOffset((-2).dp, (-46).dp)) {
+                MarkdownModeItems(state.markdownMode) { mode -> modeMenu = false; onMarkdownMode(mode) }
             }
         }
     }
@@ -388,42 +394,28 @@ private fun ActionButtons(
                 { menu = false; onPreview() },
                 checked = state.isHtmlPreview,
             )
+            if (state.isMarkdown) {
+                MarkdownModeItems(state.markdownMode) { mode -> menu = false; onMarkdownMode(mode) }
+            }
         }
     }
 }
 
 @Composable
-private fun Editor(state: TextDocUiState, onText: (String) -> Unit, modifier: Modifier = Modifier) {
-    val colors = SameSameTheme.colors
-    val vertical = rememberScrollState()
-    val horizontal = rememberScrollState()
-    var field by remember { mutableStateOf(TextFieldValue(state.text)) }
-
-    LaunchedEffect(state.text) {
-        if (field.text != state.text) field = field.copy(text = state.text, selection = TextRange(state.text.length))
+private fun MarkdownModeItems(current: MarkdownViewMode, onSelect: (MarkdownViewMode) -> Unit) {
+    MarkdownViewMode.entries.forEach { mode ->
+        AppMenuItem(
+            stringResource(
+                when (mode) {
+                    MarkdownViewMode.Live -> R.string.feature_textdoc_markdown_live
+                    MarkdownViewMode.Source -> R.string.feature_textdoc_markdown_source
+                    MarkdownViewMode.Preview -> R.string.feature_textdoc_action_preview
+                },
+            ),
+            { onSelect(mode) },
+            checked = current == mode,
+        )
     }
-    LaunchedEffect(state.activeMatchIndex, state.findQuery) {
-        val match = FindReplace.matches(field.text, state.findQuery).getOrNull(state.activeMatchIndex)
-        if (match != null) field = field.copy(selection = TextRange(match.first, match.last + 1))
-    }
-
-    val scroll = Modifier.verticalScroll(vertical).then(if (state.isWrap) Modifier else Modifier.horizontalScroll(horizontal))
-    BasicTextField(
-        value = field,
-        onValueChange = { value ->
-            field = value
-            onText(value.text)
-        },
-        modifier = modifier.then(scroll).imePadding().padding(horizontal = 20.dp, vertical = 10.dp),
-        readOnly = state.isReadOnly,
-        textStyle = TextStyle(
-            fontFamily = if (state.isMonospace) FontFamily.Monospace else FontFamily.SansSerif,
-            fontSize = if (state.isMonospace) 13.sp else 16.sp,
-            lineHeight = if (state.isMonospace) 19.sp else 24.sp,
-            color = colors.textPrimary,
-        ),
-        cursorBrush = SolidColor(colors.accent),
-    )
 }
 
 @Composable

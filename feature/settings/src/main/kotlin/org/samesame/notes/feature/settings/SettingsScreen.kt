@@ -210,6 +210,14 @@ private fun filePasteLabel(mode: org.samesame.notes.core.model.FilePasteMode): S
 )
 
 @Composable
+private fun markdownModeLabel(mode: org.samesame.notes.core.model.MarkdownEditMode): String = stringResource(
+    when (mode) {
+        org.samesame.notes.core.model.MarkdownEditMode.Live -> R.string.feature_settings_markdown_live
+        org.samesame.notes.core.model.MarkdownEditMode.Source -> R.string.feature_settings_markdown_source
+    },
+)
+
+@Composable
 private fun themeLabel(mode: ThemeMode): String = stringResource(
     when (mode) {
         ThemeMode.Light -> R.string.feature_settings_theme_light
@@ -229,6 +237,7 @@ private fun MainPage(
     val hasLockPassword by hiltViewModel<LockViewModel>().hasPassword.collectAsStateWithLifecycle(initialValue = false)
     var themeMenu by rememberSaveable { mutableStateOf(false) }
     var filePasteMenu by rememberSaveable { mutableStateOf(false) }
+    var markdownMenu by rememberSaveable { mutableStateOf(false) }
     SettingsScaffold(stringResource(R.string.feature_settings_title), onBack) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).navigationBarsPadding()) {
             SectionHeader(stringResource(R.string.feature_settings_general))
@@ -295,6 +304,24 @@ private fun MainPage(
                                 filePasteLabel(mode),
                                 { filePasteMenu = false; update { it.copy(filePasteMode = mode) } },
                                 checked = settings.filePasteMode == mode,
+                            )
+                        }
+                    }
+                }
+                RowDivider()
+                // Text editor (0.4.0): how Markdown notes and .md files open; each document remembers its own choice.
+                Box {
+                    SettingsRow(
+                        stringResource(R.string.feature_settings_markdown_editing),
+                        summary = markdownModeLabel(settings.markdownEditMode),
+                        onClick = { markdownMenu = true },
+                    )
+                    AppDropdownMenu(expanded = markdownMenu, onDismissRequest = { markdownMenu = false }, offset = DpOffset(0.dp, 0.dp)) {
+                        org.samesame.notes.core.model.MarkdownEditMode.entries.forEach { mode ->
+                            AppMenuItem(
+                                markdownModeLabel(mode),
+                                { markdownMenu = false; update { it.copy(markdownEditMode = mode) } },
+                                checked = settings.markdownEditMode == mode,
                             )
                         }
                     }
