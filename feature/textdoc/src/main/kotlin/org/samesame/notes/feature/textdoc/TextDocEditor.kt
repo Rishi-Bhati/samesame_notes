@@ -99,10 +99,14 @@ internal fun TextDocEditor(
     var pendingLink by remember { mutableStateOf<LiveLink?>(null) }
     val holder = remember { LiveHolder() }
 
-    LaunchedEffect(state.text) {
+    // Only changes made outside the editor are copied in. [state.text] also follows the editor's own input, but a
+    // little later (it is collected from the view model): copying that back would replace newer keystrokes with an
+    // older text and restart the keyboard on it, which loses characters when typing fast.
+    LaunchedEffect(state.externalEdits) {
         if (field.text != state.text) field = field.copy(text = state.text, selection = TextRange(state.text.length))
     }
-    LaunchedEffect(state.activeMatchIndex, state.findQuery) {
+    LaunchedEffect(state.findMoves) {
+        if (state.findMoves == 0) return@LaunchedEffect
         val match = FindReplace.matches(field.text, state.findQuery).getOrNull(state.activeMatchIndex)
         if (match != null) field = field.copy(selection = TextRange(match.first, match.last + 1))
     }
