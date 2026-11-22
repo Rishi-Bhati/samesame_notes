@@ -21,6 +21,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import org.samesame.notes.core.designsystem.theme.SameSameColors
+import kotlin.math.abs
 
 /**
  * Styles of the live Markdown editor, all from the theme colours. Hidden syntax keeps its characters (so offsets,
@@ -35,13 +36,15 @@ class LiveMarkdownStyle(val colors: SameSameColors) {
     internal val headings = HeadingScale.map { SpanStyle(fontSize = it.em, fontWeight = FontWeight.Bold) }
     internal val bold = SpanStyle(fontWeight = FontWeight.Bold)
     internal val italic = SpanStyle(fontStyle = FontStyle.Italic)
-    internal val strike = SpanStyle(textDecoration = TextDecoration.LineThrough)
     internal val code = SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 0.9.em, background = colors.card)
     internal val link = SpanStyle(color = colors.accent, textDecoration = TextDecoration.Underline)
     internal val imageAlt = SpanStyle(color = colors.textSecondary, fontStyle = FontStyle.Italic)
     internal val quoteText = SpanStyle(color = colors.textSecondary)
     internal val ordered = SpanStyle(color = colors.textSecondary)
-    internal val taskDoneText = SpanStyle(color = colors.textSecondary, textDecoration = TextDecoration.LineThrough)
+    // No TextDecoration.LineThrough here: Android keeps one decoration per character run and a later underline (a
+    // link, or the keyboard's composing underline) switches the strike off. Strikes are drawn instead
+    // ([drawLiveStrikes]).
+    internal val taskDoneText = SpanStyle(color = colors.textSecondary)
     internal val codeBlock = SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 0.85.em)
     internal val table = SpanStyle(fontFamily = FontFamily.Monospace, fontSize = 0.9.em)
     internal val tableSyntax = SpanStyle(color = colors.textTertiary)
@@ -81,7 +84,6 @@ fun LiveMarkdownDocument.styled(view: LiveMarkdownView, style: LiveMarkdownStyle
                 else -> when (type) {
                     LiveToken.BOLD -> style.bold
                     LiveToken.ITALIC -> style.italic
-                    LiveToken.STRIKE -> style.strike
                     LiveToken.CODE -> style.code
                     LiveToken.LINK_TEXT, LiveToken.AUTOLINK -> style.link
                     LiveToken.IMAGE_ALT -> style.imageAlt
@@ -128,8 +130,14 @@ class LiveDecorations internal constructor(
     internal val codeBlocks: IntArray,
     /** Start offsets of rule lines. */
     internal val rules: IntArray,
+    /** Struck-through ranges: start, end and 1 for a done task's text (softer colour), 0 for `~~text~~`. */
+    internal val strikes: IntArray,
 ) {
     val isEmpty: Boolean get() = bullets.isEmpty() && tasks.isEmpty() && quotes.isEmpty() && codeBlocks.isEmpty() && rules.isEmpty()
+    val hasStrikes: Boolean get() = strikes.isNotEmpty()
+
+    /** The struck-through ranges as start until end. */
+    val strikeRanges: List<IntRange> get() = (strikes.indices step 3).map { strikes[it] until strikes[it + 1] }
 }
 
 /** The decorations for [view] (only [LiveMarkdownView.window] lines). */
@@ -139,6 +147,7 @@ fun LiveMarkdownDocument.decorations(view: LiveMarkdownView): LiveDecorations {
     val quotes = IntList()
     val code = IntList()
     val rules = IntList()
+    val strikes = IntList()
     val first = view.window.first.coerceAtLeast(0)
     val last = minOf(view.window.last, lineCount - 1)
     var blockStart = -1
@@ -152,6 +161,14 @@ fun LiveMarkdownDocument.decorations(view: LiveMarkdownView): LiveDecorations {
                 code.add(if (blockStart < 0) base else blockStart)
                 code.add(base + l.length)
                 blockStart = -1
+            }
+        }
+        for (t in 0 until l.tokenCount) {
+            val type = l.tokenType(t)
+            if (type == LiveToken.STRIKE || type == LiveToken.TASK_DONE_TEXT) {
+                strikes.add(base + l.tokenStart(t))
+                strikes.add(base + l.tokenEnd(t))
+                strikes.add(if (type == LiveToken.TASK_DONE_TEXT) 1 else 0)
             }
         }
         val revealed = index in view.revealed
@@ -176,7 +193,7 @@ fun LiveMarkdownDocument.decorations(view: LiveMarkdownView): LiveDecorations {
         code.add(blockStart)
         code.add(lineEnd(last))
     }
-    return LiveDecorations(bullets.toArray(), tasks.toArray(), quotes.toArray(), code.toArray(), rules.toArray())
+    return LiveDecorations(bullets.toArray(), tasks.toArray(), quotes.toArray(), code.toArray(), rules.toArray(), strikes.toArray())
 }
 
 /** Draws [decorations] in the coordinates of [layout] (the text field's own text layout). */
@@ -248,6 +265,37 @@ fun DrawScope.drawLiveDecorations(layout: TextLayoutResult, decorations: LiveDec
         val line = layout.getLineForOffset(offset.coerceIn(0, textLength))
         val y = (layout.getLineTop(line) + layout.getLineBottom(line)) / 2
         drawRect(colors.divider, topLeft = Offset(0f, y - dividerHeight / 2), size = Size(layout.size.width.toFloat(), dividerHeight))
+    }
+}
+
+/**
+ * Draws the strike-through lines over the text (call after the text is drawn). Each visual line of a range gets a
+ * line at about a third of the ascent above the baseline, like the platform's own strike-through.
+ */
+fun DrawScope.drawLiveStrikes(layout: TextLayoutResult, decorations: LiveDecorations, colors: SameSameColors) {
+    val textLength = layout.layoutInput.text.length
+    val s = decorations.strikes
+    var i = 0
+    while (i < s.size) {
+        val start = s[i].coerceIn(0, textLength)
+        val end = s[i + 1].coerceIn(0, textLength)
+        val color = if (s[i + 2] == 1) colors.textSecondary else colors.textPrimary
+        i += 3
+        if (end <= start) continue
+        val firstLine = layout.getLineForOffset(start)
+        val lastLine = layout.getLineForOffset(end - 1)
+        for (line in firstLine..lastLine) {
+            val from = maxOf(start, layout.getLineStart(line))
+            val to = minOf(end, layout.getLineEnd(line, visibleEnd = true))
+            if (to <= from) continue
+            val left = layout.getBoundingBox(from).left
+            val right = layout.getBoundingBox(to - 1).right
+            val baseline = layout.getLineBaseline(line)
+            val ascent = baseline - layout.getLineTop(line)
+            val thickness = (ascent / 15f).coerceAtLeast(1f)
+            val y = baseline - ascent * 0.3f
+            drawRect(color, topLeft = Offset(minOf(left, right), y - thickness / 2), size = Size(abs(right - left), thickness))
+        }
     }
 }
 

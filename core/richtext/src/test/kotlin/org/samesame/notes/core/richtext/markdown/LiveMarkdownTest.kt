@@ -199,6 +199,21 @@ class LiveMarkdownTest {
         assertThat(doc.decorations(atBox).isEmpty).isTrue()
     }
 
+    @Test fun `strike ranges are drawn with bold and links kept`() {
+        val text = "a ~~gone~~ **~~both~~** ~~[ln](u)~~\n- [x] done"
+        val doc = LiveMarkdownDocument.analyze(text)
+        val view = LiveMarkdownView(0 until doc.lineCount, IntRange.EMPTY, null)
+        val ranges = doc.decorations(view).strikeRanges.map { text.substring(it.first, it.last + 1) }
+        assertThat(ranges).containsExactly("gone", "both", "[ln](u)", "done")
+        val style = LiveMarkdownStyle(DarkColors)
+        val spans = doc.styled(view, style).spanStyles
+        // Bold and the link underline are still styled on the struck text.
+        assertThat(spans.any { it.item == style.bold && text.substring(it.start, it.end) == "~~both~~" }).isTrue()
+        assertThat(spans.any { it.item == style.link && text.substring(it.start, it.end) == "ln" }).isTrue()
+        // No span carries a line-through: it would be switched off by any later underline.
+        assertThat(spans.none { it.item.textDecoration?.contains(androidx.compose.ui.text.style.TextDecoration.LineThrough) == true }).isTrue()
+    }
+
     // ---- task toggle ----------------------------------------------------------------------------------------
 
     @Test fun `task toggle edits only the box character`() {
