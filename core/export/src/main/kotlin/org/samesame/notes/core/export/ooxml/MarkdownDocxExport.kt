@@ -29,6 +29,7 @@ import org.commonmark.node.StrongEmphasis
 import org.commonmark.node.Text
 import org.commonmark.parser.Parser
 import java.io.OutputStream
+import org.samesame.notes.core.model.richtext.LinkSchemes
 
 /**
  * Word DOCX export for Markdown notes.
@@ -343,7 +344,10 @@ object MarkdownDocxExport {
                 is Strikethrough -> renderInlines(child, out, ctx, style.copy(strikethrough = true))
                 is SoftLineBreak -> renderRun(" ", style, out)
                 is HardLineBreak -> out.append("<w:r><w:br/></w:r>")
-                is Link -> {
+                // A target Word would open as a file or UNC path (file:, \\host) or a script stays plain text.
+                is Link -> if (!LinkSchemes.isExportable(child.destination, allowRelative = false)) {
+                    renderInlines(child, out, ctx, style)
+                } else {
                     val rId = ctx.hyperlinkId(child.destination)
                     out.append("<w:hyperlink r:id=\"$rId\">")
                     renderInlines(child, out, ctx, style)

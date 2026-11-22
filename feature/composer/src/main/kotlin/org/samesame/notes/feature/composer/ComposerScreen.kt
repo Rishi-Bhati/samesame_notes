@@ -936,9 +936,10 @@ internal fun ComposerEditor(
                                     .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                             }
                         }
+                        // Stored link targets come from imported notes too: only what a browser may open (BROWSABLE).
                         TextLink.Kind.Url -> android.content.Intent(
                             android.content.Intent.ACTION_VIEW, android.net.Uri.parse(link.target),
-                        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        ).addCategory(android.content.Intent.CATEGORY_BROWSABLE).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                         // A library file: resolved and opened (or explained) by the Files controller.
                         TextLink.Kind.FileLink -> {
                             fileLinkController?.open(link)

@@ -74,13 +74,15 @@ import org.samesame.notes.core.designsystem.theme.SameSameColors
 import org.samesame.notes.core.designsystem.theme.SameSameText
 import org.samesame.notes.core.designsystem.theme.SameSameTheme
 import org.samesame.notes.core.model.Limits
+import org.samesame.notes.core.model.richtext.LinkSchemes
 
 /**
  * Read-only rendering of Markdown text. Everything is drawn from [SameSameTheme] colours, nothing is hard-coded.
  *
  * [onTaskCheckedChange] gets the source offset of the tapped item's `[` (see [MarkdownParser.withTaskChecked]) and the
  * new state; without it the task boxes are drawn but do nothing. [onLinkClick] replaces opening a link in the
- * browser, which is what happens when it is null. Text over [Limits.MAX_MARKDOWN_CHARS] draws nothing: the host
+ * browser, which is what happens when it is null (http, https and mailto links only, [LinkSchemes.OPENABLE]; any
+ * other target is drawn as a link but opens nothing). Text over [Limits.MAX_MARKDOWN_CHARS] draws nothing: the host
  * shows its own "too large" hint ([MarkdownParser.isTooLarge]).
  */
 @Composable
@@ -293,10 +295,11 @@ private fun AnnotatedString.Builder.appendInlines(parent: Node, c: SameSameColor
             is Code -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = c.card)) { append(node.literal) }
             is Link -> {
                 val url = node.destination.orEmpty()
-                val annotation = if (onLink != null) {
-                    LinkAnnotation.Clickable("md-link", link) { onLink(url) }
-                } else {
-                    LinkAnnotation.Url(url, link)
+                val annotation = when {
+                    onLink != null -> LinkAnnotation.Clickable("md-link", link) { onLink(url) }
+                    // The file's own link targets: javascript:, file:, content:, intent: or another app's scheme never open.
+                    LinkSchemes.isOpenable(url) -> LinkAnnotation.Url(url.trim(), link)
+                    else -> LinkAnnotation.Clickable("md-link", link) {}
                 }
                 withLink(annotation) { appendInlines(node, c, link, onLink) }
             }

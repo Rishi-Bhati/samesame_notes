@@ -5,6 +5,7 @@ import org.samesame.notes.core.model.Limits
 import org.samesame.notes.core.model.document.ImageObject
 import org.samesame.notes.core.model.document.NoteDocument
 import org.samesame.notes.core.model.document.VoiceObject
+import org.samesame.notes.core.model.richtext.LinkSchemes
 import org.samesame.notes.core.model.richtext.ListKind
 import org.samesame.notes.core.model.richtext.RichText
 import org.samesame.notes.core.model.richtext.TextAlign
@@ -102,7 +103,8 @@ object HtmlExport {
         val text = escape(span.text)
         val styled = if (css.isEmpty()) text else "<span style=\"$css\">$text</span>"
         val link = s.link
-        return if (link.isNullOrEmpty()) styled else "<a href=\"${escape(link)}\">$styled</a>"
+        // Links come from imported notes too: javascript:, data:, file: and unknown schemes are not written as links.
+        return if (link.isNullOrEmpty() || !LinkSchemes.isExportable(link)) styled else "<a href=\"${escape(link)}\">$styled</a>"
     }
 
     private fun trim(f: Float): String = "%.3f".format(java.util.Locale.ROOT, f).trimEnd('0').trimEnd('.')
