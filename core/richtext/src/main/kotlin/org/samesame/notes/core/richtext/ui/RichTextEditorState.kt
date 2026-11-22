@@ -36,6 +36,8 @@ import org.samesame.notes.core.richtext.edit.math.MathDetector
 import org.samesame.notes.core.richtext.edit.math.MathSuggestion
 import org.samesame.notes.core.richtext.input.ImeTrace
 import org.samesame.notes.core.richtext.input.InputHost
+import org.samesame.notes.core.richtext.input.KeyStyle
+import org.samesame.notes.core.richtext.input.RichTextKeyHandler
 import org.samesame.notes.core.richtext.input.RichTextInputConnection
 import org.samesame.notes.core.richtext.layout.ColumnSlice
 import org.samesame.notes.core.richtext.layout.TextPageGeometry
@@ -315,7 +317,31 @@ class RichTextEditorState(
         RichTextInputConnection.configure(outAttrs, body, mathGhostAtCaret())
         val sel = body.selection
         reportedSelection = intArrayOf(sel.start, sel.end, -1, -1)
-        return RichTextInputConnection(view, body, inputHost)
+        return RichTextInputConnection(view, body, inputHost, keyHandler)
+    }
+
+    /** Ctrl+Z from a keyboard; true when the host undid (the composer's history). */
+    var onUndo: (() -> Boolean)? = null
+
+    /** Ctrl+Y / Ctrl+Shift+Z from a keyboard. */
+    var onRedo: (() -> Boolean)? = null
+
+    /** Before a keyboard style toggle (Ctrl+B/I/U) changes the body: the host ends its typing burst. */
+    var onBeforeFormat: (() -> Unit)? = null
+
+    /**
+     * A key event from a hardware keyboard that the IME did not consume (see `TextInputNode`); true when handled.
+     * Shares [RichTextKeyHandler] with the IME's `sendKeyEvent`.
+     */
+    fun onHardwareKey(event: android.view.KeyEvent): Boolean {
+        if (!enabled) return false
+        val handled = keyHandler.onKey(event, fromIme = false)
+        if (handled && event.action == android.view.KeyEvent.ACTION_DOWN && !event.isCtrlPressed && !event.isMetaPressed) {
+            // Typing hides the selection chrome, as with the on-screen keyboard.
+            handlesVisible = false
+            toolbarVisible = false
+        }
+        return handled
     }
 
     private val ghostJudge = org.samesame.notes.core.richtext.edit.math.GhostSelectionJudge()
@@ -345,7 +371,55 @@ class RichTextEditorState(
         override fun acceptMathGhostFromIme(reason: String): Boolean = this@RichTextEditorState.acceptMathGhost("ime:$reason")
 
         override fun slashEnterFromIme(): Boolean = this@RichTextEditorState.onSlashEnter?.invoke() == true
+
+        override fun undo(): Boolean = this@RichTextEditorState.onUndo?.invoke() == true
+        override fun redo(): Boolean = this@RichTextEditorState.onRedo?.invoke() == true
+
+        override fun selectAll(): Boolean {
+            this@RichTextEditorState.selectAll()
+            return true
+        }
+
+        override fun toggleStyle(style: KeyStyle): Boolean {
+            val cs = body.currentCharStyle()
+            onBeforeFormat?.invoke()
+            body.applyCharStyle {
+                when (style) {
+                    KeyStyle.Bold -> it.copy(bold = !cs.bold)
+                    KeyStyle.Italic -> it.copy(italic = !cs.italic)
+                    KeyStyle.Underline -> it.copy(underline = !cs.underline)
+                }
+            }
+            return true
+        }
+
+        override fun lineMove(offset: Int, lines: Int, goalX: Float?): Pair<Int, Float>? {
+            val layout = engine.layout
+            val o = offset.coerceIn(0, body.length)
+            val line = layout.getLineForOffset(o)
+            val x = goalX ?: layout.getPrimaryHorizontal(o)
+            val target = line + lines
+            return when {
+                target < 0 -> 0 to x
+                target >= layout.lineCount -> body.length to x
+                else -> layout.getOffsetForHorizontal(target, x) to x
+            }
+        }
+
+        override fun lineEdge(offset: Int, end: Boolean): Int {
+            val layout = engine.layout
+            val o = offset.coerceIn(0, body.length)
+            val line = layout.getLineForOffset(o)
+            if (!end) return layout.getLineStart(line)
+            val start = layout.getLineStart(line)
+            var e = layout.getLineEnd(line)
+            // Before the line's newline, or before the space a soft wrap broke at (else the caret shows on the next line).
+            if (e > start && (body.editable[e - 1] == '\n' || (line < layout.lineCount - 1 && body.editable[e - 1] == ' '))) e--
+            return e
+        }
     }
+
+    private val keyHandler = RichTextKeyHandler(body, inputHost)
 
     private val imm: InputMethodManager
         get() = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
