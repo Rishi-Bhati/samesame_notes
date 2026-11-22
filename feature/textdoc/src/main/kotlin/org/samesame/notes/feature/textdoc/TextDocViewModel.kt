@@ -44,6 +44,8 @@ data class TextDocUiState(
     /** The editing view (Live or Source) used next to the preview and when leaving it. */
     val markdownEditMode: MarkdownViewMode = MarkdownViewMode.Live,
     val isMarkdown: Boolean = false,
+    /** An HTML file: the only kind that offers the Rendered view. */
+    val isHtml: Boolean = false,
     val isLockedNote: Boolean = false,
     val findQuery: String = "",
     val replaceQuery: String = "",
@@ -57,6 +59,9 @@ data class TextDocUiState(
     /** The file's name, when the caller knows it. */
     val title: String? = null,
 ) {
+    /** The "Rendered" menu item shows for HTML files only; Markdown has its own Live/Source/Preview views. */
+    val canShowRendered: Boolean get() = isHtml
+
     val isMarkdownPreview: Boolean get() = isMarkdown && markdownMode == MarkdownViewMode.Preview
 
     /** True when the editor styles Markdown in place (a Markdown document in the Live view). */
@@ -188,6 +193,7 @@ class TextDocViewModel @Inject constructor(
                     isLoading = false,
                     title = name,
                     isMarkdown = isMd,
+                    isHtml = HtmlDetection.isHtml(name, mimeType),
                     markdownMode = mode,
                     markdownEditMode = editMode,
                 )
@@ -219,7 +225,7 @@ class TextDocViewModel @Inject constructor(
     fun setReplaceQuery(value: String) = _uiState.update { it.copy(replaceQuery = value) }
     fun setMonospace(value: Boolean) = _uiState.update { it.copy(isMonospace = value) }
     fun setWrap(value: Boolean) = _uiState.update { it.copy(isWrap = value) }
-    fun setHtmlPreview(value: Boolean) = _uiState.update { it.copy(isHtmlPreview = value) }
+    fun setHtmlPreview(value: Boolean) = _uiState.update { it.copy(isHtmlPreview = value && it.canShowRendered) }
     fun setMarkdownPreview(value: Boolean) =
         setMarkdownMode(if (value) MarkdownViewMode.Preview else _uiState.value.markdownEditMode)
 

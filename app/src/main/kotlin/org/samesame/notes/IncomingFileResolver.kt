@@ -16,14 +16,14 @@ data class IncomingFile(val uri: Uri, val displayName: String?, val mimeType: St
  */
 class IncomingFileResolver(private val contentResolver: ContentResolver) {
 
-    fun resolve(uri: Uri, intentMimeType: String?): IncomingFile {
+    fun resolve(uri: Uri, intentMimeType: String?, extraTitle: String? = null): IncomingFile {
         val providerMimeType = runCatching { contentResolver.getType(uri) }.getOrNull()
         val mimeType = when {
             intentMimeType.isNullOrBlank() -> providerMimeType
             isGeneric(intentMimeType) -> providerMimeType ?: intentMimeType
             else -> intentMimeType
         }
-        val name = queryDisplayName(uri)
+        val name = IncomingNames.pick(queryDisplayName(uri), extraTitle, uri.lastPathSegment)
         return IncomingFile(uri, name, mimeType, NoteFileDetector.classify(name, mimeType, uri.lastPathSegment))
     }
 
