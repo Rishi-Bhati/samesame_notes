@@ -200,9 +200,7 @@ object MathEvaluator {
         if (dateIso.matches(body) || dateShort.matches(body)) return true
         val dayMonth = dateDayMonth.matchEntire(body)
         if (dayMonth != null) {
-            val first = dayMonth.groupValues[1].toIntOrNull() ?: 0
-            val second = dayMonth.groupValues[2].toIntOrNull() ?: 0
-            if (first > 12 || second > 12) return true
+            if (isDayMonthDate(dayMonth.groupValues[1], dayMonth.groupValues[2])) return true
         }
         if (version.matches(body)) return true
         return false
