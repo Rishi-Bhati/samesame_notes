@@ -30,4 +30,14 @@ class MarkdownDetectionTest {
         assertThat(MarkdownDetection.isMarkdown("untitled", "text/html")).isFalse()
         assertThat(MarkdownDetection.isMarkdown(null, null)).isFalse()
     }
+
+    @Test
+    fun aMarkdownNameWinsOverAGenericOrWrongMimeType() {
+        assertThat(MarkdownDetection.isMarkdown("test.md", "text/plain")).isTrue()
+        assertThat(MarkdownDetection.isMarkdown("test.md", "application/octet-stream")).isTrue()
+        assertThat(MarkdownDetection.isMarkdown("test.MD", "text/html")).isTrue()
+        assertThat(MarkdownDetection.isMarkdown("test.txt", "text/plain")).isFalse()
+        assertThat(MarkdownDetection.isMarkdown("text/markdown", "text/plain")).isFalse()
+        assertThat(MarkdownDetection.isMarkdown(null, "text/markdown; charset=utf-8")).isTrue()
+    }
 }

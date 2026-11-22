@@ -113,13 +113,32 @@ class TextDocViewModelTest {
     }
 
     @Test
-    fun htmlPreviewToggles() = runTest {
+    fun htmlPreviewTogglesForAnHtmlFile() = runTest {
         val vm = createViewModel()
-        vm.load(null, file.id.value, writable = true)
+        vm.load(Uri.parse("content://test/page.html"), null, writable = true, displayName = "page.html", mimeType = "text/html")
 
+        assertThat(vm.uiState.value.canShowRendered).isTrue()
         assertThat(vm.uiState.value.isHtmlPreview).isFalse()
         vm.setHtmlPreview(true)
         assertThat(vm.uiState.value.isHtmlPreview).isTrue()
+    }
+
+    @Test
+    fun renderedIsOfferedOnlyForHtml() = runTest {
+        val plain = createViewModel()
+        plain.load(null, file.id.value, writable = true)
+        assertThat(plain.uiState.value.canShowRendered).isFalse()
+        plain.setHtmlPreview(true)
+        assertThat(plain.uiState.value.isHtmlPreview).isFalse()
+
+        val markdown = createViewModel()
+        markdown.load(Uri.parse("content://test/x"), null, writable = true, displayName = "test.md", mimeType = "text/plain")
+        assertThat(markdown.uiState.value.isMarkdown).isTrue()
+        assertThat(markdown.uiState.value.canShowRendered).isFalse()
+
+        val byMime = createViewModel()
+        byMime.load(Uri.parse("content://test/y"), null, writable = true, displayName = null, mimeType = "application/xhtml+xml")
+        assertThat(byMime.uiState.value.canShowRendered).isTrue()
     }
 
     @Test

@@ -229,7 +229,7 @@ fun TextDocRoute(
                 state.loadFailed -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(stringResource(R.string.feature_textdoc_open_failed), color = SameSameTheme.colors.textSecondary)
                 }
-                state.isHtmlPreview -> HtmlPreview(state.text, Modifier.fillMaxSize())
+                state.isHtmlPreview && state.canShowRendered -> HtmlPreview(state.text, Modifier.fillMaxSize())
                 state.isMarkdownPreview && !isWideLandscape -> {
                     Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 10.dp)) {
                         MarkdownPreview(
@@ -411,11 +411,13 @@ private fun ActionButtons(
             AppMenuItem(stringResource(R.string.feature_textdoc_action_save_as), { menu = false; onSaveAs() })
             AppMenuItem(stringResource(R.string.feature_textdoc_toggle_monospace), { menu = false; onMonospace() }, checked = state.isMonospace)
             AppMenuItem(stringResource(R.string.feature_textdoc_toggle_wrap), { menu = false; onWrap() }, checked = state.isWrap)
-            AppMenuItem(
-                stringResource(if (state.isHtmlPreview) R.string.feature_textdoc_toggle_source else R.string.feature_textdoc_toggle_rendered),
-                { menu = false; onPreview() },
-                checked = state.isHtmlPreview,
-            )
+            if (state.canShowRendered) {
+                AppMenuItem(
+                    stringResource(if (state.isHtmlPreview) R.string.feature_textdoc_toggle_source else R.string.feature_textdoc_toggle_rendered),
+                    { menu = false; onPreview() },
+                    checked = state.isHtmlPreview,
+                )
+            }
             if (state.isMarkdown) {
                 MarkdownModeItems(state.markdownMode) { mode -> menu = false; onMarkdownMode(mode) }
             }

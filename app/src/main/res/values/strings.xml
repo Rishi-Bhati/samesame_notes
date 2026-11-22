@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">SameSame notes</string>
+    <string name="text_doc_not_text">This file isn\'t text. Open it with Save to SameSame to keep a copy.</string>
     <string name="sdocx_import_legacy">This is a legacy the reference app (.sdoc) file. It is device-bound and cannot be imported.</string>
     <string name="sdocx_import_invalid">This file is not a valid note file (.sdocx, .ssnote or PDF) or uses a newer format.</string>
     <string name="sdocx_import_io">Could not read the file.</string>
