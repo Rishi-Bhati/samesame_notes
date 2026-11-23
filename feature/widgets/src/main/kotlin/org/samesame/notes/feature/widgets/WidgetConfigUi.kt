@@ -57,13 +57,14 @@ internal fun ComponentActivity.setConfigureResult(widgetId: Int, ok: Boolean) {
 }
 
 /**
- * The size the launcher shows [widgetId] at in portrait (dp), or [fallback] before it is placed: the settings preview draws
- * the layout the widget really has.
+ * The size the launcher shows [widgetId] at in the current orientation (dp; portrait = min width x max height, landscape =
+ * max width x min height), or [fallback] before it is placed: the settings preview draws the layout the widget really has.
  */
 internal fun ComponentActivity.widgetSize(widgetId: Int, fallback: DpSize): DpSize {
     val options = runCatching { AppWidgetManager.getInstance(this).getAppWidgetOptions(widgetId) }.getOrNull() ?: return fallback
-    val w = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH)
-    val h = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT)
+    val landscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    val w = options.getInt(if (landscape) AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH else AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH)
+    val h = options.getInt(if (landscape) AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT else AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT)
     return if (w > 0 && h > 0) DpSize(w.dp, h.dp) else fallback
 }
 
