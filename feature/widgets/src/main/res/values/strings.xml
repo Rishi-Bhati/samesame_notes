@@ -104,4 +104,29 @@
     <string name="widget_capture_no_dictation">Speech input isn\'t available on this device.</string>
     <string name="widget_capture_saved">Note saved</string>
     <string name="widget_capture_failed">Couldn\'t save the note. Your text is still here.</string>
+    <!-- Quick capture buttons (widget settings) -->
+    <string name="widget_section_buttons">Buttons</string>
+    <string name="widget_buttons_hint">The main button is the big one in the middle of a square widget and the bar of a wide one. The others sit in the corners, or beside and under the bar in that order.</string>
+    <string name="widget_slot_centre">Main button</string>
+    <string name="widget_slot_top_left">Top left</string>
+    <string name="widget_slot_top_right">Top right</string>
+    <string name="widget_slot_bottom_left">Bottom left</string>
+    <string name="widget_slot_bottom_right">Bottom right</string>
+    <string name="widget_button_none">None</string>
+    <string name="widget_button_note">New note</string>
+    <string name="widget_button_note_description">New note</string>
+    <string name="widget_button_checklist">Checklist</string>
+    <string name="widget_button_dictate">Voice note (dictate)</string>
+    <string name="widget_button_handwriting">Handwriting</string>
+    <string name="widget_button_drawing">Drawing</string>
+    <string name="widget_button_camera">Camera</string>
+    <string name="widget_button_camera_description">Take a photo for a new note</string>
+    <string name="widget_button_camera_label">Photo</string>
+    <string name="widget_button_picture">Picture from gallery</string>
+    <string name="widget_button_markdown">Markdown note</string>
+    <string name="widget_button_markdown_description">New Markdown note</string>
+    <string name="widget_button_markdown_label">Markdown</string>
+    <string name="widget_button_open_app">Open the app</string>
+    <string name="widget_button_open_app_description">Open the app</string>
+    <string name="widget_button_open_app_label">App</string>
 </resources>

@@ -25,7 +25,9 @@ class WidgetCreateActivity : ComponentActivity() {
             val folder = intent.getStringExtra(WidgetIntents.EXTRA_FOLDER_ID)?.let(::FolderId)?.takeIf { wanted ->
                 runCatching { ep.folders().observeFolders().first() }.getOrDefault(emptyList()).any { it.id == wanted && !it.isInTrash }
             }
-            val id = runCatching { notes.createNote(folderId = folder) }.getOrNull()
+            val id = runCatching {
+                if (action == StartAction.Markdown) notes.createMarkdownNote(folder) else notes.createNote(folderId = folder)
+            }.getOrNull()
             if (id != null && intent.getBooleanExtra(WidgetIntents.EXTRA_FAVORITE, false)) {
                 runCatching { notes.setFavorite(listOf(id), true) }
             }

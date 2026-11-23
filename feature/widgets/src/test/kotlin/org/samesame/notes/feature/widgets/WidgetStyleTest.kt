@@ -65,8 +65,9 @@ class WidgetStyleTest {
         assertThat(r.accent.night).isEqualTo(WidgetTokens.accentDark)
     }
 
-    @Test fun `creator keys are keypad pen brush image voice`() {
-        assertThat(StartAction.entries.map { it.key }).containsExactly("keypad", "pen", "brush", "image", "voice").inOrder()
-        assertThat(StartAction.fromKey("camera")).isNull()
+    @Test fun `start action keys are stable`() {
+        assertThat(StartAction.entries.map { it.key })
+            .containsExactly("keypad", "pen", "brush", "image", "voice", "camera", "markdown").inOrder()
+        assertThat(StartAction.fromKey("scan")).isNull()
     }
 }
