@@ -276,7 +276,7 @@ private data class PendingExport(
 fun ComposerRoute(
     noteId: String,
     onBack: () -> Unit,
-    /** A home-screen widget button: "keypad", "pen", "brush", "image" or "voice" runs once when the editor is ready. */
+    /** A home-screen widget button: "keypad", "pen", "brush", "image", "camera" or "voice" runs once when the editor is ready. */
     startAction: String? = null,
     viewModel: ComposerViewModel = hiltViewModel<ComposerViewModel, ComposerViewModel.Factory>(
         key = noteId,
@@ -1714,6 +1714,9 @@ internal fun ComposerEditor(
                 if (session.chrome.value.toolbar.tool != PenModeTool.Pen) session.dispatch(ToolbarIntent.TapTool(PenModeTool.Pen))
             }
             "image" -> photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            // Same path as Insert > Camera: the in-app camera sheet, or the system camera when the permission is denied
+            // or there is no usable camera (and a snackbar if even that can't run). The note stays open either way.
+            "camera" -> openCamera()
             "voice" -> micPermission.begin()
         }
     }
