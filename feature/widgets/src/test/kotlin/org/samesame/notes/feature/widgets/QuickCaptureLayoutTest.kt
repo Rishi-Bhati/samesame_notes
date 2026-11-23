@@ -48,12 +48,19 @@ class QuickCaptureLayoutTest {
             assertThat(corner.value).isAtLeast(48f)
             assertThat(centre.value).isGreaterThan(corner.value)
             // Corner centres on the diagonals: the main button's edge stays off the corner buttons.
-            val dx = (w - 12 - corner.value) / 2
-            val dy = (h - 12 - corner.value) / 2
+            val pad = QuickCaptureLayout.squarePadding(size).value
+            val dx = (w - pad * 2 - corner.value) / 2
+            val dy = (h - pad * 2 - corner.value) / 2
             val gap = Math.sqrt((dx * dx + dy * dy).toDouble()) - corner.value / 2 - centre.value / 2
             assertThat(gap).isAtLeast(1.0)
         }
         assertThat(QuickCaptureLayout.centre(DpSize(1000.dp, 1000.dp))).isEqualTo(QuickCaptureLayout.CENTRE_MAX)
         assertThat(QuickCaptureLayout.corner(DpSize(1000.dp, 1000.dp))).isEqualTo(QuickCaptureLayout.CORNER_MAX)
+    }
+
+    @Test
+    fun squarePaddingGrowsWithSize() {
+        assertThat(QuickCaptureLayout.squarePadding(DpSize(140.dp, 140.dp))).isEqualTo(QuickCaptureLayout.SQUARE_PADDING_MIN)
+        assertThat(QuickCaptureLayout.squarePadding(DpSize(300.dp, 260.dp))).isEqualTo(QuickCaptureLayout.SQUARE_PADDING_MAX)
     }
 }

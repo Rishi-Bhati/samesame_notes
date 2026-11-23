@@ -453,7 +453,7 @@ internal fun QuickCaptureReplica(roles: WidgetColorRoles, night: Boolean, size: 
     }
     val shown = buttons.shown
     when (QuickCaptureLayout.forSize(size)) {
-        CaptureShape.Square -> ReplicaFrame(roles, night, QuickCaptureLayout.SQUARE_PADDING) {
+        CaptureShape.Square -> ReplicaFrame(roles, night, QuickCaptureLayout.squarePadding(size)) {
             val corner = QuickCaptureLayout.corner(size)
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(Modifier.fillMaxSize()) {

@@ -101,7 +101,12 @@ object QuickCaptureLayout {
 
     /** Square layout: inset from the widget edge, corner buttons from 48 dp (tap target) to [CORNER_MAX], main button. */
     private const val ASPECT_SLACK = 1e-4f
-    val SQUARE_PADDING = 6.dp
+    val SQUARE_PADDING_MIN = 6.dp
+    val SQUARE_PADDING_MAX = 14.dp
+
+    /** Inset of the square layout: 6 dp at the smallest square (room for the main button), growing to 14 dp. */
+    fun squarePadding(size: DpSize): Dp =
+        (SQUARE_PADDING_MIN + (min(size.width, size.height) - SQUARE_FROM) * 0.1f).coerceIn(SQUARE_PADDING_MIN, SQUARE_PADDING_MAX)
     val CORNER_MAX = 64.dp
     val CENTRE_MIN = 56.dp
     val CENTRE_MAX = 120.dp
@@ -136,8 +141,9 @@ object QuickCaptureLayout {
      */
     fun centre(size: DpSize): Dp {
         val c = corner(size).value
-        val dx = (size.width.value - SQUARE_PADDING.value * 2 - c) / 2
-        val dy = (size.height.value - SQUARE_PADDING.value * 2 - c) / 2
+        val pad = squarePadding(size).value
+        val dx = (size.width.value - pad * 2 - c) / 2
+        val dy = (size.height.value - pad * 2 - c) / 2
         val radius = sqrt(dx * dx + dy * dy) - c / 2 - CENTRE_GAP.value
         return (radius * 2).dp.coerceIn(CENTRE_MIN, CENTRE_MAX)
     }
@@ -148,7 +154,7 @@ internal fun QuickCaptureContent(p: WidgetPalette, buttons: CaptureButtons) {
     val size = LocalSize.current
     val context = LocalContext.current
     when (QuickCaptureLayout.forSize(size)) {
-        CaptureShape.Square -> WidgetFrame(p, padding = QuickCaptureLayout.SQUARE_PADDING) { SquareButtons(p, buttons, size) }
+        CaptureShape.Square -> WidgetFrame(p, padding = QuickCaptureLayout.squarePadding(size)) { SquareButtons(p, buttons, size) }
         CaptureShape.Tiles -> WidgetFrame(p) {
             Column(GlanceModifier.fillMaxSize()) {
                 val shown = buttons.shown
