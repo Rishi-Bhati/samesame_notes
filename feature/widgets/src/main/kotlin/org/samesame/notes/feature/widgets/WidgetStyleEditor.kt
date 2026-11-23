@@ -63,6 +63,8 @@ internal fun WidgetSettingsBody(
     style: WidgetStyle,
     onStyle: (WidgetStyle) -> Unit,
     widgetSize: DpSize,
+    /** The heading of the [content] card; null = "Shows". */
+    contentHeading: String? = null,
     content: (@Composable ColumnScope.() -> Unit)? = null,
     preview: @Composable (roles: WidgetColorRoles, night: Boolean, size: DpSize) -> Unit,
 ) {
@@ -74,7 +76,7 @@ internal fun WidgetSettingsBody(
             preview(WidgetTheme.roles(style, wallpaperDarkText = !night), night, size)
         }
         DayNightSwitch(night) { night = it }
-        if (content != null) SectionCard(stringResource(R.string.widget_section_content), content = content)
+        if (content != null) SectionCard(contentHeading ?: stringResource(R.string.widget_section_content), content = content)
         SectionCard(stringResource(R.string.widget_section_background)) {
             Row(Modifier.fillMaxWidth().padding(vertical = 14.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
                 Swatch(WidgetBackground.White, R.string.widget_style_white, style.background) { onStyle(style.copy(background = it)) }
@@ -414,55 +416,141 @@ private fun ColumnScope.ReplicaEmpty(roles: WidgetColorRoles, night: Boolean) {
     }
 }
 
-private val replicaCaptureIcons = listOf(
-    Oui.drawable.ic_oui_checkbox_checked_outline, Oui.drawable.ic_oui_voice, Oui.drawable.ic_oui_pen_fountain, Oui.drawable.ic_oui_image_outline,
-)
-private val replicaCaptureLabels = listOf(
-    R.string.widget_capture_label_checklist, R.string.widget_capture_label_voice, R.string.widget_creator_label_pen, R.string.widget_creator_label_image,
-)
-
 @Composable
-internal fun QuickCaptureReplica(roles: WidgetColorRoles, night: Boolean, size: DpSize) {
+internal fun QuickCaptureReplica(roles: WidgetColorRoles, night: Boolean, size: DpSize, buttons: CaptureButtons) {
     @Composable
-    fun bar(modifier: Modifier) {
-        Row(modifier.clip(RoundedCornerShape(28.dp)).background(roles.tile.pick(night)).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(36.dp).clip(CircleShape).background(roles.accent.pick(night)), contentAlignment = Alignment.Center) {
-                Icon(painterResource(Oui.drawable.ic_oui_edit_outline), contentDescription = null, tint = roles.onAccent.pick(night), modifier = Modifier.size(20.dp))
-            }
-            Spacer(Modifier.width(10.dp))
-            Text(stringResource(R.string.widget_capture_bar), color = roles.textSecondary.pick(night), fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+    fun round(b: CaptureButton, side: Dp, primary: Boolean = false) {
+        if (b == CaptureButton.None) {
+            Spacer(Modifier.size(side))
+            return
+        }
+        val icon = if (primary && b == CaptureButton.NewNote) Oui.drawable.ic_oui_add else b.icon
+        Box(
+            Modifier.size(side).clip(CircleShape).background(if (primary) roles.accent.pick(night) else roles.tile.pick(night)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painterResource(icon), contentDescription = null,
+                tint = if (primary) roles.onAccent.pick(night) else roles.icon.pick(night),
+                modifier = Modifier.size(side * if (primary) 0.42f else 0.5f),
+            )
         }
     }
-    if (QuickCaptureLayout.tiles(size)) {
-        ReplicaFrame(roles, night) {
+
+    @Composable
+    fun bar(modifier: Modifier) {
+        val main = buttons.centre
+        Row(modifier.clip(RoundedCornerShape(28.dp)).background(roles.tile.pick(night)).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(36.dp).clip(CircleShape).background(roles.accent.pick(night)), contentAlignment = Alignment.Center) {
+                Icon(painterResource(main.icon), contentDescription = null, tint = roles.onAccent.pick(night), modifier = Modifier.size(20.dp))
+            }
+            Spacer(Modifier.width(10.dp))
+            Text(
+                stringResource(if (main == CaptureButton.NewNote) R.string.widget_capture_bar else main.title),
+                color = roles.textSecondary.pick(night), fontSize = 16.sp, fontWeight = FontWeight.Medium, maxLines = 1,
+            )
+        }
+    }
+    val shown = buttons.shown
+    when (QuickCaptureLayout.forSize(size)) {
+        CaptureShape.Square -> ReplicaFrame(roles, night, QuickCaptureLayout.SQUARE_PADDING) {
+            val corner = QuickCaptureLayout.corner(size)
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Column(Modifier.fillMaxSize()) {
+                    Row(Modifier.fillMaxWidth()) {
+                        round(buttons.corners[CaptureButtons.TOP_LEFT], corner)
+                        Spacer(Modifier.weight(1f))
+                        round(buttons.corners[CaptureButtons.TOP_RIGHT], corner)
+                    }
+                    Spacer(Modifier.weight(1f))
+                    Row(Modifier.fillMaxWidth()) {
+                        round(buttons.corners[CaptureButtons.BOTTOM_LEFT], corner)
+                        Spacer(Modifier.weight(1f))
+                        round(buttons.corners[CaptureButtons.BOTTOM_RIGHT], corner)
+                    }
+                }
+                round(buttons.centre, QuickCaptureLayout.centre(size), primary = true)
+            }
+        }
+        CaptureShape.Tiles -> ReplicaFrame(roles, night) {
             Column(Modifier.fillMaxSize()) {
+                if (shown.isEmpty()) {
+                    bar(Modifier.fillMaxSize())
+                    return@Column
+                }
                 bar(Modifier.fillMaxWidth().height(56.dp))
                 Spacer(Modifier.height(WidgetDims.Gap))
                 Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(WidgetDims.Gap)) {
-                    replicaCaptureIcons.forEachIndexed { i, icon ->
+                    shown.forEach { b ->
                         Column(
                             Modifier.weight(1f).fillMaxHeight().clip(InnerShape).background(roles.tile.pick(night)),
                             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
                         ) {
-                            Icon(painterResource(icon), contentDescription = null, tint = roles.icon.pick(night), modifier = Modifier.size(24.dp))
+                            Icon(painterResource(b.icon), contentDescription = null, tint = roles.icon.pick(night), modifier = Modifier.size(24.dp))
                             Spacer(Modifier.height(4.dp))
-                            Text(stringResource(replicaCaptureLabels[i]), color = roles.textSecondary.pick(night), fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                            Text(stringResource(b.label), color = roles.textSecondary.pick(night), fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                         }
                     }
                 }
             }
         }
-    } else {
-        ReplicaFrame(roles, night, 8.dp) {
+        CaptureShape.Bar -> ReplicaFrame(roles, night, 8.dp) {
             Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
                 bar(Modifier.weight(1f).fillMaxHeight())
-                replicaCaptureIcons.take(QuickCaptureLayout.sideButtons(size.width)).forEach { icon ->
+                shown.take(QuickCaptureLayout.sideButtons(size.width)).forEach { b ->
                     Spacer(Modifier.width(QuickCaptureLayout.BUTTON_GAP))
                     Box(Modifier.size(QuickCaptureLayout.BUTTON).clip(CircleShape).background(roles.tile.pick(night)), contentAlignment = Alignment.Center) {
-                        Icon(painterResource(icon), contentDescription = null, tint = roles.icon.pick(night), modifier = Modifier.size(24.dp))
+                        Icon(painterResource(b.icon), contentDescription = null, tint = roles.icon.pick(night), modifier = Modifier.size(24.dp))
                     }
                 }
             }
         }
     }
+}
+
+/**
+ * The quick-capture "Buttons" card: one row per slot (main button, then the corners in reading order) showing its action;
+ * tapping a row opens the list of actions under it. Corners can be left empty.
+ */
+@Composable
+internal fun ColumnScope.CaptureButtonsEditor(buttons: CaptureButtons, onChange: (CaptureButtons) -> Unit) {
+    // -1 = the main button, 0..3 = the corners; null = all closed.
+    var open by rememberSaveable { mutableStateOf<Int?>(null) }
+    val slots = listOf(
+        -1 to R.string.widget_slot_centre,
+        CaptureButtons.TOP_LEFT to R.string.widget_slot_top_left,
+        CaptureButtons.TOP_RIGHT to R.string.widget_slot_top_right,
+        CaptureButtons.BOTTOM_LEFT to R.string.widget_slot_bottom_left,
+        CaptureButtons.BOTTOM_RIGHT to R.string.widget_slot_bottom_right,
+    )
+    slots.forEachIndexed { i, (slot, name) ->
+        if (i > 0) CardDivider()
+        val current = if (slot < 0) buttons.centre else buttons.corners[slot]
+        ChoiceRow(
+            title = stringResource(name),
+            subtitle = stringResource(current.title),
+            icon = current.icon.takeIf { it != 0 } ?: Oui.drawable.ic_oui_close,
+            iconTint = if (slot < 0) SameSameTheme.colors.accent else null,
+            onClick = { open = if (open == slot) null else slot },
+        )
+        if (open == slot) {
+            val choices = if (slot < 0) CaptureButton.centreChoices else CaptureButton.cornerChoices
+            choices.forEach { b ->
+                ChoiceRow(
+                    title = stringResource(b.title),
+                    icon = b.icon.takeIf { it != 0 } ?: Oui.drawable.ic_oui_close,
+                    selected = b == current,
+                    indent = 24.dp,
+                    onClick = {
+                        onChange(if (slot < 0) buttons.withCentre(b) else buttons.withCorner(slot, b))
+                        open = null
+                    },
+                )
+            }
+        }
+    }
+    Text(
+        stringResource(R.string.widget_buttons_hint), color = SameSameTheme.colors.textSecondary, fontSize = 13.sp,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 14.dp),
+    )
 }
