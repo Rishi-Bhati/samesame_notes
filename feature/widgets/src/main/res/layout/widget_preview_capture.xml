@@ -1,34 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Widget-picker preview (Android 12-14) of the quick-capture widget at its default 2 x 2 size: the square layout, the main
-     button in the middle and four soft round actions around it. -->
-<!-- RemoteViews preview: inflated without AppCompat, so android:tint is the attribute that works here. -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    tools:ignore="UseAppTint"
-    android:layout_width="match_parent" android:layout_height="match_parent"
-    android:background="@drawable/widget_pv_bg" android:orientation="vertical" android:padding="14dp">
-    <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
-        android:orientation="horizontal" android:gravity="center">
-        <ImageView android:layout_width="40dp" android:layout_height="40dp"
-            android:background="@drawable/widget_pv_circle_tile" android:padding="10dp"
-            android:src="@drawable/ic_oui_checkbox_checked_outline" android:tint="@color/widget_pv_icon" android:importantForAccessibility="no" />
-        <ImageView android:layout_width="40dp" android:layout_height="40dp" android:layout_marginStart="56dp"
-            android:background="@drawable/widget_pv_circle_tile" android:padding="10dp"
-            android:src="@drawable/ic_oui_voice" android:tint="@color/widget_pv_icon" android:importantForAccessibility="no" />
-    </LinearLayout>
-    <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
-        android:orientation="horizontal" android:gravity="center">
-        <ImageView android:layout_width="52dp" android:layout_height="52dp"
-            android:background="@drawable/widget_pv_square_accent" android:padding="13dp"
-            android:src="@drawable/ic_oui_add" android:tint="@color/widget_pv_accent" android:importantForAccessibility="no" />
-    </LinearLayout>
-    <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
-        android:orientation="horizontal" android:gravity="center">
-        <ImageView android:layout_width="40dp" android:layout_height="40dp"
-            android:background="@drawable/widget_pv_circle_tile" android:padding="10dp"
-            android:src="@drawable/ic_oui_pen_fountain" android:tint="@color/widget_pv_icon" android:importantForAccessibility="no" />
-        <ImageView android:layout_width="40dp" android:layout_height="40dp" android:layout_marginStart="56dp"
-            android:background="@drawable/widget_pv_circle_tile" android:padding="10dp"
-            android:src="@drawable/ic_oui_camera_outline" android:tint="@color/widget_pv_icon" android:importantForAccessibility="no" />
-    </LinearLayout>
-</LinearLayout>
+<!-- Widget-picker preview (Android 12+) of the quick-capture widget at its default 2 x 2 size: the pad, four quadrant
+     buttons around the accent coin, drawn by @drawable/widget_preview_capture. No card behind it, like the widget. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent">
+    <ImageView android:layout_width="match_parent" android:layout_height="match_parent"
+        android:layout_gravity="center" android:scaleType="fitCenter"
+        android:src="@drawable/widget_preview_capture" android:importantForAccessibility="no" />
+</FrameLayout>
