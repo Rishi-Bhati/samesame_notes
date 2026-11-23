@@ -11,6 +11,10 @@ enum class StartAction(val key: String) {
     Brush("brush"),
     Image("image"),
     Voice("voice"),
+    /** Take a photo straight into the new note (the editor's camera). */
+    Camera("camera"),
+    /** A new Markdown note (opens in the text editor, not the canvas). */
+    Markdown("markdown"),
     ;
 
     companion object {
