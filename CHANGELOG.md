@@ -36,6 +36,12 @@ A text and Markdown editor for files from other apps, live Markdown formatting, 
 - Hardware keyboards work in notes: typing, Enter, Backspace, Delete, Tab, arrows (hold Shift to select), Home and End, Ctrl+arrows by word, and Ctrl+Z, Y, A, C, X, V, B, I and U.
 - Arrows (→ ← ↔ ⇒ ⇔ and the rest) are drawn a little bigger and bolder in notes. The saved text doesn't change.
 
+### Widgets
+
+- Quick capture changes shape as you resize it. Make it about square and it shows one big New note button in the middle with four buttons in the corners: Checklist, Voice, Handwriting and Camera.
+- Choose the buttons in the widget's settings: the main button and each corner, from New note, Checklist, Voice note, Handwriting, Drawing, Camera, Picture, Markdown note and Open the app. A corner can be left empty. The wide layouts use the same buttons.
+- Camera takes a photo straight into a new note.
+
 ### Safety
 
 - Automatic version history: earlier versions of a note can be viewed and restored.
