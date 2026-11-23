@@ -9,7 +9,7 @@
 
 **Same same. But open source.**
 
-> **Alpha.** SameSame notes 0.3.0-alpha is an early release for testing. Expect bugs and rough edges, and expect
+> **Alpha.** SameSame notes 0.4.0-alpha is an early release for testing. Expect bugs and rough edges, and expect
 > file formats and behaviour to change before a stable release.
 > Please [report issues](https://reportary.onrender.com/p/KpEraP6diT5xj5xzvnJzZ23Zob2lSvfm8LKBM1RhEyJkCIplAZx_Dqc3uCeuJw9V/) when you find them.
 
@@ -30,14 +30,14 @@ SameSame notes is not affiliated with, endorsed by or sponsored by Samsung Elect
 
 | Item | Status |
 |---|---|
-| Version | 0.3.0-alpha |
+| Version | 0.4.0-alpha |
 | Stage | Alpha. Expect bugs. Formats and behaviour may change. |
 | Platform | Android 8.0 (API 26) and newer. Designed phone first; tablet and large-screen layouts are not yet polished. |
 | Language | English only |
-| Data | Stored on the device only. The INTERNET permission is used only for the manual Check for updates. |
+| Data | Stored on the device only. Folder backups are written to a folder you choose. The INTERNET permission is used only for the manual Check for updates. |
 | Note format | `.ssnote`, versioned. Older notes are migrated when opened. |
 | Samsung Notes files | `.sdocx` import and export |
-| Cloud sync and backup | Not built yet (see the roadmap) |
+| Cloud sync | Not built yet (see the roadmap). Backup is to a folder you choose. |
 | Licence | MIT OR Apache-2.0, at your option |
 | Downloads | Released alpha builds are on the [GitHub Releases](https://github.com/Rishi-Bhati/samesame_notes/releases) page. |
 
@@ -81,6 +81,18 @@ Features are grouped by area. Anything not listed here is not built yet.
   and `sum`, `total` and `avg` add up the lines above. A setting turns it off.
 - Undo and redo (up to 200 steps), and autosave while you write.
 
+### Markdown
+
+- Markdown notes: New Markdown note in the home menu (⋮). They are listed, searched, locked and trashed like other
+  notes. A locked Markdown note opens read-only.
+- Live formatting as you type: headings, bold, italic, `~~strikethrough~~`, code, quotes, lists, task boxes, links and
+  rules. The marks hide on the line you are not editing. `# hello` is a heading, and `#hello` stays text.
+- Tap a task box to tick it. Tap a link to open or edit it.
+- Live, Source and Preview views. Each document remembers its view, and Settings > Advanced > Markdown editing sets the
+  default.
+- Preview draws tables, and opens only web and e-mail links.
+- Markdown files from other apps open in the text editor, and can be saved as Markdown notes.
+
 ### Objects and images
 
 - Text boxes, images and drawings can be placed on the page. Move them, resize and rotate them with handles, or
@@ -107,6 +119,9 @@ Features are grouped by area. Anything not listed here is not built yet.
 - A Files library opened from the side panel: import any file type as a local copy (nothing is uploaded), organise
   files in folders, grid or list view, sort, search, rename, move, share, and a Recycle bin for deleted files.
 - Built-in viewers for images, PDFs (read-only), text files and audio, and a Storage page showing what the files use.
+- Text and Markdown files from other apps open in a text editor, with find and replace, undo and redo, line wrap and
+  monospace. Save writes back when the other app allows it. HTML files can be shown rendered, and their links never
+  open other apps.
 - SameSame notes appears in Share for every file type, and in Open with for the files it can open (PDF, notes, text,
   pictures and audio). Files that can't go into a note are saved to Files.
 - Your own drag order, favourites, and a short description and tags per file, with filter chips and tag search.
@@ -132,16 +147,27 @@ Features are grouped by area. Anything not listed here is not built yet.
 - Screenshots and screen recordings are blocked while a locked note is open.
 - Locked notes are never included in bulk export.
 
+### History and backup
+
+- Automatic version history: view and restore earlier versions of a note. A note's versions are deleted when it is
+  locked.
+- Folder backup: choose a folder, then back up daily or weekly, or tap Back up now. You can limit automatic backups to
+  times when the phone is charging, and choose to keep 1 to 10 backups.
+- Restore from a backup adds its notes and Files. Existing notes are never overwritten or deleted.
+- Locked notes stay encrypted in backups and history.
+
 ### Import and export
 
+- In the text editor, Save offers save changes, save as a note, save to Files, save a copy, and export as PDF, HTML or
+  Word.
 - Save as file in these formats: `.ssnote`, `.sdocx`, PDF, PNG or JPEG images (one file per page, or one tall
   image), plain text, Markdown, HTML, Word (`.docx`) and PowerPoint (`.pptx`).
 - Open or share `.ssnote`, `.sdocx` and PDF files from other apps. Each file is imported as a note, and each PDF
   page becomes a note page with its own size.
 - Several files shared at once are each imported as their own note.
-- Open with and Share: text files (`.txt`, `.md`, `.csv`, `.log` and `.tsv`, up to 2 MiB) open as a new note. Photos
-  open as a new note with the picture upright, and audio files open as a new note with a voice recording; a copy of
-  each is kept in Files. Shared text or links from other apps become a new note.
+- Share and Open with: files that aren't text, such as pictures and audio, open in the Save to SameSame sheet. It offers
+  Files, New note, Save a copy, and Save as PDF for pictures and text. Shared Markdown files become Markdown notes.
+  Shared text or links from other apps become a new note.
 - Samsung Notes `.sdocx` files import with their handwriting, text and styles, voice recordings and pictures, and
   export back with edits to strokes and text. Export is new and experimental: see the limitations below.
 - Bulk import and export (Settings, General): import several files at once, or export selected notes in one
@@ -183,8 +209,12 @@ Features are grouped by area. Anything not listed here is not built yet.
   pages as images, and the text layout of native notes in PDF export can differ slightly from the editor.
 - Ink is not searchable. There is no handwriting recognition yet. Home search matches whole words and word starts
   in titles and in typed body text; text-box content and default titles are not searchable yet.
-- There is no cloud sync and no in-app backup. Locked notes restored from an Android backup cannot be opened,
-  because their keys are not backed up.
+- There is no cloud sync. Folder backups hold unlocked notes and Files in clear, in the folder you choose. Locked notes
+  restored from an Android backup cannot be opened, because their keys are not backed up.
+- Folder backups keep unlocked copies of a note made before the note was locked, until those backups are deleted.
+- Live view shows Markdown tables as plain text with pipes. Preview draws them as a table.
+- Markdown PDF export loses table and code styling.
+- The bigger arrows show only in the editor. PDF and image exports and note previews use the normal size.
 - Voice recording and playback are still being validated on more devices.
 - Layouts are designed phone first. Tablet and large-screen layouts are not polished.
 - English only. Accessibility has not been reviewed.
@@ -196,9 +226,8 @@ Features are grouped by area. Anything not listed here is not built yet.
 Everything in this section is planned, not built. The items are in rough order.
 
 - Sync with Google Drive, with conflict handling. Other cloud services later, if feasible. (Planned, not built.)
-- Backup and restore, to Google Drive and to a folder on the device. (Planned, not built.)
+- Backup to Google Drive, in addition to the folder backup. (Planned, not built.)
 - Handwriting recognition: convert ink to text, and make ink searchable. (Planned, not built.)
-- Markdown preview with full CommonMark and GFM support. (Planned, not built.)
 - A PDF reader and annotation mode, with selectable text. (Planned, not built.)
 - Voice playback that replays ink in sync with the recording. (Planned, not built.)
 - Complete `.sdocx` export: page changes, floating objects, templates, pressure and tilt. (Planned, not built.)
@@ -211,7 +240,7 @@ Everything in this section is planned, not built. The items are in rough order.
 ## Download and install
 
 Alpha builds are published on the
-[GitHub Releases](https://github.com/Rishi-Bhati/samesame_notes/releases) page. 0.1.0-alpha, 0.1.1-alpha, 0.2.0-alpha, 0.2.1-alpha and 0.3.0-alpha
+[GitHub Releases](https://github.com/Rishi-Bhati/samesame_notes/releases) page. 0.1.0-alpha, 0.1.1-alpha, 0.2.0-alpha, 0.2.1-alpha, 0.3.0-alpha, 0.3.1-alpha and 0.4.0-alpha
 are available there. Only install alpha builds from this repository's Releases page. Android asks you to allow
 installing from an unknown source the first time.
 
@@ -282,7 +311,7 @@ core/designsystem    Theme, colours, icons and shared components
 core/database        Room catalog: notes, nested folders, tags, FTS search index
 core/document        Note bundle format (.ssnote) and the atomic file store
 core/ink             Pen catalog, brushes, stroke codec, erasers, lasso and transforms
-core/richtext        Rich text engine: lists, checklists, pagination, selection, IME
+core/richtext        Rich text engine: lists, checklists, pagination, selection, IME, Markdown parser and live formatting
 core/export          Export to PDF, images, text, Markdown, HTML, DOCX and PPTX
 core/sdocx           Samsung Notes .sdocx reader, writer and mapper
 core/security        Lock vault and cryptography
@@ -292,6 +321,7 @@ feature/composer     Note editor: canvas, toolbars, panels, undo and redo, autos
 feature/settings     Settings screens, including bulk import and export
 feature/lock         Lock and unlock screens and biometric flows
 feature/share        Share sheet, save-as-file dialog and transfer progress
+feature/textdoc      Text and Markdown editor for files from other apps, with its Save dialog
 feature/camera       In-app camera sheet for inserting photos
 feature/widgets      Home screen widgets: note creator, note, notes, and quick capture
 ```
@@ -310,7 +340,8 @@ feature/widgets      Home screen widgets: note creator, note, notes, and quick c
 ## File formats
 
 - **`.ssnote`** (native): a ZIP container with `manifest.json`, `document.json` (text, pages, objects and
-  recordings), `ink/` (one binary stroke layer per page) and `media/` (images and recordings).
+  recordings), `ink/` (one binary stroke layer per page) and `media/` (images and recordings). A Markdown note keeps
+  its source text exactly as written.
 - **`.sdocx`** (Samsung Notes): read and written by `core:sdocx`. Imported notes keep their original archive, so
   an unedited note exports back unchanged, and edited notes are written with the same structure as the original app's files.
 - **Legacy `.sdoc`**: not supported.
