@@ -38,7 +38,7 @@ A text and Markdown editor for files from other apps, live Markdown formatting, 
 
 ### Widgets
 
-- Quick capture changes shape as you resize it. Make it about square and it shows one big New note button in the middle with four buttons in the corners: Checklist, Voice, Handwriting and Camera.
+- Quick capture changes shape as you resize it. Make it about square and it shows a New note button in the middle with Checklist, Voice, Handwriting and Camera around it, in soft rounded buttons. The bar and tile layouts got the same calmer look.
 - Choose the buttons in the widget's settings: the main button and each corner, from New note, Checklist, Voice note, Handwriting, Drawing, Camera, Picture, Markdown note and Open the app. A corner can be left empty. The wide layouts use the same buttons.
 - Camera takes a photo straight into a new note.
 
