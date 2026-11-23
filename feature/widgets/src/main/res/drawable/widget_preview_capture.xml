@@ -1,12 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Widget-picker preview image (before Android 12) of the quick-capture widget: own drawing. -->
-<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="300dp" android:height="72dp" android:viewportWidth="300" android:viewportHeight="72">
-    <path android:fillColor="#FFFFFFFF" android:pathData="M24,0H276A24,24 0 0 1 300,24V48A24,24 0 0 1 276,72H24A24,24 0 0 1 0,48V24A24,24 0 0 1 24,0Z" />
-    <path android:fillColor="#24E5532F" android:pathData="M36,12H148A24,24 0 0 1 172,36V36A24,24 0 0 1 148,60H36A24,24 0 0 1 12,36V36A24,24 0 0 1 36,12Z" />
-    <path android:fillColor="#FFE5532F" android:pathData="M28,36A8,8 0 1 1 44,36A8,8 0 1 1 28,36Z" />
-    <path android:fillColor="#FFE5532F" android:pathData="M56,32H128A4,4 0 0 1 132,36V36A4,4 0 0 1 128,40H56A4,4 0 0 1 52,36V36A4,4 0 0 1 56,32Z" />
-    <path android:fillColor="#FFF1F1F3" android:pathData="M180,36A24,24 0 1 1 228,36A24,24 0 1 1 180,36Z" />
-    <path android:fillColor="#FFF1F1F3" android:pathData="M236,36A24,24 0 1 1 284,36A24,24 0 1 1 236,36Z" />
-    <path android:fillColor="#FF3A3A3A" android:pathData="M198,36A6,6 0 1 1 210,36A6,6 0 1 1 198,36Z" />
-    <path android:fillColor="#FF3A3A3A" android:pathData="M254,36A6,6 0 1 1 266,36A6,6 0 1 1 254,36Z" />
+<!-- Widget-picker preview image (before Android 12) of the quick-capture widget at 2 x 2: own drawing. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="160dp" android:height="160dp" android:viewportWidth="160" android:viewportHeight="160">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M24,0H136A24,24 0 0 1 160,24V136A24,24 0 0 1 136,160H24A24,24 0 0 1 0,136V24A24,24 0 0 1 24,0Z" />
+    <path android:fillColor="#FFF1F1F3" android:pathData="M22,40A18,18 0 1 1 58,40A18,18 0 1 1 22,40Z" />
+    <path android:fillColor="#FFF1F1F3" android:pathData="M102,40A18,18 0 1 1 138,40A18,18 0 1 1 102,40Z" />
+    <path android:fillColor="#FFF1F1F3" android:pathData="M22,120A18,18 0 1 1 58,120A18,18 0 1 1 22,120Z" />
+    <path android:fillColor="#FFF1F1F3" android:pathData="M102,120A18,18 0 1 1 138,120A18,18 0 1 1 102,120Z" />
+    <path android:fillColor="#24E5532F" android:pathData="M71,57H89A14,14 0 0 1 103,71V89A14,14 0 0 1 89,103H71A14,14 0 0 1 57,89V71A14,14 0 0 1 71,57Z" />
+    <path android:fillColor="#FFE5532F" android:pathData="M79,70H81V79H90V81H81V90H79V81H70V79H79Z" />
+    <path android:fillColor="#FF3A3A3A" android:pathData="M35,40A5,5 0 1 1 45,40A5,5 0 1 1 35,40Z" />
+    <path android:fillColor="#FF3A3A3A" android:pathData="M115,40A5,5 0 1 1 125,40A5,5 0 1 1 115,40Z" />
+    <path android:fillColor="#FF3A3A3A" android:pathData="M35,120A5,5 0 1 1 45,120A5,5 0 1 1 35,120Z" />
+    <path android:fillColor="#FF3A3A3A" android:pathData="M115,120A5,5 0 1 1 125,120A5,5 0 1 1 115,120Z" />
 </vector>

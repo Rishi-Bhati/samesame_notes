@@ -422,7 +422,7 @@ internal fun QuickCaptureReplica(roles: WidgetColorRoles, night: Boolean, size: 
     fun shape(b: CaptureButton, target: Dp, visible: Dp, radius: Dp, iconSize: Dp, primary: Boolean) {
         Box(Modifier.size(target), contentAlignment = Alignment.Center) {
             if (b == CaptureButton.None) return@Box
-            val icon = if (primary && b == CaptureButton.NewNote) Oui.drawable.ic_oui_add else b.icon
+            val icon = if (primary) QuickCaptureLayout.mainIcon(b) else b.icon
             Box(
                 Modifier.size(visible).clip(RoundedCornerShape(radius))
                     .background(if (primary) roles.accentTile.pick(night) else roles.tile.pick(night)),
@@ -433,6 +433,21 @@ internal fun QuickCaptureReplica(roles: WidgetColorRoles, night: Boolean, size: 
                     tint = if (primary) roles.accent.pick(night) else roles.icon.pick(night), modifier = Modifier.size(iconSize),
                 )
             }
+        }
+    }
+
+    @Composable
+    fun main(side: Dp) = shape(buttons.centre, side, side, side * QuickCaptureLayout.CENTRE_RADIUS_RATIO, side / 2, primary = true)
+
+    @Composable
+    fun action(b: CaptureButton, side: Dp) =
+        shape(b, side, side, side / 2, if (side < QuickCaptureLayout.BUTTON) side / 2 else 22.dp, primary = false)
+
+    @Composable
+    fun squareCard(side: Dp, content: @Composable () -> Unit) {
+        // A true square card of the shorter side, centred; the rest of the widget's area is transparent.
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(side).clip(OuterShape).background(roles.surface.pick(night)), contentAlignment = Alignment.Center) { content() }
         }
     }
 
@@ -449,13 +464,18 @@ internal fun QuickCaptureReplica(roles: WidgetColorRoles, night: Boolean, size: 
         }
     }
     val shown = buttons.shown
-    when (QuickCaptureLayout.forSize(size)) {
-        CaptureShape.Square -> ReplicaFrame(roles, night, 0.dp) {
+    when (QuickCaptureLayout.forSize(size, shown.size)) {
+        CaptureShape.Single -> {
+            val g = QuickCaptureLayout.singleGeometry(size)
+            squareCard(g.side) { shape(buttons.centre, g.target, g.button, g.radius, g.icon, primary = true) }
+        }
+        CaptureShape.Square -> {
             val g = QuickCaptureLayout.squareGeometry(size)
+
             @Composable
             fun corner(b: CaptureButton) = shape(b, g.cornerTarget, g.corner, g.corner / 2, g.cornerIcon, primary = false)
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(Modifier.fillMaxSize().padding(horizontal = g.edgeX, vertical = g.edgeY)) {
+            squareCard(g.side) {
+                Column(Modifier.fillMaxSize().padding(g.edge)) {
                     Row(Modifier.fillMaxWidth()) {
                         corner(buttons.corners[CaptureButtons.TOP_LEFT])
                         Spacer(Modifier.weight(1f))
@@ -471,6 +491,24 @@ internal fun QuickCaptureReplica(roles: WidgetColorRoles, night: Boolean, size: 
                 shape(buttons.centre, g.centreTarget, g.centre, g.centreRadius, g.centreIcon, primary = true)
             }
         }
+        CaptureShape.Icons -> ReplicaFrame(roles, night, 0.dp) {
+            val b = QuickCaptureLayout.barHeight(size.height)
+            Row(Modifier.fillMaxSize().padding(horizontal = WidgetDims.Inset), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { main(b) }
+                shown.take(QuickCaptureLayout.rowActions(size)).forEach { a ->
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { action(a, b) }
+                }
+            }
+        }
+        CaptureShape.Column -> ReplicaFrame(roles, night, 0.dp) {
+            val b = QuickCaptureLayout.columnButton(size.width)
+            Column(Modifier.fillMaxSize().padding(vertical = WidgetDims.Inset), horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { main(b) }
+                shown.take(QuickCaptureLayout.columnActions(size)).forEach { a ->
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { action(a, b) }
+                }
+            }
+        }
         CaptureShape.Tiles -> ReplicaFrame(roles, night) {
             Column(Modifier.fillMaxSize()) {
                 if (shown.isEmpty()) {
@@ -480,19 +518,19 @@ internal fun QuickCaptureReplica(roles: WidgetColorRoles, night: Boolean, size: 
                 bar(Modifier.fillMaxWidth().height(QuickCaptureLayout.BUTTON), RoundedCornerShape(QuickCaptureLayout.BUTTON / 2))
                 Spacer(Modifier.height(WidgetDims.Gap))
                 shown.chunked(QuickCaptureLayout.tileColumns(size, shown.size)).forEachIndexed { r, row ->
-                if (r > 0) Spacer(Modifier.height(WidgetDims.Gap))
-                Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(WidgetDims.Gap)) {
-                    row.forEach { b ->
-                        Column(
-                            Modifier.weight(1f).fillMaxHeight().clip(InnerShape).background(roles.tile.pick(night)),
-                            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
-                        ) {
-                            Icon(painterResource(b.icon), contentDescription = null, tint = roles.icon.pick(night), modifier = Modifier.size(22.dp))
-                            Spacer(Modifier.height(4.dp))
-                            Text(stringResource(b.label), color = roles.textSecondary.pick(night), fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                    if (r > 0) Spacer(Modifier.height(WidgetDims.Gap))
+                    Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(WidgetDims.Gap)) {
+                        row.forEach { b ->
+                            Column(
+                                Modifier.weight(1f).fillMaxHeight().clip(InnerShape).background(roles.tile.pick(night)),
+                                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+                            ) {
+                                Icon(painterResource(b.icon), contentDescription = null, tint = roles.icon.pick(night), modifier = Modifier.size(22.dp))
+                                Spacer(Modifier.height(4.dp))
+                                Text(stringResource(b.label), color = roles.textSecondary.pick(night), fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                            }
                         }
                     }
-                }
                 }
             }
         }
@@ -502,12 +540,7 @@ internal fun QuickCaptureReplica(roles: WidgetColorRoles, night: Boolean, size: 
                 bar(Modifier.weight(1f).height(h), RoundedCornerShape(h / 2))
                 shown.take(QuickCaptureLayout.sideButtons(size.width)).forEach { b ->
                     Spacer(Modifier.width(QuickCaptureLayout.BUTTON_GAP))
-                    Box(Modifier.size(h).clip(CircleShape).background(roles.tile.pick(night)), contentAlignment = Alignment.Center) {
-                        Icon(
-                            painterResource(b.icon), contentDescription = null, tint = roles.icon.pick(night),
-                            modifier = Modifier.size(if (h < QuickCaptureLayout.BUTTON) h / 2 else 22.dp),
-                        )
-                    }
+                    action(b, h)
                 }
             }
         }

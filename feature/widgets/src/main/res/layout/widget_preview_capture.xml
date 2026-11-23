@@ -1,26 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Widget-picker preview (Android 12+) of the quick-capture widget at its default size: the bar and two round actions. -->
+<!-- Widget-picker preview (Android 12-14) of the quick-capture widget at its default 2 x 2 size: the square layout, the main
+     button in the middle and four soft round actions around it. -->
 <!-- RemoteViews preview: inflated without AppCompat, so android:tint is the attribute that works here. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     tools:ignore="UseAppTint"
     android:layout_width="match_parent" android:layout_height="match_parent"
-    android:background="@drawable/widget_pv_bg" android:orientation="horizontal"
-    android:paddingStart="12dp" android:paddingEnd="12dp" android:gravity="center_vertical">
-    <LinearLayout android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1"
-        android:background="@drawable/widget_pv_pill" android:gravity="center_vertical" android:orientation="horizontal"
-        android:paddingStart="16dp" android:paddingEnd="12dp">
-        <ImageView android:layout_width="20dp" android:layout_height="20dp"
-            android:src="@drawable/ic_oui_edit_outline" android:tint="@color/widget_pv_accent"
-            android:importantForAccessibility="no" />
-        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="10dp"
-            android:maxLines="1" android:text="@string/widget_capture_bar" android:textColor="@color/widget_pv_accent"
-            android:textSize="15sp" />
+    android:background="@drawable/widget_pv_bg" android:orientation="vertical" android:padding="14dp">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+        android:orientation="horizontal" android:gravity="center">
+        <ImageView android:layout_width="40dp" android:layout_height="40dp"
+            android:background="@drawable/widget_pv_circle_tile" android:padding="10dp"
+            android:src="@drawable/ic_oui_checkbox_checked_outline" android:tint="@color/widget_pv_icon" android:importantForAccessibility="no" />
+        <ImageView android:layout_width="40dp" android:layout_height="40dp" android:layout_marginStart="56dp"
+            android:background="@drawable/widget_pv_circle_tile" android:padding="10dp"
+            android:src="@drawable/ic_oui_voice" android:tint="@color/widget_pv_icon" android:importantForAccessibility="no" />
     </LinearLayout>
-    <ImageView android:layout_width="48dp" android:layout_height="48dp" android:layout_marginStart="8dp"
-        android:background="@drawable/widget_pv_circle_tile" android:padding="13dp"
-        android:src="@drawable/ic_oui_checkbox_checked_outline" android:tint="@color/widget_pv_icon" android:importantForAccessibility="no" />
-    <ImageView android:layout_width="48dp" android:layout_height="48dp" android:layout_marginStart="8dp"
-        android:background="@drawable/widget_pv_circle_tile" android:padding="13dp"
-        android:src="@drawable/ic_oui_voice" android:tint="@color/widget_pv_icon" android:importantForAccessibility="no" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+        android:orientation="horizontal" android:gravity="center">
+        <ImageView android:layout_width="52dp" android:layout_height="52dp"
+            android:background="@drawable/widget_pv_square_accent" android:padding="13dp"
+            android:src="@drawable/ic_oui_add" android:tint="@color/widget_pv_accent" android:importantForAccessibility="no" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+        android:orientation="horizontal" android:gravity="center">
+        <ImageView android:layout_width="40dp" android:layout_height="40dp"
+            android:background="@drawable/widget_pv_circle_tile" android:padding="10dp"
+            android:src="@drawable/ic_oui_pen_fountain" android:tint="@color/widget_pv_icon" android:importantForAccessibility="no" />
+        <ImageView android:layout_width="40dp" android:layout_height="40dp" android:layout_marginStart="56dp"
+            android:background="@drawable/widget_pv_circle_tile" android:padding="10dp"
+            android:src="@drawable/ic_oui_camera_outline" android:tint="@color/widget_pv_icon" android:importantForAccessibility="no" />
+    </LinearLayout>
 </LinearLayout>
