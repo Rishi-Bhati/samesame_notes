@@ -43,12 +43,9 @@ class WidgetLayoutTest {
         assertThat(NotesDisplay.fromKey("grid")).isNull()
     }
 
-    @Test fun `quick capture keeps a wide bar and adds what fits`() {
-        assertThat(QuickCaptureLayout.sideButtons(180.dp)).isEqualTo(0)
-        assertThat(QuickCaptureLayout.sideButtons(300.dp)).isEqualTo(2)
-        assertThat(QuickCaptureLayout.sideButtons(600.dp)).isEqualTo(4)
-        assertThat(QuickCaptureLayout.tiles(DpSize(300.dp, 80.dp))).isFalse()
-        assertThat(QuickCaptureLayout.tiles(DpSize(300.dp, 140.dp))).isTrue()
+    @Test fun `quick capture is a bar when low and a bento when tall enough`() {
+        assertThat(QuickCaptureLayout.forSize(DpSize(300.dp, 80.dp))).isEqualTo(CaptureShape.Row)
+        assertThat(QuickCaptureLayout.forSize(DpSize(300.dp, 140.dp))).isEqualTo(CaptureShape.Bento)
     }
 
     @Test fun `page crop keeps the top of the page`() {

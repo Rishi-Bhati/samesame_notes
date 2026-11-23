@@ -1,14 +1,13 @@
 package org.samesame.notes.feature.widgets
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.os.Build
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
 import androidx.glance.ColorFilter
 import androidx.glance.GlanceId
@@ -23,30 +22,27 @@ import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.appwidget.provideContent
+import androidx.glance.color.ColorProvider
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Box
-import androidx.glance.layout.Column
-import androidx.glance.layout.Row
-import androidx.glance.layout.Spacer
-import androidx.glance.layout.fillMaxHeight
+import androidx.glance.layout.ContentScale
 import androidx.glance.layout.fillMaxSize
-import androidx.glance.layout.fillMaxWidth
-import androidx.glance.layout.height
 import androidx.glance.layout.padding
 import androidx.glance.layout.size
-import androidx.glance.layout.width
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
+import androidx.glance.text.TextAlign
 import androidx.glance.text.TextStyle
-import dev.oneuiproject.oneui.R as Oui
-import kotlin.math.sqrt
 
 /**
- * Quick capture: a big "Take a note" bar that opens a small capture sheet over the home screen ([CaptureActivity]: type or
- * dictate, Save, done; no full app), plus one-tap actions (checklist, dictation, handwriting, camera by default; the user
- * picks them in the settings, [CaptureButtons]). Every target is at least 48 dp and labelled for screen readers. Low widgets
- * show the bar with round buttons beside it, taller ones add labelled tiles under the bar, and a roughly square widget shows
- * one big main button with the four actions in its corners ([QuickCaptureLayout.forSize]).
+ * Quick capture: a main action that opens a small capture sheet over the home screen ([CaptureActivity]: type or dictate,
+ * Save, done; no full app), plus one-tap actions (checklist, dictation, handwriting, camera by default; the user picks them
+ * in the settings, [CaptureButtons]). Every button is labelled for screen readers.
+ *
+ * There is no card: the widget is one rounded shape sliced into buttons by thin gaps, the main action in the accent. The
+ * shape follows the size from 1 x 1 up ([QuickCaptureLayout.spec]): a tile with the accent coin, a connected bar, a capsule,
+ * a pad of four quadrants around the coin, or a bento of a large main tile and labelled action tiles. The shape is drawn as
+ * tinted alpha masks ([CaptureMasks]) under transparent Glance buttons.
  */
 class QuickCaptureWidget : LoggingGlanceWidget() {
     override val sizeMode = SizeMode.Exact
@@ -68,208 +64,118 @@ class QuickCaptureWidget : LoggingGlanceWidget() {
     }
 }
 
-/** The quick-capture layouts. */
-enum class CaptureShape {
-    /** Low: the bar, with round buttons beside it when there is room. */
-    Bar,
-
-    /** Tall (or wide and tall but not square): the bar with labelled tiles under it. */
-    Tiles,
-
-    /** Roughly square: the main button in the middle, the four actions in the corners. */
-    Square,
-}
-
-/** Geometry of the quick-capture widget (pure). */
-object QuickCaptureLayout {
-    /** From this height the labelled tiles appear under the bar. */
-    val TILES_FROM_HEIGHT = 120.dp
-
-    /**
-     * The square layout needs both sides from this size: four 48 dp corner buttons and a main button of at least
-     * [CENTRE_MIN] must fit without touching. A smaller widget keeps the bar.
-     */
-    val SQUARE_FROM = 140.dp
-    /** Width / height range of the square layout: 3:4 to 4:3 (both included). */
-    const val SQUARE_MIN_ASPECT = 3f / 4f
-    const val SQUARE_MAX_ASPECT = 4f / 3f
-
-    /** The bar keeps at least this width (room for its icon and "Take a note"). */
-    val MIN_BAR = 150.dp
-    val BUTTON = 48.dp
-    val BUTTON_GAP = 6.dp
-
-    /** Square layout: inset from the widget edge, corner buttons from 48 dp (tap target) to [CORNER_MAX], main button. */
-    private const val ASPECT_SLACK = 1e-4f
-    val SQUARE_PADDING_MIN = 6.dp
-    val SQUARE_PADDING_MAX = 14.dp
-
-    /** Inset of the square layout: 6 dp at the smallest square (room for the main button), growing to 14 dp. */
-    fun squarePadding(size: DpSize): Dp =
-        (SQUARE_PADDING_MIN + (min(size.width, size.height) - SQUARE_FROM) * 0.1f).coerceIn(SQUARE_PADDING_MIN, SQUARE_PADDING_MAX)
-    val CORNER_MAX = 64.dp
-    val CENTRE_MIN = 56.dp
-    val CENTRE_MAX = 120.dp
-    private val CENTRE_GAP = 4.dp
-
-    fun forSize(size: DpSize): CaptureShape = when {
-        square(size) -> CaptureShape.Square
-        size.height >= TILES_FROM_HEIGHT -> CaptureShape.Tiles
-        else -> CaptureShape.Bar
-    }
-
-    fun square(size: DpSize): Boolean {
-        if (size.width < SQUARE_FROM || size.height < SQUARE_FROM) return false
-        val aspect = size.width.value / size.height.value
-        return aspect in (SQUARE_MIN_ASPECT - ASPECT_SLACK)..(SQUARE_MAX_ASPECT + ASPECT_SLACK)
-    }
-
-    fun tiles(size: DpSize): Boolean = forSize(size) == CaptureShape.Tiles
-
-    /** How many of the four round actions fit beside the bar on a low widget. */
-    fun sideButtons(width: Dp): Int {
-        val room = width - WidgetDims.Inset * 2 - MIN_BAR
-        return (room.value / (BUTTON.value + BUTTON_GAP.value)).toInt().coerceIn(0, 4)
-    }
-
-    /** Side of each corner button of the square layout: 30% of the short side, 48 dp to [CORNER_MAX]. */
-    fun corner(size: DpSize): Dp = (min(size.width, size.height) * 0.3f).coerceIn(BUTTON, CORNER_MAX)
-
-    /**
-     * Diameter of the square layout's main button: as big as it can be without touching the corner buttons (their centres
-     * sit on the diagonals), between [CENTRE_MIN] and [CENTRE_MAX].
-     */
-    fun centre(size: DpSize): Dp {
-        val c = corner(size).value
-        val pad = squarePadding(size).value
-        val dx = (size.width.value - pad * 2 - c) / 2
-        val dy = (size.height.value - pad * 2 - c) / 2
-        val radius = sqrt(dx * dx + dy * dy) - c / 2 - CENTRE_GAP.value
-        return (radius * 2).dp.coerceIn(CENTRE_MIN, CENTRE_MAX)
-    }
-}
-
 @Composable
 internal fun QuickCaptureContent(p: WidgetPalette, buttons: CaptureButtons) {
     val size = LocalSize.current
     val context = LocalContext.current
-    when (QuickCaptureLayout.forSize(size)) {
-        CaptureShape.Square -> WidgetFrame(p, padding = QuickCaptureLayout.squarePadding(size)) { SquareButtons(p, buttons, size) }
-        CaptureShape.Tiles -> WidgetFrame(p) {
-            Column(GlanceModifier.fillMaxSize()) {
-                val shown = buttons.shown
-                if (shown.isEmpty()) {
-                    TakeNoteBar(p, buttons.centre, GlanceModifier.fillMaxSize())
-                    return@Column
-                }
-                TakeNoteBar(p, buttons.centre, GlanceModifier.fillMaxWidth().height(56.dp))
-                Spacer(GlanceModifier.height(WidgetDims.Gap))
-                Row(GlanceModifier.fillMaxWidth().defaultWeight()) {
-                    shown.forEachIndexed { i, b ->
-                        if (i > 0) Spacer(GlanceModifier.width(WidgetDims.Gap))
-                        ActionTile(p, b, GlanceModifier.defaultWeight().fillMaxHeight())
-                    }
-                }
-            }
+    val density = context.resources.displayMetrics.density
+    val outer = remember { launcherRadius(context) }
+    val spec = remember(size, buttons, outer) { QuickCaptureLayout.spec(size, buttons, outer) }
+    val surfaceAlpha = p.roles.surface.day.alpha
+    val layers = remember(spec, density, surfaceAlpha) { CaptureMasks.render(spec, density, surfaceAlpha) }
+    Box(GlanceModifier.fillMaxSize()) {
+        layers.surface?.let { MaskLayer(it, CaptureMasks.opaque(p.roles.surface)) }
+        layers.wash?.let { MaskLayer(it, CaptureMasks.washOver(p.roles)) }
+        layers.accent?.let { MaskLayer(it, p.roles.accent) }
+        spec.slices.forEach { slice ->
+            val action = if (slice.main) buttons.centre else buttons.corners[slice.slot]
+            SliceButton(p, spec, slice, action)
         }
-        CaptureShape.Bar -> WidgetFrame(p, padding = 8.dp) {
-            Row(GlanceModifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                TakeNoteBar(p, buttons.centre, GlanceModifier.defaultWeight().fillMaxHeight())
-                buttons.shown.take(QuickCaptureLayout.sideButtons(size.width)).forEach { b ->
-                    val intent = b.intent(context) ?: return@forEach
-                    Spacer(GlanceModifier.width(QuickCaptureLayout.BUTTON_GAP))
-                    RoundButton(
-                        b.icon, context.getString(b.description), actionStartActivity(intent), p,
-                        size = QuickCaptureLayout.BUTTON, iconSize = 24.dp,
-                    )
+        val coin = spec.coin
+        if (coin != null && spec.coinIsButton) CoinButton(p, coin, buttons.centre)
+    }
+}
+
+/** The launcher's widget corner radius in dp (Android 12+), else [QuickCaptureLayout.OUTER_RADIUS]. */
+internal fun launcherRadius(context: Context): Float {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return QuickCaptureLayout.OUTER_RADIUS
+    val px = runCatching { context.resources.getDimension(android.R.dimen.system_app_widget_background_radius) }.getOrNull()
+        ?: return QuickCaptureLayout.OUTER_RADIUS
+    return px / context.resources.displayMetrics.density
+}
+
+@Composable
+private fun MaskLayer(mask: Bitmap, color: RolePair) {
+    Image(
+        ImageProvider(mask), contentDescription = null, modifier = GlanceModifier.fillMaxSize(),
+        contentScale = ContentScale.FillBounds, colorFilter = ColorFilter.tint(ColorProvider(day = color.day, night = color.night)),
+    )
+}
+
+/** Puts [content] at ([x], [y]) dp of the enclosing box (Glance has no offsets: a full-size box padded to the spot). */
+@Composable
+private fun Place(x: Float, y: Float, content: @Composable () -> Unit) {
+    Box(GlanceModifier.fillMaxSize().padding(start = x.coerceAtLeast(0f).dp, top = y.coerceAtLeast(0f).dp)) { content() }
+}
+
+/** One slice of the shape as a transparent button over the mask: its icon and, when there is room, its label. */
+@Composable
+private fun SliceButton(p: WidgetPalette, spec: CaptureSpec, slice: Slice, action: CaptureButton) {
+    val context = LocalContext.current
+    val intent = action.intent(context) ?: return
+    val onShape = slice.main && spec.mainFill != MainFill.Wash
+    val iconTint = when {
+        slice.main && spec.mainFill == MainFill.Accent -> p.onAccent
+        slice.main -> p.onAccent // on the coin
+        else -> p.icon
+    }
+    val icon = if (slice.main) QuickCaptureLayout.mainIcon(action) else action.icon
+    Place(slice.x, slice.y) {
+        Box(
+            GlanceModifier.size(slice.w.dp, slice.h.dp).roundedImage(slice.corners.largest.dp).clickable(actionStartActivity(intent)),
+        ) {
+            val g = slice.glyph
+            Place(g.cx - g.size / 2, g.cy - g.size / 2) {
+                Image(
+                    ImageProvider(icon), contentDescription = context.getString(action.description),
+                    modifier = GlanceModifier.size(g.size.dp), colorFilter = ColorFilter.tint(iconTint),
+                )
+            }
+            slice.label?.let { box ->
+                val text = context.getString(
+                    when {
+                        !slice.main -> action.label
+                        action == CaptureButton.NewNote -> R.string.widget_capture_bar
+                        else -> action.title
+                    },
+                )
+                val color = when {
+                    onShape -> p.onAccent
+                    slice.main -> p.accent
+                    else -> p.icon
+                }
+                val style = when {
+                    spec.shape == CaptureShape.Row -> TextStyle(color = color, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                    slice.main -> TextStyle(color = color, fontSize = 15.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
+                    else -> TextStyle(color = color, fontSize = 12.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
+                }
+                Place(box.x, box.y) {
+                    Box(
+                        GlanceModifier.size(box.w.dp, box.h.dp),
+                        contentAlignment = if (box.start) Alignment.CenterStart else Alignment.Center,
+                    ) { Text(text, maxLines = 1, style = style) }
                 }
             }
         }
     }
 }
 
-/** The square layout: the four corners (an empty slot stays empty), the big accent main button on top in the middle. */
+/** The pad's main button: the accent coin with its moat as the tap target. */
 @Composable
-private fun SquareButtons(p: WidgetPalette, buttons: CaptureButtons, size: DpSize) {
+private fun CoinButton(p: WidgetPalette, coin: Coin, main: CaptureButton) {
     val context = LocalContext.current
-    val corner = QuickCaptureLayout.corner(size)
-    val centre = QuickCaptureLayout.centre(size)
-
-    @Composable
-    fun cornerButton(b: CaptureButton) {
-        val intent = b.intent(context)
-        if (intent == null) {
-            Spacer(GlanceModifier.size(corner))
-        } else {
-            RoundButton(b.icon, context.getString(b.description), actionStartActivity(intent), p, size = corner, iconSize = corner * 0.5f)
-        }
-    }
-
-    @Composable
-    fun cornerRow(left: CaptureButton, right: CaptureButton) {
-        Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            cornerButton(left)
-            Spacer(GlanceModifier.defaultWeight())
-            cornerButton(right)
-        }
-    }
-    Box(GlanceModifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(GlanceModifier.fillMaxSize()) {
-            cornerRow(buttons.corners[CaptureButtons.TOP_LEFT], buttons.corners[CaptureButtons.TOP_RIGHT])
-            Spacer(GlanceModifier.defaultWeight())
-            cornerRow(buttons.corners[CaptureButtons.BOTTOM_LEFT], buttons.corners[CaptureButtons.BOTTOM_RIGHT])
-        }
-        // Drawn last, so it lies over the empty inner corners of the corner buttons' square bounds.
-        val main = buttons.centre
-        main.intent(context)?.let { intent ->
-            RoundButton(
-                icon = if (main == CaptureButton.NewNote) Oui.drawable.ic_oui_add else main.icon,
-                description = context.getString(main.description), action = actionStartActivity(intent), p = p,
-                primary = true, size = centre, iconSize = centre * 0.42f,
-            )
-        }
-    }
-}
-
-/** The main target: looks like an input; opens the capture sheet ready to type, or starts the chosen main action. */
-@Composable
-private fun TakeNoteBar(p: WidgetPalette, action: CaptureButton, modifier: GlanceModifier) {
-    val context = LocalContext.current
-    val intent = action.intent(context) ?: CaptureActivity.intent(context, CaptureMode.Text)
-    val typed = action == CaptureButton.NewNote
-    Row(
-        modifier = modifier.rounded(p.roles.tile, radius = 28.dp).clickable(actionStartActivity(intent)).padding(horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(modifier = GlanceModifier.size(36.dp).rounded(p.roles.accent, radius = 18.dp), contentAlignment = Alignment.Center) {
+    val intent = main.intent(context) ?: return
+    val target = coin.r + coin.moat
+    Place(coin.cx - target, coin.cy - target) {
+        Box(
+            GlanceModifier.size((target * 2).dp).roundedImage(target.dp).clickable(actionStartActivity(intent)),
+            contentAlignment = Alignment.Center,
+        ) {
             Image(
-                ImageProvider(action.icon), contentDescription = null,
-                modifier = GlanceModifier.size(20.dp), colorFilter = ColorFilter.tint(p.onAccent),
+                ImageProvider(QuickCaptureLayout.mainIcon(main)), contentDescription = context.getString(main.description),
+                modifier = GlanceModifier.size(coin.glyph.dp), colorFilter = ColorFilter.tint(p.onAccent),
             )
         }
-        Spacer(GlanceModifier.width(10.dp))
-        Text(
-            context.getString(if (typed) R.string.widget_capture_bar else action.title), maxLines = 1,
-            style = TextStyle(color = p.textSecondary, fontSize = 16.sp, fontWeight = FontWeight.Medium),
-        )
-    }
-}
-
-@Composable
-private fun ActionTile(p: WidgetPalette, b: CaptureButton, modifier: GlanceModifier) {
-    val context = LocalContext.current
-    val intent = b.intent(context) ?: return
-    Column(
-        modifier = modifier.rounded(p.roles.tile).clickable(actionStartActivity(intent)).padding(vertical = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Image(
-            ImageProvider(b.icon), contentDescription = context.getString(b.description),
-            modifier = GlanceModifier.size(24.dp), colorFilter = ColorFilter.tint(p.icon),
-        )
-        Spacer(GlanceModifier.height(4.dp))
-        Text(context.getString(b.label), maxLines = 1, style = TextStyle(color = p.textSecondary, fontSize = 12.sp, fontWeight = FontWeight.Medium))
     }
 }
 
