@@ -11,6 +11,7 @@ data class AppSettings(
     val showWebPreviews: Boolean = false,
     val hideScrollBar: Boolean = false,
     val blockBackKey: Boolean = false,
+    val hideLockedNotes: Boolean = false,
     val toolbarChangeStyle: Boolean = true,
     val toolbarEasyWritingPad: Boolean = true,
     val toolbarZoomLock: Boolean = true,

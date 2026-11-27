@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -23,9 +24,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import org.samesame.notes.core.data.repository.AppSettingsRepository
 import org.samesame.notes.core.data.repository.FolderRepository
 import org.samesame.notes.core.data.repository.NoteRepository
 import org.samesame.notes.core.data.repository.UserPreferencesRepository
+import org.samesame.notes.core.model.AppSettings
 import org.samesame.notes.core.model.Folder
 import org.samesame.notes.core.model.FolderId
 import org.samesame.notes.core.model.Limits
@@ -174,6 +177,7 @@ class NotesViewModel @Inject constructor(
     private val folders: FolderRepository,
     private val preferences: UserPreferencesRepository,
     private val savedState: SavedStateHandle,
+    private val appSettings: AppSettingsRepository? = null,
 ) : ViewModel() {
 
     // The current folder and the selection survive process death (the list scroll already survives through
@@ -192,6 +196,12 @@ class NotesViewModel @Inject constructor(
 
     private val folderLists = combine(folders.observeFolders(), folders.observeTrashedFolders(), ::Pair)
 
+    private val listSettings = combine(
+        preferences.preferences,
+        appSettings?.settings ?: flowOf(AppSettings()),
+        ::Pair,
+    )
+
     /** One count query for both drawer badges: no full-catalog fetch, mapping or sorting. */
     private val counts = notes.observeNoteCounts()
 
@@ -199,11 +209,16 @@ class NotesViewModel @Inject constructor(
         Triple(selecting, notes, folders)
     }
     val uiState: StateFlow<NotesUiState> = combine(
-        filter, visibleNotes, folderLists, preferences.preferences, selectionState,
-    ) { filter, notes, (folders, trashedFolders), prefs, (selecting, selection, folderSelection) ->
+        filter, visibleNotes, folderLists, listSettings, selectionState,
+    ) { filter, notes, (folders, trashedFolders), (prefs, settings), (selecting, selection, folderSelection) ->
         val trashedIds = trashedFolders.mapTo(HashSet()) { it.id }
         // In the Recycle bin a trashed folder card stands for everything inside it.
-        val shownNotes = if (filter == NoteFilter.Trash) notes.filter { it.folderId !in trashedIds } else notes
+        val unTrashedNotes = if (filter == NoteFilter.Trash) notes.filter { it.folderId !in trashedIds } else notes
+        val shownNotes = if (settings.hideLockedNotes && filter == NoteFilter.All) {
+            unTrashedNotes.filter { !it.isLocked }
+        } else {
+            unTrashedNotes
+        }
         val shownTrashedFolders = trashedFolders.filter { it.parentId == null || it.parentId !in trashedIds }
         val visibleFolderIds = if (filter == NoteFilter.Trash) {
             shownTrashedFolders.map { it.id }.toSet()
