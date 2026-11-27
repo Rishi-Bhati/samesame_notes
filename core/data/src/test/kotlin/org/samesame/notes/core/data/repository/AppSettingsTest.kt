@@ -81,6 +81,7 @@ class AppSettingsTest {
     fun writeThenReadRoundTrips() {
         val changed = AppSettings(
             autoSaveNotes = false, showLinks = false, showWebPreviews = true, hideScrollBar = true, blockBackKey = true,
+            hideLockedNotes = true,
             toolbarChangeStyle = false, toolbarEasyWritingPad = false, toolbarZoomLock = false, adjustColourInDarkMode = false,
             calculateAsYouType = false, replaceArrows = false,
             moveCheckedToBottom = false,

@@ -35,6 +35,7 @@ private object SettingsKeys {
     val webPreviews = booleanPreferencesKey("show_web_previews")
     val hideScrollBar = booleanPreferencesKey("hide_scroll_bar")
     val blockBack = booleanPreferencesKey("block_back_key")
+    val hideLockedNotes = booleanPreferencesKey("hide_locked_notes")
     val toolbarChangeStyle = booleanPreferencesKey("toolbar_change_style")
     val toolbarEasyPad = booleanPreferencesKey("toolbar_easy_writing_pad")
     val toolbarZoomLock = booleanPreferencesKey("toolbar_zoom_lock")
@@ -87,6 +88,7 @@ internal fun Preferences.toAppSettings(): AppSettings {
         showWebPreviews = this[SettingsKeys.webPreviews] ?: d.showWebPreviews,
         hideScrollBar = this[SettingsKeys.hideScrollBar] ?: d.hideScrollBar,
         blockBackKey = this[SettingsKeys.blockBack] ?: d.blockBackKey,
+        hideLockedNotes = this[SettingsKeys.hideLockedNotes] ?: d.hideLockedNotes,
         toolbarChangeStyle = this[SettingsKeys.toolbarChangeStyle] ?: d.toolbarChangeStyle,
         toolbarEasyWritingPad = this[SettingsKeys.toolbarEasyPad] ?: d.toolbarEasyWritingPad,
         toolbarZoomLock = this[SettingsKeys.toolbarZoomLock] ?: d.toolbarZoomLock,
@@ -122,6 +124,7 @@ internal fun MutablePreferences.writeAppSettings(s: AppSettings) {
     this[SettingsKeys.webPreviews] = s.showWebPreviews
     this[SettingsKeys.hideScrollBar] = s.hideScrollBar
     this[SettingsKeys.blockBack] = s.blockBackKey
+    this[SettingsKeys.hideLockedNotes] = s.hideLockedNotes
     this[SettingsKeys.toolbarChangeStyle] = s.toolbarChangeStyle
     this[SettingsKeys.toolbarEasyPad] = s.toolbarEasyWritingPad
     this[SettingsKeys.toolbarZoomLock] = s.toolbarZoomLock

@@ -17,6 +17,9 @@
     <string name="feature_settings_biometrics">Biometrics</string>
     <string name="feature_settings_biometrics_help">Add your fingerprints to unlock notes. To use your fingerprints, you also need to set a pattern, PIN, or password.</string>
     <string name="feature_settings_fingerprints">Fingerprints</string>
+    <string name="feature_settings_category_notes">Notes</string>
+    <string name="feature_settings_hide_locked_notes">Hide locked notes</string>
+    <string name="feature_settings_hide_locked_notes_summary">Don’t show locked notes in All notes</string>
     <string name="feature_settings_auto_save">Auto save notes</string>
     <string name="feature_settings_show_links">Show links in notes</string>
     <string name="feature_settings_calculate_as_you_type">Calculate as you type</string>

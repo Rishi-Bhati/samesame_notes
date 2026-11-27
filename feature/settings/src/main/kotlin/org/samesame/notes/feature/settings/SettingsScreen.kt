@@ -111,7 +111,7 @@ fun SettingsRoute(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewMod
         Page.Main -> MainPage(settings, update, onBack = onBack, onOpen = { page = it }, onImport = importNotes)
         Page.Export -> ExportNotesPage(bulk, onBack = { page = parent })
         Page.Backup -> BackupPage(onBack = { page = parent })
-        Page.Unlock -> UnlockMethodsPage(onBack = { page = parent })
+        Page.Unlock -> UnlockMethodsPage(settings, update, onBack = { page = parent })
         Page.Style -> StylePage(settings, update, onBack = { page = parent })
         Page.Toolbar -> ToolbarPage(settings, update, onBack = { page = parent })
         Page.Font -> FontPage(settings, update, viewModel, onBack = { page = parent })
@@ -352,7 +352,12 @@ private fun MainPage(
 private enum class UnlockOverlay { None, Create, Change, EnableBiometrics }
 
 @Composable
-private fun UnlockMethodsPage(onBack: () -> Unit, viewModel: LockViewModel = hiltViewModel()) {
+private fun UnlockMethodsPage(
+    settings: AppSettings,
+    update: ((AppSettings) -> AppSettings) -> Unit,
+    onBack: () -> Unit,
+    viewModel: LockViewModel = hiltViewModel(),
+) {
     val hasPassword by viewModel.hasPassword.collectAsStateWithLifecycle(initialValue = false)
     val biometricsOn by viewModel.biometricsEnabled.collectAsStateWithLifecycle(initialValue = false)
     var overlay by rememberSaveable { mutableStateOf(UnlockOverlay.None) }
@@ -379,6 +384,17 @@ private fun UnlockMethodsPage(onBack: () -> Unit, viewModel: LockViewModel = hil
                         SettingsRow(
                             stringResource(R.string.feature_settings_fingerprints), checked = biometricsOn,
                             onChecked = { on -> if (on) overlay = UnlockOverlay.EnableBiometrics else scope.launch { viewModel.disableBiometrics() } },
+                        )
+                    }
+                }
+                if (hasPassword) {
+                    SectionHeader(stringResource(R.string.feature_settings_category_notes))
+                    GroupCard {
+                        SettingsRow(
+                            stringResource(R.string.feature_settings_hide_locked_notes),
+                            stringResource(R.string.feature_settings_hide_locked_notes_summary),
+                            settings.hideLockedNotes,
+                            { v -> update { it.copy(hideLockedNotes = v) } },
                         )
                     }
                 }
